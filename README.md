@@ -253,7 +253,9 @@ status, cold-event, SSE, create, and approval responses to prove that an older
 selection or same-run epoch cannot reclaim the visible view. The fixture adds
 no browser package or runtime dependency; CI requires the browser on one
 Ubuntu/Python 3.12 cell instead of multiplying this product test across the
-language matrix.
+language matrix. A browser process that does not exit within the bounded
+deadline gets one retry with a fresh profile; a nonzero exit or missing product
+pass marker is never retried.
 
 The accepted architecture, trust boundaries, and later gates live in [docs/FOUNDATION.md](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md).
 

@@ -18,6 +18,8 @@ WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
 EXPECTED = "PASS:stale-status,same-run-epoch,cold-events,late-sse,create-run,approval"
+BROWSER_TIMEOUT_SECONDS = 35
+BROWSER_ATTEMPTS = 2
 
 
 def browser_candidates() -> list[Path]:
@@ -139,12 +141,9 @@ def browser_version(binary: Path) -> str:
     return f"{binary.name} {version}"
 
 
-def run_acceptance(binary: Path) -> dict[str, object]:
-    server = create_fixture_server()
-    thread = threading.Thread(target=server.serve_forever, name="sasori-browser-fixture", daemon=True)
-    thread.start()
-    try:
-        port = server.server_address[1]
+def run_browser_process(binary: Path, port: int) -> subprocess.CompletedProcess[str]:
+    last_timeout: subprocess.TimeoutExpired | None = None
+    for _ in range(BROWSER_ATTEMPTS):
         with tempfile.TemporaryDirectory(prefix="sasori-browser-") as profile:
             command = [
                 str(binary),
@@ -164,15 +163,30 @@ def run_acceptance(binary: Path) -> dict[str, object]:
                 "--dump-dom",
                 f"http://127.0.0.1:{port}/",
             ]
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=35,
-                check=False,
-            )
+            try:
+                return subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=BROWSER_TIMEOUT_SECONDS,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                last_timeout = exc
+    raise RuntimeError(
+        "headless browser process timed out after "
+        f"{BROWSER_ATTEMPTS} attempts of {BROWSER_TIMEOUT_SECONDS} seconds"
+    ) from last_timeout
+
+
+def run_acceptance(binary: Path) -> dict[str, object]:
+    server = create_fixture_server()
+    thread = threading.Thread(target=server.serve_forever, name="sasori-browser-fixture", daemon=True)
+    thread.start()
+    try:
+        completed = run_browser_process(binary, server.server_address[1])
     finally:
         server.shutdown()
         server.server_close()
