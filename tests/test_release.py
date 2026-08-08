@@ -8,6 +8,7 @@ import shutil
 import sys
 import tarfile
 import tempfile
+import tomllib
 import unittest
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -15,6 +16,10 @@ from unittest import mock
 
 
 ROOT = Path(__file__).parents[1]
+with (ROOT / "pyproject.toml").open("rb") as stream:
+    PROJECT_VERSION = tomllib.load(stream)["project"]["version"]
+EXPECTED_TAG = f"v{PROJECT_VERSION}"
+WRONG_TAG = f"v{PROJECT_VERSION}.wrong"
 SPEC = importlib.util.spec_from_file_location(
     "sasori_release_verify", ROOT / "scripts" / "release_verify.py"
 )
@@ -28,7 +33,7 @@ def metadata(*, dependency=False, extra=""):
     return (
         "Metadata-Version: 2.4\n"
         "Name: sasori\n"
-        "Version: 0.1.0.dev0\n"
+        f"Version: {PROJECT_VERSION}\n"
         "Requires-Python: >=3.11,<3.14\n"
         "License-Expression: MIT\n"
         "License-File: LICENSE\n"
@@ -91,8 +96,8 @@ class ReleaseVerificationTests(unittest.TestCase):
         wheel_extra="",
         extra_dist_info=False,
     ):
-        path = self.root / "sasori-0.1.0.dev0-py3-none-any.whl"
-        dist_info = "sasori-0.1.0.dev0.dist-info"
+        path = self.root / f"sasori-{PROJECT_VERSION}-py3-none-any.whl"
+        dist_info = f"sasori-{PROJECT_VERSION}.dist-info"
         files = release_verify._source_payload(self.source)
         files.update(
             {
@@ -145,8 +150,8 @@ class ReleaseVerificationTests(unittest.TestCase):
     def sdist(
         self, *, traversal=False, extra_directory=False, valid_directories=False
     ):
-        path = self.root / "sasori-0.1.0.dev0.tar.gz"
-        root = "sasori-0.1.0.dev0"
+        path = self.root / f"sasori-{PROJECT_VERSION}.tar.gz"
+        root = f"sasori-{PROJECT_VERSION}"
         files = {
             f"{root}/{name}": (self.source / name).read_bytes()
             for name in (
@@ -189,7 +194,7 @@ class ReleaseVerificationTests(unittest.TestCase):
 
     def test_valid_artifacts_write_honest_dirty_local_records(self):
         release_verify._reject_forbidden(
-            ("sasori-0.1.0.dev0", "src", "sasori.egg-info"), "sdist"
+            (f"sasori-{PROJECT_VERSION}", "src", "sasori.egg-info"), "sdist"
         )
         output = self.root / "records"
         manifest, spdx, provenance = release_verify.verify_release(
@@ -283,9 +288,24 @@ class ReleaseVerificationTests(unittest.TestCase):
 
         cases = (
             (b"", b"test\n", False, "clean_wrong_tag_local_candidate"),
-            (b"", b"v9.9.9\n", False, "clean_wrong_tag_local_candidate"),
-            (b"", b"v0.1.0.dev0\n", True, "clean_release_tag_candidate"),
-            (b"?? local\n", b"v0.1.0.dev0\n", False, "dirty_or_untracked_local_candidate"),
+            (
+                b"",
+                f"{WRONG_TAG}\n".encode(),
+                False,
+                "clean_wrong_tag_local_candidate",
+            ),
+            (
+                b"",
+                f"{EXPECTED_TAG}\n".encode(),
+                True,
+                "clean_release_tag_candidate",
+            ),
+            (
+                b"?? local\n",
+                f"{EXPECTED_TAG}\n".encode(),
+                False,
+                "dirty_or_untracked_local_candidate",
+            ),
         )
         for status, tags, eligible, state_name in cases:
             with self.subTest(tags=tags, status=status), mock.patch.object(
@@ -294,16 +314,30 @@ class ReleaseVerificationTests(unittest.TestCase):
                 side_effect=(git_result(b"abc123\n"), git_result(status), git_result(tags)),
             ):
                 state = release_verify._source_state(
-                    self.source, "v0.1.0.dev0"
+                    self.source, EXPECTED_TAG
                 )
                 self.assertEqual(state["state"], state_name)
                 self.assertEqual(
                     bool(
                         state["git_clean"]
-                        and state["matching_release_tag"] == "v0.1.0.dev0"
+                        and state["matching_release_tag"] == EXPECTED_TAG
                     ),
                     eligible,
                 )
+
+    def test_release_fixtures_follow_project_version(self):
+        self.assertIn(
+            f"Version: {PROJECT_VERSION}\n".encode(),
+            metadata(),
+        )
+        self.assertEqual(
+            self.wheel().name,
+            f"sasori-{PROJECT_VERSION}-py3-none-any.whl",
+        )
+        self.assertEqual(
+            self.sdist().name,
+            f"sasori-{PROJECT_VERSION}.tar.gz",
+        )
 
     def test_spdx_rejects_duplicate_checksum_algorithms(self):
         manifest, spdx, _ = release_verify.verify_release(
