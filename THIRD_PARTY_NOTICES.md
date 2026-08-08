@@ -32,6 +32,18 @@ CPython revision is included verbatim in
 Sasori runtime dependency and is not copied from the Docker builder into the
 runtime layer as a project dependency.
 
+Anchore Syft `1.50.0` is an Apache-2.0-licensed CI inventory tool downloaded
+from the fixed upstream release:
+
+<https://github.com/anchore/syft/tree/v1.50.0>
+
+The Linux amd64 archive is accepted only with SHA-256
+`bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788`.
+Syft is used only after the container product workflow passes, is removed with
+its temporary directory, and is not included in the Python wheel or Sasori
+runtime image. Its generated SBOM and Sasori's unsigned binding are inventory
+records, not a signature, trusted-provenance claim, or Anchore endorsement.
+
 The Docker distribution is separate from the Python wheel. The declared
 runtime base is the digest-pinned DaoCloud mirror of `python:3.12-slim` in the
 `Dockerfile`. DaoCloud changes transport, not upstream licensing. The resulting

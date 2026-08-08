@@ -107,9 +107,40 @@ say `release_eligible=false`, bind artifacts only to the current working tree,
 and keep `HEAD` as a non-authoritative baseline. They are not signed SLSA/in-toto
 provenance or a trusted-builder attestation.
 
-The generated SPDX file covers the wheel/sdist and locked Python build input.
-It is not a container SBOM. Generate and archive a separate SPDX/CycloneDX SBOM
-from the actual final image digest before publishing that image.
+The generated application SPDX file covers the wheel/sdist and locked Python
+build input. It is separate from the container SBOM. After the deterministic
+Compose workflow and restart/ownership acceptance pass, the container job
+downloads the fixed Syft `1.50.0` Linux archive and verifies its hard-coded
+SHA-256 before execution. One scan of that same, still-unchanged `sasori:local`
+image writes both SPDX 2.3 and the native Syft catalog.
+
+The job snapshots `docker image inspect` immediately after the build and
+byte-compares a second inspection after the scan. `scripts/image_sbom_verify.py`
+then binds the daemon image ID, optional daemon descriptor, repo digests,
+platform, RootFS layer identities, the accepted Compose container's `.Image`
+identity, Git revision, embedded config digest,
+Syft-normalized manifest digest, image tag, and exact package/file subjects. It
+decodes and hashes the embedded manifest and config rather than trusting the
+image name, matches the config `rootfs.diff_ids` to the daemon inspection, and
+requires one SPDX document `DESCRIBES` edge to the sole `CONTAINER` root. That
+root's checksum and OCI purl must identify the same Syft-normalized manifest;
+the daemon descriptor is recorded separately because Docker Desktop can expose
+an OCI index ID rather than a config or platform-manifest digest. The running
+container's `.Image` must equal that stable daemon ID; on Docker Desktop it can
+therefore also be an index ID rather than a config digest.
+The three files are uploaded separately as
+`sasori-image-sbom-{git-sha}` for 30 days:
+
+```text
+sasori-image-{run-id}-{attempt}.spdx.json
+sasori-image-{run-id}-{attempt}.syft.json
+sasori-image-{run-id}-{attempt}.binding.json
+```
+
+The binding remains `signed=false` with the claim `unsigned CI image inventory
+binding; not trusted provenance or a signature`. This is component inventory
+evidence from the tested local candidate, not a published image, signature,
+trusted-builder attestation, or proof that a registry digest is durable.
 
 For an exact tagged workflow, `scripts/release_bundle.py` assembles a new empty
 candidate directory with exactly eight regular files and no additional payload:
@@ -290,9 +321,11 @@ The CI job independently snapshots `/data/incident-actions.jsonl` as
 `0 → 1 → 1`, verifies its single JSON record exactly, and starts a second
 container against the same named volume. Only an exact `ConcurrentRunError`
 with exit code `2` passes that ownership probe. Before upload it scans the
-acceptance evidence, three action snapshots, runtime log, and owner log for the
-bearer token. The token and raw logs are deleted; only the four audited JSON
-files are retained. Cleanup deliberately uses `docker compose down
+acceptance evidence, three action snapshots, runtime log, owner log, image SPDX,
+native Syft catalog, and image binding for the bearer token. The token and raw
+logs are deleted. The four audited acceptance JSON files are retained for seven
+days, while the image SPDX, native catalog, and unsigned binding are uploaded as
+a separate 30-day artifact. Cleanup deliberately uses `docker compose down
 --remove-orphans --timeout 20` without `-v` or `--volumes`.
 
 On native Linux the token file remains host-private at mode `0640`. Its numeric
@@ -303,11 +336,11 @@ because file-backed Compose secrets are bind mounts and cannot apply secret
 token or an inspectable token environment variable.
 
 This job exercises only the deterministic `incident` composition and the
-locally built `sasori:local` candidate. It does not run either credentialed
-provider smoke, publish an image, generate an image SBOM, sign an artifact, or
-create trusted provenance. The presence of the workflow definition is not a
-passing public gate: record the hosted run URL and exact commit only after that
-run succeeds.
+locally built `sasori:local` candidate. It generates an unsigned image SBOM from
+that tested candidate, but does not run either credentialed provider smoke,
+publish an image, sign an artifact, or create trusted provenance. The presence
+of the workflow definition is not a passing public gate: record the hosted run
+URL and exact commit only after that run succeeds.
 
 Keep the named data volume during restart/owner testing. Do not publish a public
 deployment without the additional TLS, isolation, authentication, limits,

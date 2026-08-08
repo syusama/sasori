@@ -118,6 +118,10 @@ jobs:
               "ACTION_RESTARTED_FILE": root / f"sasori-action-restarted-{suffix}.json",
               "OWNER_LOG_FILE": root / f"sasori-owner-{suffix}.log",
               "RUNTIME_LOG_FILE": root / f"sasori-runtime-{suffix}.log",
+              "IMAGE_SBOM_FILE": root / f"sasori-image-{suffix}.spdx.json",
+              "IMAGE_CATALOG_FILE": root / f"sasori-image-{suffix}.syft.json",
+              "IMAGE_SBOM_BINDING_FILE": root / f"sasori-image-{suffix}.binding.json",
+              "IMAGE_INSPECT_FILE": root / f"sasori-image-{suffix}.inspect.json",
           }
           with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
               listener.bind(("127.0.0.1", 0))
@@ -159,6 +163,11 @@ jobs:
           set -euo pipefail
           docker compose -p "$COMPOSE_PROJECT_NAME" config --quiet
           docker compose -p "$COMPOSE_PROJECT_NAME" build --no-cache --pull sasori
+          image_id="$(docker image inspect sasori:local --format '{{.Id}}')"
+          [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker image inspect sasori:local --format '{{json .}}' \
+            > "$IMAGE_INSPECT_FILE"
+          printf 'SASORI_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
 
       - name: Start the Compose candidate image
         shell: bash
@@ -185,6 +194,14 @@ jobs:
             fi
             exit "$start_status"
           fi
+          container_id="$(docker compose -p "$COMPOSE_PROJECT_NAME" ps -q sasori)"
+          test -n "$container_id"
+          runtime_image_id="$(
+            docker container inspect "$container_id" --format '{{.Image}}'
+          )"
+          [[ "$runtime_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'SASORI_RUNTIME_IMAGE_ID=%s\n' "$runtime_image_id" \
+            >> "$GITHUB_ENV"
 
       - name: Verify workflow, restart persistence, and exclusive ownership
         shell: bash
@@ -323,6 +340,67 @@ jobs:
           fi
           git diff --exit-code HEAD --
 
+      - name: Generate and bind the final image SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          syft_version=1.50.0
+          syft_sha256=bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788
+          syft_root="$(mktemp -d "$RUNNER_TEMP/sasori-syft-XXXXXX")"
+          trap 'rm -rf -- "$syft_root"' EXIT
+          archive="$syft_root/syft.tar.gz"
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            --output "$archive" \
+            "https://github.com/anchore/syft/releases/download/v${syft_version}/syft_${syft_version}_linux_amd64.tar.gz"
+          printf '%s *%s\n' "$syft_sha256" "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$syft_root" syft
+
+          before="$(docker image inspect sasori:local --format '{{.Id}}')"
+          test "$before" = "$SASORI_IMAGE_ID"
+          container_id="$(docker compose -p "$COMPOSE_PROJECT_NAME" ps -q sasori)"
+          test -n "$container_id"
+          runtime_image_id="$(
+            docker container inspect "$container_id" --format '{{.Image}}'
+          )"
+          test "$runtime_image_id" = "$SASORI_RUNTIME_IMAGE_ID"
+          "$syft_root/syft" sasori:local \
+            --output "spdx-json=$IMAGE_SBOM_FILE" \
+            --output "syft-json=$IMAGE_CATALOG_FILE" \
+            --quiet
+          after="$(docker image inspect sasori:local --format '{{.Id}}')"
+          test "$after" = "$before"
+          docker image inspect sasori:local --format '{{json .}}' \
+            > "$syft_root/image-inspect-after.json"
+          cmp -s "$IMAGE_INSPECT_FILE" "$syft_root/image-inspect-after.json"
+
+          python scripts/image_sbom_verify.py create \
+            --spdx "$IMAGE_SBOM_FILE" \
+            --catalog "$IMAGE_CATALOG_FILE" \
+            --daemon-inspect "$IMAGE_INSPECT_FILE" \
+            --image-reference sasori:local \
+            --daemon-image-id "$after" \
+            --runtime-image-id "$runtime_image_id" \
+            --source-revision "$GITHUB_SHA" \
+            --binding "$IMAGE_SBOM_BINDING_FILE"
+          python scripts/image_sbom_verify.py verify \
+            --spdx "$IMAGE_SBOM_FILE" \
+            --catalog "$IMAGE_CATALOG_FILE" \
+            --daemon-inspect "$IMAGE_INSPECT_FILE" \
+            --image-reference sasori:local \
+            --daemon-image-id "$after" \
+            --runtime-image-id "$runtime_image_id" \
+            --source-revision "$GITHUB_SHA" \
+            --binding "$IMAGE_SBOM_BINDING_FILE"
+
       - name: Audit logs and generated reports
         if: always()
         shell: bash
@@ -336,6 +414,10 @@ jobs:
           restarted_file="${ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-action-restarted-$suffix.json}"
           owner_log="${OWNER_LOG_FILE:-$RUNNER_TEMP/sasori-owner-$suffix.log}"
           runtime_log="${RUNTIME_LOG_FILE:-$RUNNER_TEMP/sasori-runtime-$suffix.log}"
+          image_sbom="${IMAGE_SBOM_FILE:-$RUNNER_TEMP/sasori-image-$suffix.spdx.json}"
+          image_catalog="${IMAGE_CATALOG_FILE:-$RUNNER_TEMP/sasori-image-$suffix.syft.json}"
+          image_binding="${IMAGE_SBOM_BINDING_FILE:-$RUNNER_TEMP/sasori-image-$suffix.binding.json}"
+          image_inspect="${IMAGE_INSPECT_FILE:-$RUNNER_TEMP/sasori-image-$suffix.inspect.json}"
           export SASORI_TOKEN_FILE="$token_file"
 
           : > "$runtime_log"
@@ -360,7 +442,11 @@ jobs:
                 "acceptance evidence:$evidence_file" \
                 "paused action evidence:$paused_file" \
                 "completed action evidence:$complete_file" \
-                "restarted action evidence:$restarted_file"; do
+                "restarted action evidence:$restarted_file" \
+                "image SBOM:$image_sbom" \
+                "image catalog:$image_catalog" \
+                "image SBOM binding:$image_binding" \
+                "image inspection:$image_inspect"; do
                 label="${item%%:*}"
                 path="${item#*:}"
                 if [[ -f "$path" ]] && grep -Fq -- "$token" "$path"; then
@@ -380,7 +466,10 @@ jobs:
               "acceptance:$evidence_file" \
               "paused-action:$paused_file" \
               "completed-action:$complete_file" \
-              "restarted-action:$restarted_file"; do
+              "restarted-action:$restarted_file" \
+              "image-sbom:$image_sbom" \
+              "image-catalog:$image_catalog" \
+              "image-sbom-binding:$image_binding"; do
               label="${item%%:*}"
               path="${item#*:}"
               if [[ -f "$path" ]]; then
@@ -406,6 +495,7 @@ jobs:
           token_file="${SASORI_TOKEN_FILE:-$RUNNER_TEMP/sasori-token-$suffix}"
           owner_log="${OWNER_LOG_FILE:-$RUNNER_TEMP/sasori-owner-$suffix.log}"
           runtime_log="${RUNTIME_LOG_FILE:-$RUNNER_TEMP/sasori-runtime-$suffix.log}"
+          image_inspect="${IMAGE_INSPECT_FILE:-$RUNNER_TEMP/sasori-image-$suffix.inspect.json}"
           export SASORI_TOKEN_FILE="$token_file"
           if [[ ! -e "$token_file" ]]; then
             umask 077
@@ -414,7 +504,7 @@ jobs:
           docker compose -p "$COMPOSE_PROJECT_NAME" down \
             --remove-orphans --timeout 20
           cleanup_status=$?
-          for path in "$token_file" "$owner_log" "$runtime_log"; do
+          for path in "$token_file" "$owner_log" "$runtime_log" "$image_inspect"; do
             rm -f -- "$path" || cleanup_status=1
           done
           if [[ "$cleanup_status" -ne 0 ]]; then
@@ -434,6 +524,19 @@ jobs:
             ${{ runner.temp }}/sasori-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
           if-no-files-found: error
           retention-days: 7
+          compression-level: 9
+
+      - name: Upload the verified image SBOM and binding
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-image-sbom-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/sasori-image-${{ github.run_id }}-${{ github.run_attempt }}.spdx.json
+            ${{ runner.temp }}/sasori-image-${{ github.run_id }}-${{ github.run_attempt }}.syft.json
+            ${{ runner.temp }}/sasori-image-${{ github.run_id }}-${{ github.run_attempt }}.binding.json
+          if-no-files-found: error
+          retention-days: 30
           compression-level: 9
 
   package:

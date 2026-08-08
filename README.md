@@ -228,16 +228,18 @@ before resume, then exactly 16 events, one effect, and the exact SSE sequence
 cursor, SSE tail, and effect count. The CI job additionally checks the external
 action log as `0 → 1 → 1`, proves a second owner receives
 `ConcurrentRunError`, scans generated evidence and raw logs for the bearer
-token, and uploads only the audited JSON evidence. Container health alone is
-not acceptance. File-backed stores hold a cross-process owner lock; network
-filesystems, replicas, failover, public TLS, and arbitrary untrusted tool
-sandboxing remain out of scope.
+token, uploads the four audited acceptance JSON files, and separately uploads a
+checksum-locked Syft SPDX/native catalog plus Sasori's unsigned binding for the
+same tested image. Container health alone is not acceptance. File-backed stores
+hold a cross-process owner lock; network filesystems, replicas, failover, public
+TLS, and arbitrary untrusted tool sandboxing remain out of scope.
 
-This gate exercises the deterministic `incident` composition only. It is not
-evidence for a live OpenAI/Anthropic call, the `research` or `developer`
-composition, an image SBOM/signature, or a public deployment. The workflow
-definition becomes public CI evidence for a revision only when the hosted run
-for that exact commit succeeds.
+This gate exercises the deterministic `incident` composition only. Its image
+SBOM binding is unsigned component-inventory evidence, not a signature or
+trusted provenance. It is not evidence for a live OpenAI/Anthropic call, the
+`research` or `developer` composition, a published registry image, or a public
+deployment. The workflow definition and image-SBOM path become public CI
+evidence for a revision only when the hosted run for that exact commit succeeds.
 
 Run the deterministic regression suite from the repository root:
 
