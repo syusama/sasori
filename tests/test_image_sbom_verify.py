@@ -282,6 +282,16 @@ class ImageSBOMVerificationTests(unittest.TestCase):
                 self.assertEqual(binding["sbom"]["package_count"], 2)
                 self.assertEqual(binding["catalog"]["artifact_count"], 1)
 
+    def test_hosted_syft_may_omit_empty_image_labels(self) -> None:
+        spdx, catalog, daemon_image_id = self._fixture("hosted-no-labels")
+        value = json.loads(catalog.read_text(encoding="utf-8"))
+        value["source"]["metadata"].pop("labels")
+        self._write_json(catalog, value)
+
+        binding = self._binding(spdx, catalog, daemon_image_id)
+
+        self.assertEqual(binding["image"]["daemon_image_id"], daemon_image_id)
+
     def test_cli_creates_then_reverifies_an_exact_binding(self) -> None:
         spdx, catalog, daemon_image_id = self._fixture("cli")
         binding = self.root / "binding.json"
@@ -360,6 +370,27 @@ class ImageSBOMVerificationTests(unittest.TestCase):
                 "tag",
                 "catalog",
                 lambda value: value["source"]["metadata"].update({"tags": []}),
+            ),
+            (
+                "unknown-image-metadata",
+                "catalog",
+                lambda value: value["source"]["metadata"].update(
+                    {"trusted": True}
+                ),
+            ),
+            (
+                "invalid-image-labels",
+                "catalog",
+                lambda value: value["source"]["metadata"].update(
+                    {"labels": ["not-a-map"]}
+                ),
+            ),
+            (
+                "invalid-image-label-value",
+                "catalog",
+                lambda value: value["source"]["metadata"].update(
+                    {"labels": {"not-a-string": True}}
+                ),
             ),
             (
                 "package-subject",

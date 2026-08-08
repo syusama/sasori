@@ -72,8 +72,16 @@ def _load_json(path: Path) -> dict[str, object]:
     return value
 
 
-def _keys(value: dict[str, object], expected: set[str], label: str) -> None:
-    if set(value) != expected:
+def _keys(
+    value: dict[str, object],
+    required: set[str],
+    label: str,
+    *,
+    optional: set[str] | None = None,
+) -> None:
+    fields = set(value)
+    allowed = required | (optional or set())
+    if not required.issubset(fields) or not fields.issubset(allowed):
         raise ImageSBOMError(f"{label} fields do not match the locked schema")
 
 
@@ -239,9 +247,9 @@ def _validate_catalog(
             "repoDigests",
             "architecture",
             "os",
-            "labels",
         },
         "Syft image metadata",
+        optional={"labels"},
     )
     manifest_digest = _digest(metadata.get("manifestDigest"), "manifest digest")
     config_digest = _digest(metadata.get("imageID"), "image config digest")
@@ -250,6 +258,7 @@ def _validate_catalog(
     layers = metadata.get("layers")
     architecture = metadata.get("architecture")
     operating_system = metadata.get("os")
+    labels = metadata.get("labels", {})
     if (
         source.get("id") != manifest_digest.removeprefix("sha256:")
         or source.get("name") != reference.group("name")
@@ -265,7 +274,11 @@ def _validate_catalog(
         or not architecture
         or not isinstance(operating_system, str)
         or not operating_system
-        or not isinstance(metadata.get("labels"), dict)
+        or not isinstance(labels, dict)
+        or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in labels.items()
+        )
         or not isinstance(metadata.get("imageSize"), int)
         or isinstance(metadata.get("imageSize"), bool)
         or metadata["imageSize"] <= 0
