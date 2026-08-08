@@ -29,6 +29,30 @@ from sasori.server import create_server  # noqa: E402
 class ContainerAcceptanceTests(unittest.TestCase):
     TOKEN = "container-acceptance-secret-32-bytes"
 
+    def test_compose_secret_is_group_scoped_for_the_non_root_runtime(self) -> None:
+        compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            'group_add:\n      - "${SASORI_TOKEN_GID:-10001}"', compose
+        )
+        self.assertIn("os.O_WRONLY | os.O_CREAT | os.O_EXCL", workflow)
+        self.assertIn(
+            "os.O_WRONLY | os.O_CREAT | os.O_EXCL,\n              0o600,",
+            workflow,
+        )
+        self.assertIn("os.fchmod(stream.fileno(), 0o640)", workflow)
+        self.assertIn("stat.S_IMODE(token_stat.st_mode) != 0o640", workflow)
+        self.assertIn('"SASORI_TOKEN_GID": str(token_stat.st_gid)', workflow)
+        self.assertNotIn('write_text(token + "\\n"', workflow)
+        self.assertNotIn("0o644", workflow)
+        self.assertNotIn("os.getgid()", workflow)
+        self.assertIn(
+            "container could not read the group-scoped bearer-token secret",
+            workflow,
+        )
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

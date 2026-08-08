@@ -192,6 +192,10 @@ the standard-library acceptance driver in three phases:
 ```powershell
 $env:SASORI_TOKEN_FILE = "C:\secure-local-path\sasori-token"
 $env:SASORI_PORT = "18888"
+if ($IsLinux) {
+  chmod 0640 -- $env:SASORI_TOKEN_FILE
+  $env:SASORI_TOKEN_GID = (stat -c "%g" -- $env:SASORI_TOKEN_FILE).Trim()
+}
 docker compose config --quiet
 docker compose build --no-cache --pull sasori
 docker compose up -d --wait --wait-timeout 120 sasori
@@ -228,6 +232,13 @@ acceptance evidence, three action snapshots, runtime log, and owner log for the
 bearer token. The token and raw logs are deleted; only the four audited JSON
 files are retained. Cleanup deliberately uses `docker compose down
 --remove-orphans --timeout 20` without `-v` or `--volumes`.
+
+On native Linux the token file remains host-private at mode `0640`. Its numeric
+host GID is passed through `SASORI_TOKEN_GID`, and Compose adds only that
+supplemental group to the non-root `10001:10001` process. This is required
+because file-backed Compose secrets are bind mounts and cannot apply secret
+`uid`/`gid`/`mode` remapping. Never weaken this bridge to a world-readable
+token or an inspectable token environment variable.
 
 This job exercises only the deterministic `incident` composition and the
 locally built `sasori:local` candidate. It does not run either credentialed

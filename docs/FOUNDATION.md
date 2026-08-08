@@ -428,6 +428,7 @@ The current HTTP/Docker package follows this contract:
 - `UV_DEFAULT_INDEX` or `PIP_INDEX_URL` defaults to Tsinghua's PyPI mirror and remains configurable;
 - dependency versions/hashes remain locked; mirror use never disables lock verification;
 - Compose exposes a project-local configurable port and does not stop unrelated services;
+- native-Linux file secrets remain host-private and use an explicit numeric supplemental group so the non-root container can read the bind mount without making it world-readable;
 - acceptance calls a real agent endpoint and validates the final persisted/visible result, not just image build or container health.
 
 Current deployment modes are the embedded Python library, CLI, and the local

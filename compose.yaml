@@ -14,6 +14,8 @@ services:
     secrets:
       - source: sasori_token
         target: sasori_token
+    group_add:
+      - "${SASORI_TOKEN_GID:-10001}"
     ports:
       - "127.0.0.1:${SASORI_PORT:-8080}:8080"
     cap_drop:

@@ -183,8 +183,20 @@ The Compose delivery uses the digest-pinned DaoCloud Python base, hash-pinned bu
 ```powershell
 $env:SASORI_TOKEN_FILE = "C:\secure-local-path\sasori-token"
 $env:SASORI_PORT = "18888"
+if ($IsLinux) {
+  chmod 0640 -- $env:SASORI_TOKEN_FILE
+  $env:SASORI_TOKEN_GID = (stat -c "%g" -- $env:SASORI_TOKEN_FILE).Trim()
+}
 docker compose up -d --build --wait
 ```
+
+On native Linux, Compose file secrets are bind mounts: their configured
+`uid`/`gid`/`mode` cannot remap the host file. Keep the token owned by the
+operator and a dedicated limited-membership group, use mode `0640`, and pass
+that file's numeric GID through `SASORI_TOKEN_GID` as above. The non-root
+container receives only that supplemental group; do not make the token
+world-readable or move it into an environment variable. Docker Desktop does
+not require this host-POSIX permission bridge.
 
 Exercise the same split-phase HTTP workflow used by the container CI gate from
 the repository root. `prepare` approves the deterministic Incident action but
