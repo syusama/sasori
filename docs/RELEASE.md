@@ -95,7 +95,7 @@ from the actual final image digest before publishing that image.
 Run two distinct gates on Python 3.11, 3.12, and 3.13: the source regression
 suite, and the installed-wheel smoke from a directory that cannot import the
 checkout's `src/`. The smoke verifies distribution metadata, zero runtime
-dependencies, five import packages, four Workbench resources, and all three
+dependencies, five import packages, six Workbench resources, and all three
 console scripts.
 
 On Windows, the following uses the Python launcher to select each interpreter:

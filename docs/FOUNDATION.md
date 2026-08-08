@@ -382,7 +382,11 @@ tool/final text until a separate artifact contract is justified.
 
 The current UI is dependency-free static HTML/CSS/JavaScript served from an
 exact asset allowlist. Authenticated SSE uses `fetch()` plus `ReadableStream`;
-live, cold, and reconnect events enter one reducer keyed by `(run_id, seq)`.
+live, cold, and reconnect events enter one pure, Node-tested reducer scoped by
+`run_id`. The reducer advances only a contiguous durable cursor, distinguishes
+an identical duplicate from a conflict, validates SSE metadata and event
+version, and pairs with a selection epoch so a late older response cannot take
+over the current view. See [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 This smaller native implementation met the current product contract, so
 `assistant-ui`, CopilotKit, AG-UI, and Lobe UI were not added. Re-evaluate one
 pinned dependency only when a measured missing capability exceeds the cost of

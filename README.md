@@ -192,6 +192,7 @@ Run the deterministic regression suite from the repository root:
 
 ```powershell
 python -m unittest discover -s tests -v
+node --test tests/workbench_event_reducer.test.cjs
 ```
 
 The accepted architecture, trust boundaries, and later gates live in [docs/FOUNDATION.md](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md).

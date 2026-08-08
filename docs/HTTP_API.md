@@ -172,10 +172,18 @@ foreign framing, and non-self connections. The page stores an optional bearer
 token in `sessionStorage` only and uses authenticated `fetch()` plus a streaming
 SSE parser because native `EventSource` cannot attach `Authorization`.
 
-Live SSE, cold JSON loading, and reconnect feed one reducer and deduplicate by
-`(run_id, seq)`. Tool/provider text is untrusted and rendered as text, never
-executable HTML. The Workbench does not invent plan, artifact, cancel,
-multi-agent, sandbox, or marketplace-install behavior that the runtime lacks.
+Live SSE, cold JSON loading, and reconnect feed one pure reducer scoped by
+`run_id`. Only the next contiguous sequence advances its reconnect cursor; an
+identical `(run_id, seq)` is an idempotent no-op, while a gap, conflicting
+duplicate, invalid version-1 envelope, or mismatched SSE `id`/`event` fails
+closed. A run-selection epoch prevents an older status, history, stream, or
+mutation response from replacing the currently selected view. Aborting that
+view cancels local waiting only; it is not a claim that an already accepted
+server operation stopped. See [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
+
+Tool/provider text is untrusted and rendered as text, never executable HTML.
+The Workbench does not invent plan, artifact, cancel, multi-agent, sandbox, or
+marketplace-install behavior that the runtime lacks.
 
 ### Health
 

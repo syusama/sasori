@@ -17,6 +17,8 @@ WEB_RESOURCES = (
     "index.html",
     "app.0.1.0.css",
     "app.0.1.1.js",
+    "event-reducer.0.1.0.js",
+    "app.0.1.2.js",
     "mark.0.1.0.svg",
 )
 

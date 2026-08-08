@@ -169,6 +169,35 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(headers["Content-Type"].startswith("text/event-stream"))
         streamed = [int(line[4:]) for line in stream.splitlines() if line.startswith("id: ")]
         self.assertEqual(streamed, sequences[1:])
+        streamed_data = [
+            json.loads(line[6:])
+            for line in stream.splitlines()
+            if line.startswith("data: ")
+        ]
+        self.assertEqual(streamed_data, events["events"][1:])
+
+        status, resumed_stream, _ = self.request(
+            server,
+            "GET",
+            "/v1/runs/http-1/events",
+            headers={"Accept": "text/event-stream", "Last-Event-ID": "1"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            [
+                int(line[4:])
+                for line in resumed_stream.splitlines()
+                if line.startswith("id: ")
+            ],
+            sequences[1:],
+        )
+
+        status, error, _ = self.request(
+            server,
+            "GET",
+            f"/v1/runs/http-1/events?after_seq={events['latest_seq'] + 1}",
+        )
+        self.assertEqual((status, error["error"]["code"]), (409, "cursor_ahead"))
 
     def test_multi_app_binding_catalog_and_history_are_durable(self):
         class NamedModel:
@@ -384,6 +413,8 @@ class ServerTests(unittest.TestCase):
         for path, content_type in (
             ("/assets/app.0.1.0.css", "text/css"),
             ("/assets/app.0.1.1.js", "text/javascript"),
+            ("/assets/event-reducer.0.1.0.js", "text/javascript"),
+            ("/assets/app.0.1.2.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -393,7 +424,18 @@ class ServerTests(unittest.TestCase):
             self.assertTrue(body)
             assets[path] = body
 
-        script = assets["/assets/app.0.1.1.js"]
+        self.assertLess(
+            page.index("/assets/event-reducer.0.1.0.js"),
+            page.index("/assets/app.0.1.2.js"),
+        )
+        reducer = assets["/assets/event-reducer.0.1.0.js"]
+        self.assertIn("function reduceEvent(state, projected)", reducer)
+        self.assertIn("function createRunGate()", reducer)
+        script = assets["/assets/app.0.1.2.js"]
+        self.assertIn("reduceEvent(state.eventState, projected)", script)
+        self.assertIn("state.runGate.startWatcher(context)", script)
+        self.assertNotIn("watchRun(context)", script)
+        self.assertNotIn("state.eventState = createEventState(context.runId)", script)
         self.assertIn('event.key === "ArrowRight"', script)
         self.assertIn('button.setAttribute("aria-pressed", String(active))', script)
         self.assertEqual(script.count('$$(".mobile-nav [data-mobile-view]")'), 2)
@@ -403,7 +445,7 @@ class ServerTests(unittest.TestCase):
 
         status, error, _ = self.request(server, "GET", "/assets/../README.md")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
-        status, error, _ = self.request(server, "GET", "/assets/app.0.1.1.js?v=1")
+        status, error, _ = self.request(server, "GET", "/assets/app.0.1.2.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))

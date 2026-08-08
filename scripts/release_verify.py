@@ -51,6 +51,7 @@ RELEASE_DOCS = (
     "docs/ADR-0005-MCP-STDIO-BOUNDARY.md",
     "docs/ADR-0006-MULTI-APP-RUN-BINDING.md",
     "docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md",
+    "docs/ADR-0008-WORKBENCH-EVENT-REDUCER.md",
     "docs/FOUNDATION.md",
     "docs/HTTP_API.md",
     "docs/PROVIDERS.md",

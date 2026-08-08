@@ -66,6 +66,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "invalid JavaScript: $($script.Name)" }
           }
 
+      - name: Run Workbench event-consumer contracts
+        run: node --test tests/workbench_event_reducer.test.cjs
+
       - name: Ensure tests did not change tracked files
         run: git diff --exit-code HEAD --
 

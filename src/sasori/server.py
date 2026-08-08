@@ -54,6 +54,8 @@ _WORKBENCH_ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8", "no-cache"),
     "/assets/app.0.1.0.css": ("app.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/app.0.1.1.js": ("app.0.1.1.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/event-reducer.0.1.0.js": ("event-reducer.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/app.0.1.2.js": ("app.0.1.2.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/mark.0.1.0.svg": ("mark.0.1.0.svg", "image/svg+xml", "public, max-age=31536000, immutable"),
 }
 _WORKBENCH_SECURITY_HEADERS = {
