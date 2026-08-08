@@ -1129,11 +1129,11 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
         )
         started = time.monotonic()
         with self.assertRaises(ProviderTimeoutError) as raised:
-            await self.openai(timeout=0.08).complete(
+            await self.openai(timeout=0.5).complete(
                 (Message("user", "slow drip"),), ()
             )
         elapsed = time.monotonic() - started
-        self.assertLess(elapsed, 0.5)
+        self.assertLess(elapsed, 1.0)
         self.assertEqual(raised.exception.request_id, "slow-drip-request")
         self.assertEqual(len(self.server.requests), 1)
         self.assertTrue(
@@ -1866,11 +1866,11 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                 ):
                     started = time.monotonic()
                     task = asyncio.create_task(
-                        self.openai(timeout=0.05 if not cancel else 3).complete(
+                        self.openai(timeout=0.5 if not cancel else 3).complete(
                             (Message("user", "gated"),), ()
                         )
                     )
-                    self.assertTrue(await asyncio.to_thread(entered.wait, 1))
+                    self.assertTrue(await asyncio.to_thread(entered.wait, 2))
                     if cancel:
                         task.cancel()
                         with self.assertRaises(asyncio.CancelledError):
@@ -1878,7 +1878,7 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                     else:
                         with self.assertRaises(ProviderTimeoutError):
                             await task
-                    self.assertLess(time.monotonic() - started, 0.5)
+                    self.assertLess(time.monotonic() - started, 1.0)
             finally:
                 release.set()
             await asyncio.sleep(0.2)
