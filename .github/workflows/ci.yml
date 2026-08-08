@@ -546,6 +546,15 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      - name: Upload source archive for rebuild matrix
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
       - name: Ensure packaging did not change tracked files
         run: git diff --exit-code HEAD --
 
@@ -607,4 +616,55 @@ jobs:
           }
 
       - name: Ensure smoke did not change tracked files
+        run: git diff --exit-code HEAD --
+
+  sdist-smoke:
+    name: "Rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Check out consumer contract and build lock
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download the single verified source archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-sdist
+          path: ${{ runner.temp }}/sasori-sdist
+
+      - name: Rebuild and smoke the source archive outside the checkout
+        shell: pwsh
+        run: |
+          $sdistRoot = Join-Path $env:RUNNER_TEMP "sasori-sdist"
+          $sdists = @(Get-ChildItem -LiteralPath $sdistRoot -Filter *.tar.gz)
+          if ($sdists.Count -ne 1) { throw "expected exactly one source archive" }
+          python scripts/sdist_consumer_smoke.py `
+            --sdist $sdists[0].FullName `
+            --build-lock requirements-build.txt `
+            --consumer-check scripts/installed_wheel_smoke.py `
+            --release-verifier scripts/release_verify.py `
+            --source-root .
+          if ($LASTEXITCODE -ne 0) { throw "source archive consumer smoke failed" }
+
+      - name: Ensure consumer smoke did not change tracked files
         run: git diff --exit-code HEAD --

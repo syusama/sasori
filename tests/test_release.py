@@ -339,6 +339,32 @@ class ReleaseVerificationTests(unittest.TestCase):
             f"sasori-{PROJECT_VERSION}.tar.gz",
         )
 
+    def test_ci_rebuilds_sdist_with_locked_inputs_before_consumer_smoke(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("name: sasori-sdist\n          path: dist/*.tar.gz", workflow)
+        marker = "\n  sdist-smoke:\n"
+        self.assertEqual(workflow.count(marker), 1)
+        smoke = workflow.split(marker, 1)[1]
+        for required in (
+            'name: "Rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"',
+            "name: sasori-sdist",
+            'path: ${{ runner.temp }}/sasori-sdist',
+            '$sdistRoot = Join-Path $env:RUNNER_TEMP "sasori-sdist"',
+            "python scripts/sdist_consumer_smoke.py",
+            "--sdist $sdists[0].FullName",
+            "--build-lock requirements-build.txt",
+            "--consumer-check scripts/installed_wheel_smoke.py",
+            "--release-verifier scripts/release_verify.py",
+            "--source-root .",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, smoke)
+        for value in ("ubuntu-24.04", "windows-2025", '"3.11"', '"3.12"', '"3.13"'):
+            with self.subTest(matrix_value=value):
+                self.assertEqual(smoke.count(value), 1)
+
     def test_spdx_rejects_duplicate_checksum_algorithms(self):
         manifest, spdx, _ = release_verify.verify_release(
             self.wheel(), self.sdist(), self.source, self.root / "records"

@@ -90,13 +90,25 @@ The generated SPDX file covers the wheel/sdist and locked Python build input.
 It is not a container SBOM. Generate and archive a separate SPDX/CycloneDX SBOM
 from the actual final image digest before publishing that image.
 
-## 4. Install and test the built wheel
+## 4. Install and test both distribution paths
 
-Run two distinct gates on Python 3.11, 3.12, and 3.13: the source regression
-suite, and the installed-wheel smoke from a directory that cannot import the
-checkout's `src/`. The smoke verifies distribution metadata, zero runtime
-dependencies, five import packages, six Workbench resources, and all three
-console scripts.
+Run three distinct gates on Python 3.11, 3.12, and 3.13 across Linux and
+Windows: the source regression suite, the installed-wheel smoke, and a source
+archive consumer rebuild. Both consumer paths run from a directory that cannot
+import the checkout's `src/`. The smoke verifies distribution metadata, zero
+runtime dependencies, five import packages, six Workbench resources, and all
+three console scripts.
+
+The source-archive gate installs `requirements-build.txt` with
+`--require-hashes` into a dedicated build environment, rebuilds the verified
+sdist with `--no-build-isolation --no-deps`, installs the resulting wheel into
+a second clean environment, and only then runs the installed-wheel smoke. The
+rebuilt wheel and original sdist must also pass `release_verify.py`; exit `5`
+is the expected verified-but-unversioned result on branch builds, while an
+exact release-tag build may return `0`. Exit codes `1` through `4` always fail
+the consumer gate. Directly installing the sdist with implicit build isolation
+is not equivalent evidence because it can resolve undeclared or unlocked build
+inputs.
 
 On Windows, the following uses the Python launcher to select each interpreter:
 

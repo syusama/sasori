@@ -23,6 +23,17 @@ WEB_RESOURCES = (
 )
 
 
+def _require_under_prefix(path: str | os.PathLike[str], prefix: Path, label: str) -> Path:
+    try:
+        resolved = Path(path).resolve(strict=True)
+        resolved_prefix = prefix.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError(f"installed {label} path is missing or unreadable") from exc
+    if not resolved.is_relative_to(resolved_prefix):
+        raise RuntimeError(f"installed {label} resolved outside the consumer environment")
+    return resolved
+
+
 def main() -> int:
     with (Path(__file__).resolve().parents[1] / "pyproject.toml").open("rb") as stream:
         expected_version = tomllib.load(stream)["project"]["version"]
@@ -32,8 +43,14 @@ def main() -> int:
     if distribution.requires:
         raise RuntimeError("installed Sasori unexpectedly declares runtime dependencies")
 
+    prefix = Path(sys.prefix)
+    _require_under_prefix(distribution.locate_file(""), prefix, "distribution")
+
     for package in PACKAGES:
-        importlib.import_module(package)
+        module = importlib.import_module(package)
+        if module.__file__ is None:
+            raise RuntimeError(f"installed package has no origin: {package}")
+        _require_under_prefix(module.__file__, prefix, f"package {package}")
     resources = importlib.resources.files("sasori_web")
     if any(not (resources / name).is_file() or not (resources / name).read_bytes() for name in WEB_RESOURCES):
         raise RuntimeError("installed Workbench resources are missing or empty")
