@@ -440,6 +440,8 @@ jobs:
     name: Package and release gates
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      version: ${{ steps.project.outputs.version }}
 
     steps:
       - name: Check out source
@@ -452,6 +454,24 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Read the locked project version
+        id: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          import tomllib
+
+          with open("pyproject.toml", "rb") as stream:
+              version = tomllib.load(stream)["project"]["version"]
+          if not isinstance(version, str) or not re.fullmatch(
+              r"[A-Za-z0-9][A-Za-z0-9._+-]*", version
+          ):
+              raise SystemExit("project version is unsafe for an artifact name")
+          print(f"version={version}")
+          PY
 
       - name: Build wheel and source archive in the locked container
         shell: bash
@@ -485,7 +505,7 @@ jobs:
             '
 
       - name: Verify unversioned artifacts are not release eligible
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.ref_type != 'tag' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -521,8 +541,10 @@ jobs:
           test "$code" -eq 5
 
       - name: Verify exact-tag artifacts are release eligible
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.ref_type == 'tag' }}
         shell: bash
+        env:
+          SASORI_TRIGGER_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -535,7 +557,37 @@ jobs:
             --wheel "$wheel" \
             --sdist "$sdist" \
             --source-root . \
-            --output dist/release-metadata
+            --output dist/release-metadata \
+            --trigger-tag "$SASORI_TRIGGER_TAG"
+
+      - name: Assemble the exact-tag release candidate bundle
+        if: ${{ github.ref_type == 'tag' }}
+        shell: bash
+        env:
+          SASORI_TRIGGER_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          test "${#wheels[@]}" -eq 1 && test "${#sdists[@]}" -eq 1
+          python scripts/release_bundle.py assemble \
+            --wheel "${wheels[0]}" \
+            --sdist "${sdists[0]}" \
+            --metadata-root dist/release-metadata \
+            --source-root . \
+            --output dist/release-candidate \
+            --trigger-tag "$SASORI_TRIGGER_TAG"
+
+      - name: Upload the exact-tag release candidate for final gates
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-release-candidate-${{ github.sha }}
+          path: dist/release-candidate
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
       - name: Upload wheel for installation matrix
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -667,4 +719,57 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "source archive consumer smoke failed" }
 
       - name: Ensure consumer smoke did not change tracked files
+        run: git diff --exit-code HEAD --
+
+  release-bundle:
+    name: Exact-tag release candidate bundle
+    if: ${{ github.ref_type == 'tag' }}
+    needs:
+      - test
+      - package
+      - container
+      - wheel-smoke
+      - sdist-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the exact tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download the exact-tag release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-release-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/sasori-release-candidate
+
+      - name: Reverify the final candidate inventory and subjects
+        shell: bash
+        env:
+          SASORI_TRIGGER_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python scripts/release_bundle.py verify \
+            --bundle-root "$RUNNER_TEMP/sasori-release-candidate" \
+            --source-root . \
+            --trigger-tag "$SASORI_TRIGGER_TAG"
+
+      - name: Upload the gated release candidate bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-${{ needs.package.outputs.version }}-release-bundle
+          path: ${{ runner.temp }}/sasori-release-candidate
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Ensure bundle verification did not change tracked files
         run: git diff --exit-code HEAD --

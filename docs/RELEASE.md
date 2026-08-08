@@ -8,9 +8,13 @@ dirty-local record, but its `HEAD` is not the source identity of the artifacts.
 
 A formal release starts from a reviewed, clean checkout with no untracked files
 and the exact tag `v{project.version}`. A different tag at `HEAD` does not make
-the candidate eligible. Record the matching tag and `git rev-parse HEAD`; never
-copy a revision into provenance from a human-provided string. Run the release
-process from that checkout, not from a shared dirty worktree.
+the candidate eligible. In CI, the actual workflow trigger tag must also equal
+`v{project.version}` exactly. If the expected tag and a different triggering tag
+both point at the same commit, the different trigger still fails before release
+metadata or a bundle is uploaded. Record the matching tag, triggering tag, and
+`git rev-parse HEAD`; never copy a revision into provenance from a
+human-provided string. Run the release process from that checkout, not from a
+shared dirty worktree.
 
 The curated `catalog/index.json` remains empty until artifacts are hosted, their
 final hashes are known, review is approved, and a durable provenance URL exists.
@@ -78,6 +82,23 @@ python scripts/release_verify.py `
   --output dist/release-metadata
 ```
 
+The tagged GitHub workflow additionally supplies its actual ref name through an
+explicit argument:
+
+```powershell
+python scripts/release_verify.py `
+  --wheel $wheel `
+  --sdist $sdist `
+  --source-root . `
+  --output dist/release-metadata `
+  --trigger-tag $env:GITHUB_REF_NAME
+```
+
+`--trigger-tag` is not inferred from ambient environment state. When supplied,
+it must equal the dynamic project tag exactly and is written into the local
+provenance record. The workflow passes it through a quoted environment value so
+the tag is data, never shell source.
+
 Exit `0` requires a clean exact-tag checkout. For diagnostics only, a
 successfully verified input that is not release eligible may use
 `--allow-dirty-local`; it writes records and exits `5`. The option does not
@@ -89,6 +110,27 @@ provenance or a trusted-builder attestation.
 The generated SPDX file covers the wheel/sdist and locked Python build input.
 It is not a container SBOM. Generate and archive a separate SPDX/CycloneDX SBOM
 from the actual final image digest before publishing that image.
+
+For an exact tagged workflow, `scripts/release_bundle.py` assembles a new empty
+candidate directory with exactly eight regular files and no additional payload:
+
+```text
+sasori-{version}-py3-none-any.whl
+sasori-{version}.tar.gz
+artifact-manifest.json
+sasori-{version}.spdx.json
+provenance.local.json
+LICENSE
+THIRD_PARTY_NOTICES.md
+licenses/CPYTHON-3.12-LICENSE.txt
+```
+
+The bundle verifier rejects missing or extra files, symlinks, digest or subject
+mismatches, modified notices, a mismatched trigger tag, and any provenance that
+claims signing or trusted attestation. It checks wheel/sdist hashes against the
+manifest, then checks the same subjects in SPDX and local provenance. The local
+provenance remains `signed=false` with the claim `local verification record; not
+a trusted-build attestation`.
 
 ## 4. Install and test both distribution paths
 
@@ -109,6 +151,14 @@ exact release-tag build may return `0`. Exit codes `1` through `4` always fail
 the consumer gate. Directly installing the sdist with implicit build isolation
 is not equivalent evidence because it can resolve undeclared or unlocked build
 inputs.
+
+On an exact tag, the final `Exact-tag release candidate bundle` job waits
+explicitly for all five gate families: source tests, package verification,
+installed-wheel smoke, rebuilt-sdist smoke, and the container product gate. It
+downloads the short-lived internal candidate, reverifies the exact inventory
+and all subjects from the tagged checkout, and only then uploads the longer-lived
+bundle artifact. This is a gated release candidate, not a published release or
+trusted build attestation.
 
 On Windows, the following uses the Python launcher to select each interpreter:
 
@@ -274,6 +324,9 @@ Before uploading or tagging a release, all of the following must be true:
 - the no-cache domestic-source Compose workflow passes on the final revision;
 - wheel/sdist manifest, application SBOM, image SBOM, notices, and trusted build
   provenance are archived and their subjects match the published digests;
+- the actual workflow trigger tag equals `v{project.version}`, and the gated
+  eight-file candidate bundle has passed source, package, wheel, sdist, and
+  container jobs;
 - the working tree is clean and exactly tagged; and
 - `catalog/index.json` changes only after hosting, review, and provenance are
   real.

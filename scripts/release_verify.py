@@ -21,7 +21,7 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "2"
+VERIFIER_VERSION = "3"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -644,6 +644,20 @@ def _source_state(source_root: Path, expected_tag: str) -> dict[str, object]:
     }
 
 
+def _validate_trigger_tag(
+    project: dict[str, str], trigger_tag: str | None
+) -> str | None:
+    if trigger_tag is None:
+        return None
+    expected_tag = f"v{project['version']}"
+    if trigger_tag != expected_tag:
+        raise ReleaseVerificationError(
+            f"workflow trigger tag {trigger_tag!r} does not match {expected_tag!r}",
+            4,
+        )
+    return trigger_tag
+
+
 def _source_tree(source_root: Path) -> tuple[str, int]:
     paths = [
         source_root / name
@@ -787,7 +801,12 @@ def _validate_spdx(
 
 
 def verify_release(
-    wheel_path: Path, sdist_path: Path, source_root: Path, output_dir: Path
+    wheel_path: Path,
+    sdist_path: Path,
+    source_root: Path,
+    output_dir: Path,
+    *,
+    trigger_tag: str | None = None,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
     source_root = source_root.resolve(strict=True)
     for artifact in (wheel_path, sdist_path):
@@ -796,6 +815,7 @@ def verify_release(
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", artifact.name):
             raise ReleaseVerificationError(f"unsafe artifact filename: {artifact.name}", 1)
     project = _project(source_root)
+    trigger_tag = _validate_trigger_tag(project, trigger_tag)
     build = _build_inputs(source_root)
     wheel = verify_wheel(wheel_path, source_root, project)
     sdist = verify_sdist(sdist_path, source_root, project)
@@ -813,6 +833,10 @@ def verify_release(
         "included_source_tree_algorithm": "sasori-source-tree-v1",
         "included_source_tree_sha256": source_hash,
         "included_source_file_count": source_count,
+        "workflow_trigger_tag": trigger_tag,
+        "workflow_trigger_tag_matches_expected": (
+            trigger_tag == expected_tag if trigger_tag is not None else None
+        ),
     })
     release_eligible = bool(
         source["git_clean"] and source["matching_release_tag"] == expected_tag
@@ -874,6 +898,10 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--source-root", default=Path.cwd(), type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument(
+        "--trigger-tag",
+        help="bind a tagged workflow invocation to the exact v{project.version} tag",
+    )
+    parser.add_argument(
         "--allow-dirty-local",
         action="store_true",
         help="write explicitly non-release local records; exits 5 after successful verification",
@@ -881,7 +909,11 @@ def main(arguments: list[str] | None = None) -> int:
     options = parser.parse_args(arguments)
     try:
         manifest, _, provenance = verify_release(
-            options.wheel, options.sdist, options.source_root, options.output
+            options.wheel,
+            options.sdist,
+            options.source_root,
+            options.output,
+            trigger_tag=options.trigger_tag,
         )
         if not provenance["release_eligible"]:
             if not options.allow_dirty_local:

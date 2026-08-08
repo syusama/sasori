@@ -301,6 +301,12 @@ class ReleaseVerificationTests(unittest.TestCase):
                 "clean_release_tag_candidate",
             ),
             (
+                b"",
+                f"{WRONG_TAG}\n{EXPECTED_TAG}\n".encode(),
+                True,
+                "clean_release_tag_candidate",
+            ),
+            (
                 b"?? local\n",
                 f"{EXPECTED_TAG}\n".encode(),
                 False,
@@ -325,6 +331,47 @@ class ReleaseVerificationTests(unittest.TestCase):
                     eligible,
                 )
 
+    def test_workflow_trigger_tag_must_match_the_project_version(self):
+        project = release_verify._project(self.source)
+        self.assertIsNone(release_verify._validate_trigger_tag(project, None))
+        self.assertEqual(
+            release_verify._validate_trigger_tag(project, EXPECTED_TAG),
+            EXPECTED_TAG,
+        )
+        for trigger_tag in (WRONG_TAG, f"{EXPECTED_TAG}-other", ""):
+            with self.subTest(trigger_tag=trigger_tag), self.assertRaises(
+                release_verify.ReleaseVerificationError
+            ) as raised:
+                release_verify._validate_trigger_tag(project, trigger_tag)
+            self.assertEqual(raised.exception.code, 4)
+
+        output = self.root / "triggered-records"
+        _, _, provenance = release_verify.verify_release(
+            self.wheel(),
+            self.sdist(),
+            self.source,
+            output,
+            trigger_tag=EXPECTED_TAG,
+        )
+        self.assertEqual(
+            provenance["source"]["workflow_trigger_tag"], EXPECTED_TAG
+        )
+        self.assertTrue(
+            provenance["source"]["workflow_trigger_tag_matches_expected"]
+        )
+
+        wrong_output = self.root / "wrong-trigger-records"
+        with self.assertRaises(release_verify.ReleaseVerificationError) as raised:
+            release_verify.verify_release(
+                self.wheel(),
+                self.sdist(),
+                self.source,
+                wrong_output,
+                trigger_tag=WRONG_TAG,
+            )
+        self.assertEqual(raised.exception.code, 4)
+        self.assertFalse(wrong_output.exists())
+
     def test_release_fixtures_follow_project_version(self):
         self.assertIn(
             f"Version: {PROJECT_VERSION}\n".encode(),
@@ -346,7 +393,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         self.assertIn("name: sasori-sdist\n          path: dist/*.tar.gz", workflow)
         marker = "\n  sdist-smoke:\n"
         self.assertEqual(workflow.count(marker), 1)
-        smoke = workflow.split(marker, 1)[1]
+        smoke = workflow.split(marker, 1)[1].split("\n  release-bundle:\n", 1)[0]
         for required in (
             'name: "Rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"',
             "name: sasori-sdist",
