@@ -1542,7 +1542,10 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                     api_key="local-openai-key",
                     base_url=tls_server.base_url + "/v1",
                     allow_localhost=True,
-                    timeout=2,
+                    # This test validates TLS and cooperative cancellation, not the
+                    # timeout boundary. Leave hosted Windows enough scheduling room;
+                    # the cancellation and worker-release bounds below stay strict.
+                    timeout=10,
                 )
                 client_context = ssl.create_default_context(cafile=str(cert_path))
                 client_context.check_hostname = False
@@ -1586,7 +1589,7 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                             model.complete((Message("user", "cancel TLS"),), ())
                         )
                         self.assertTrue(
-                            await asyncio.to_thread(tls_server.headers_sent.wait, 1)
+                            await asyncio.to_thread(tls_server.headers_sent.wait, 5)
                         )
                         started = time.monotonic()
                         task.cancel()
@@ -1598,7 +1601,7 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                         )
                     body_gate.set()
                     self.assertTrue(
-                        await asyncio.to_thread(tls_server.response_finished.wait, 1)
+                        await asyncio.to_thread(tls_server.response_finished.wait, 5)
                     )
             finally:
                 tls_server.close()
