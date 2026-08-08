@@ -1,0 +1,1 @@
+"""Static Sasori Workbench assets."""

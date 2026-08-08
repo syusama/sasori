@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d10">
+  <title>Sasori · Puppet Workbench</title>
+  <link rel="icon" href="/assets/mark.0.1.0.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.0.1.0.css">
+</head>
+<body>
+  <a class="skip-link" href="#workbench-main">跳到工作区</a>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="puppet-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <header class="topbar">
+    <a class="brand" href="#/" aria-label="Sasori 首页">
+      <img src="/assets/mark.0.1.0.svg" alt="" width="42" height="42">
+      <span><strong>SASORI</strong><small>PUPPET WORKBENCH / 蠍之机关室</small></span>
+    </a>
+    <div class="runtime-strip" aria-label="运行时状态">
+      <span class="signal" id="connection-signal" data-state="idle" role="status" aria-live="polite" aria-atomic="true"><i></i><b id="connection-label">等待连接</b></span>
+      <span class="runtime-stat"><small>RUN</small><b id="active-run-label">—</b></span>
+      <span class="runtime-stat"><small>SEQ</small><b id="sequence-label">0</b></span>
+      <button class="icon-button" id="settings-button" type="button" aria-label="连接设置" aria-controls="connection-panel" aria-expanded="false" title="连接设置">⌁</button>
+    </div>
+  </header>
+
+  <section class="connection-panel" id="connection-panel" hidden>
+    <div>
+      <label for="token-input">Bearer token（仅保存于本次标签页）</label>
+      <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="Loopback no-auth 模式可留空">
+    </div>
+    <button class="button brass" id="connect-button" type="button">重新连接</button>
+    <p>Token 不会写入 URL、localStorage、日志或页面静态资源。</p>
+  </section>
+
+  <div class="workbench-shell">
+    <aside class="left-rail" aria-label="数字员工与历史任务">
+      <section class="rail-section workers-section">
+        <div class="section-heading">
+          <span><small>01 / PUPPETS</small><h2>数字员工</h2></span>
+          <button class="text-button" id="reload-apps" type="button">校准</button>
+        </div>
+        <div class="worker-list" id="worker-list" aria-live="polite">
+          <div class="skeleton worker-skeleton"></div><div class="skeleton worker-skeleton"></div>
+        </div>
+      </section>
+
+      <section class="rail-section history-section">
+        <div class="section-heading">
+          <span><small>02 / ARCHIVE</small><h2>运行档案</h2></span>
+          <button class="text-button" id="reload-history" type="button">刷新</button>
+        </div>
+        <div class="history-list" id="history-list" aria-live="polite">
+          <p class="empty-copy">尚未装入档案。</p>
+        </div>
+        <button class="button ghost wide" id="load-more" type="button" hidden>继续展开卷轴</button>
+      </section>
+    </aside>
+
+    <main class="main-stage" id="workbench-main" tabindex="-1">
+      <section class="stage-intro" id="stage-intro">
+        <div class="eyebrow"><span></span> SINGLE LOOP · MANY MECHANISMS</div>
+        <h1>牵引一根线，<br><em>唤醒一座机关。</em></h1>
+        <p>选择数字员工，交付一个清晰任务。每次模型推演、工具动作、人工审批与恢复都会沿同一条可审计时间轴展开。</p>
+        <div class="principle-row" aria-label="Sasori 核心原则">
+          <span>01 <b>轻核</b></span><span>02 <b>可拔插</b></span><span>03 <b>人控机关</b></span>
+        </div>
+      </section>
+
+      <section class="conversation" id="conversation" aria-label="任务对话">
+        <div class="run-heading" id="run-heading" hidden>
+          <div><span class="run-kicker" id="run-app-title">未选择员工</span><h2 id="run-title">新任务</h2></div>
+          <span class="state-seal" id="run-state" data-state="idle">IDLE</span>
+        </div>
+        <div class="message-stack" id="message-stack" aria-live="polite"></div>
+      </section>
+
+      <form class="composer" id="task-form">
+        <div class="composer-topline">
+          <label for="task-input">下达任务</label>
+          <span id="selected-worker-label">请选择数字员工</span>
+        </div>
+        <textarea id="task-input" rows="3" maxlength="20000" placeholder="描述目标、约束与验收标准……" required></textarea>
+        <div class="composer-footer">
+          <span class="shortcut"><kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 发起</span>
+          <button class="button lacquer" id="run-button" type="submit" disabled><span>启动机关</span><i aria-hidden="true">↗</i></button>
+        </div>
+      </form>
+    </main>
+
+    <aside class="right-rail" id="right-rail" aria-label="运行检查器">
+      <div class="inspector-tabs" role="tablist" aria-label="检查器视图">
+        <button id="timeline-tab" role="tab" aria-controls="timeline-panel" aria-selected="true" tabindex="0" type="button">时间轴</button>
+        <button id="surface-tab" role="tab" aria-controls="surface-panel" aria-selected="false" tabindex="-1" type="button">能力面</button>
+      </div>
+
+      <section class="inspector-panel timeline-panel" id="timeline-panel" role="tabpanel" aria-labelledby="timeline-tab">
+        <div class="inspector-heading"><span><small>TRACE / DURABLE</small><h2>机关行程</h2></span><b id="event-count">0</b></div>
+        <div class="operator-action" id="operator-action" hidden></div>
+        <ol class="timeline" id="timeline-list">
+          <li class="timeline-empty"><i></i><p>启动任务后，耐久事件会在这里逐格咬合。</p></li>
+        </ol>
+      </section>
+
+      <section class="inspector-panel surface-panel" id="surface-panel" role="tabpanel" aria-labelledby="surface-tab" hidden>
+        <div class="inspector-heading"><span><small>SURFACE / CONTRACT</small><h2>能力与权限</h2></span></div>
+        <div id="surface-content"><p class="empty-copy">选择数字员工查看其 skills、tools 与宿主权限披露。</p></div>
+      </section>
+    </aside>
+  </div>
+
+  <nav class="mobile-nav" aria-label="移动端视图">
+    <button type="button" data-mobile-view="workers" aria-pressed="false">员工</button>
+    <button type="button" data-mobile-view="stage" class="active" aria-pressed="true">任务</button>
+    <button type="button" data-mobile-view="inspector" aria-pressed="false">行程</button>
+  </nav>
+
+  <div class="toast-region" id="toast-region" aria-live="assertive" aria-atomic="true"></div>
+
+  <template id="approval-template">
+    <div class="action-card approval-card">
+      <div class="action-title"><span>HUMAN GATE</span><b>等待操作者定夺</b></div>
+      <p>这项工具动作不会在批准前执行。</p>
+      <dl class="action-facts"></dl>
+      <pre class="arguments"></pre>
+      <div class="action-buttons">
+        <button type="button" class="button ghost deny-action">拒绝</button>
+        <button type="button" class="button lacquer approve-action">批准</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="recovery-template">
+    <form class="action-card recovery-card">
+      <div class="action-title"><span>UNCERTAIN EFFECT</span><b>外部效果状态不明</b></div>
+      <p>操作可能已经发生，也可能没有发生。请核验外部系统后再选择恢复方式。</p>
+      <dl class="action-facts"></dl>
+      <label>恢复动作<select class="recovery-action"><option value="record_result">记录已核验结果</option><option value="fail">标记失败</option><option value="retry">重试（可能重复副作用）</option></select></label>
+      <label>审计原因<textarea class="recovery-reason" rows="2" required></textarea></label>
+      <label class="result-field">核验结果 JSON<textarea class="recovery-result" rows="3">{}</textarea></label>
+      <button type="submit" class="button lacquer wide">记录恢复决定</button>
+    </form>
+  </template>
+
+  <script src="/assets/app.0.1.1.js" defer></script>
+</body>
+</html>

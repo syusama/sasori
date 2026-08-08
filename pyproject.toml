@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sasori"
+version = "0.1.0.dev0"
+description = "A small, inspectable Python runtime for tool-using agents"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*"]
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Documentation = "https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md"
+Homepage = "https://github.com/syusama/sasori"
+Issues = "https://github.com/syusama/sasori/issues"
+Repository = "https://github.com/syusama/sasori"
+
+[project.scripts]
+sasori = "sasori.cli:main"
+sasori-server = "sasori.server:main"
+sasori-catalog = "sasori_market.catalog:main"
+
+[project.entry-points."sasori.plugins"]
+"com.sasori.workspace" = "sasori_plugins.workspace:register"
+"com.sasori.web-fetch" = "sasori_plugins.web_fetch:register"
+"com.sasori.rag-sqlite" = "sasori_plugins.rag_sqlite:register"
+"com.sasori.git" = "sasori_plugins.git:register"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sasori_web = ["*.html", "*.css", "*.js", "*.svg"]
