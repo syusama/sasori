@@ -286,8 +286,10 @@ class SdistConsumerTests(unittest.TestCase):
             )
         run.assert_not_called()
 
+        resolved_build_wheel = self.build_wheel.resolve(strict=True)
+
         def pretend_wheel_symlink(path):
-            return path == self.build_wheel or original(path)
+            return path == resolved_build_wheel or original(path)
 
         with mock.patch.object(
             Path, "is_symlink", pretend_wheel_symlink
