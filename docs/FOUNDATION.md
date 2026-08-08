@@ -220,7 +220,7 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | real-browser delayed status/cold-event/SSE/create/approval isolation passes; full create/approve/explicit-resume/final/history/restart, mobile navigation, keyboard, reduced motion, visible permissions and console evidence remain required |
+| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus a real-server Incident create/approve/explicit-resume/final/16-event/history-reload/permission journey pass in a real browser; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
 | Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
 
@@ -392,6 +392,18 @@ the production HTML/assets and deterministically releases late status, cold
 history, SSE, create, and approval responses after a newer view is selected;
 the wider product/browser matrix remains partial. See
 [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
+
+An independent same-origin test proxy now injects a real-browser journey while
+forwarding all product APIs to `sasori.server`. That journey uses the production
+Workbench and deterministic Incident composition, verifies approval does not
+execute `record_action`, requires the explicit resume control, proves the
+external action log changes exactly `0 → 0 → 1`, observes the exact 16-event
+completed timeline, cold-reloads and reopens history, and rechecks final output
+plus the visible `FULL HOST PROCESS PRIVILEGES` / `enforced=false` disclosure.
+The proxy's action-count endpoint is out-of-band test evidence, not a shipped
+Sasori API. Browser coverage is still not a server-restart, mobile, keyboard,
+or reduced-motion claim.
+
 This smaller native implementation met the current product contract, so
 `assistant-ui`, CopilotKit, AG-UI, and Lobe UI were not added. Re-evaluate one
 pinned dependency only when a measured missing capability exceeds the cost of

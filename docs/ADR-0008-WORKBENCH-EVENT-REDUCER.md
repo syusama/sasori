@@ -89,6 +89,17 @@ different older selection nor an older epoch for the same `run_id` can reclaim
 the DOM. The test has no provider, browser-package, or production-server test
 endpoint dependency.
 
+This reducer fixture is not the end-to-end product gate. A separate real
+browser journey injects only its test driver through a same-origin proxy and
+forwards all `/v1/*` traffic to a real local `sasori.server` using the
+deterministic Incident composition. It proves the visible approval boundary,
+explicit resume, exact single external action, 16 durable events, cold history
+reopen, final output, and effective host-permission disclosure. The proxy's
+action-count probe observes the external JSONL ledger and is not a shipped
+Sasori endpoint. The two gates remain separate so a mocked race regression
+cannot be mistaken for full-stack evidence and a happy-path journey cannot hide
+view-isolation regressions.
+
 Python, CLI, and HTTP continue to use the same public event projection. Any
 future change to the event version, stable fields, gap policy, conflict policy,
 or run-selection ownership requires a new decision record and updated

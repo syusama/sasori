@@ -73,6 +73,10 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.12' }}
         run: python tests/workbench_browser_acceptance.py --require-browser
 
+      - name: Run real Incident Workbench lifecycle
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.12' }}
+        run: python tests/workbench_browser_journey.py --require-browser
+
       - name: Ensure tests did not change tracked files
         run: git diff --exit-code HEAD --
 

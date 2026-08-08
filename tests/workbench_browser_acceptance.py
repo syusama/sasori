@@ -152,7 +152,9 @@ def browser_version(binary: Path) -> str:
     return f"{binary.name} {version}"
 
 
-def run_browser_process(binary: Path, port: int) -> subprocess.CompletedProcess[str]:
+def run_browser_process(
+    binary: Path, port: int, *, virtual_time_budget: int = 10000
+) -> subprocess.CompletedProcess[str]:
     last_timeout: subprocess.TimeoutExpired | None = None
     for _ in range(BROWSER_ATTEMPTS):
         with tempfile.TemporaryDirectory(prefix="sasori-browser-") as profile:
@@ -170,7 +172,7 @@ def run_browser_process(binary: Path, port: int) -> subprocess.CompletedProcess[
                 "--no-sandbox",
                 "--run-all-compositor-stages-before-draw",
                 f"--user-data-dir={profile}",
-                "--virtual-time-budget=10000",
+                f"--virtual-time-budget={virtual_time_budget}",
                 "--dump-dom",
                 f"http://127.0.0.1:{port}/",
             ]

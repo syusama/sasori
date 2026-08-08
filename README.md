@@ -247,17 +247,27 @@ Run the deterministic regression suite from the repository root:
 python -m unittest discover -s tests -v
 node --test tests/workbench_event_reducer.test.cjs
 python tests/workbench_browser_acceptance.py --require-browser
+python tests/workbench_browser_journey.py --require-browser
 ```
 
-The browser acceptance uses an installed Chrome, Chromium, or Edge binary. It
+The browser gates use an installed Chrome, Chromium, or Edge binary. The first
 loads the production HTML and exact versioned assets, then holds and releases
 status, cold-event, SSE, create, and approval responses to prove that an older
-selection or same-run epoch cannot reclaim the visible view. The fixture adds
-no browser package or runtime dependency; CI requires the browser on one
-Ubuntu/Python 3.12 cell instead of multiplying this product test across the
-language matrix. A browser process that does not exit within the bounded
-deadline gets one retry with a fresh profile; a nonzero exit or missing product
-pass marker is never retried.
+selection or same-run epoch cannot reclaim the visible view. The second keeps
+those production assets but connects them to a real local `sasori.server` and
+the real deterministic Incident application. It creates a run through the UI,
+shows the exact pending `record_action`, proves approval alone leaves the
+external action ledger empty at `resume_required`, explicitly resumes, observes
+one action and the 16-event completed timeline, reloads the page, reopens the
+durable history item, and rechecks the final plus the visible trusted-process
+permission disclosure. A test-only same-origin proxy injects the browser driver
+and exposes only an out-of-band action-count probe; it forwards every product
+API request to the real server and never replaces model, store, or HTTP
+behavior. The gates add no browser package or runtime dependency; CI requires
+the browser on one Ubuntu/Python 3.12 cell instead of multiplying product tests
+across the language matrix. A browser process that does not exit within the
+bounded deadline gets one retry with a fresh profile; a nonzero exit or missing
+product pass marker is never retried.
 
 The accepted architecture, trust boundaries, and later gates live in [docs/FOUNDATION.md](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md).
 

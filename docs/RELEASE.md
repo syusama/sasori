@@ -345,6 +345,24 @@ python scripts/provider_smoke.py --provider anthropic --model YOUR_ANTHROPIC_MOD
 
 ## 5. Container and product acceptance
 
+Before the container gate, run both real-browser Workbench checks with an
+installed Chrome, Chromium, or Edge binary:
+
+```powershell
+python tests/workbench_browser_acceptance.py --require-browser
+python tests/workbench_browser_journey.py --require-browser
+```
+
+The first gate freezes delayed-response and same-run view isolation against a
+same-origin HTTP fixture. The second loads the same production assets but
+forwards every product request to a real local `sasori.server` and deterministic
+Incident application. It must prove `approval_required → resume_required →
+explicit resume → completed`, the external action count `0 → 0 → 1`, the exact
+16-event timeline, cold page reload/history reopen, final output, and visible
+trusted-process permission disclosure. Its test-only action-count probe is
+out-of-band evidence, not a Sasori API. These checks do not replace the
+container restart or credentialed provider gates.
+
 Run a no-cache Compose build through the configured mainland sources, then the
 real workflow rather than health-only checks:
 
@@ -436,6 +454,8 @@ Before uploading or tagging a release, all of the following must be true:
 
 - Windows and Linux 3.11-3.13 source regression and installed-wheel smoke
   matrices pass;
+- the delayed-response and real-server Workbench browser gates pass on the
+  final revision;
 - OpenAI and Anthropic each pass the real two-turn tool smoke without exposing
   credentials, and any claimed streaming behavior has its own conformance test;
 - the no-cache domestic-source Compose workflow passes on the final revision;

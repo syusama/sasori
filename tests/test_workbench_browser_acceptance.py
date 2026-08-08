@@ -20,6 +20,20 @@ SPEC.loader.exec_module(browser_acceptance)
 
 
 class BrowserProcessTests(unittest.TestCase):
+    def test_hosted_browser_cell_runs_race_and_real_lifecycle_gates(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        test_job = workflow.split("\n  test:\n", 1)[1].split("\n  container:\n", 1)[0]
+        condition = "if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.12' }}"
+        race = "run: python tests/workbench_browser_acceptance.py --require-browser"
+        lifecycle = "run: python tests/workbench_browser_journey.py --require-browser"
+
+        self.assertEqual(test_job.count(race), 1)
+        self.assertEqual(test_job.count(lifecycle), 1)
+        self.assertEqual(test_job.count(condition), 2)
+        self.assertLess(test_job.index(race), test_job.index(lifecycle))
+
     def test_windows_install_directory_version_avoids_a_second_browser_process(self):
         with tempfile.TemporaryDirectory() as directory:
             application = Path(directory) / "Application"
@@ -110,6 +124,9 @@ class BrowserProcessTests(unittest.TestCase):
         self.assertIs(result, completed)
         self.assertEqual(run.call_count, 2)
         commands = [call.args[0] for call in run.call_args_list]
+        self.assertTrue(
+            all("--virtual-time-budget=10000" in command for command in commands)
+        )
         profiles = [
             next(value for value in command if value.startswith("--user-data-dir="))
             for command in commands
