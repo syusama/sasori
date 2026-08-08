@@ -1,0 +1,243 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "ci-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+env:
+  PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  test:
+    name: "Tests / ${{ matrix.os }} / Python ${{ matrix.python-version }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run deterministic regression suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Check all Workbench JavaScript syntax
+        shell: pwsh
+        run: |
+          $scripts = @(Get-ChildItem -LiteralPath src/sasori_web -Filter *.js)
+          if ($scripts.Count -eq 0) { throw "Workbench JavaScript is missing" }
+          foreach ($script in $scripts) {
+            node --check $script.FullName
+            if ($LASTEXITCODE -ne 0) { throw "invalid JavaScript: $($script.Name)" }
+          }
+
+      - name: Ensure tests did not change tracked files
+        run: git diff --exit-code HEAD --
+
+  package:
+    name: Package and release gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel and source archive in the locked container
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(sed -n 's/^ARG PYTHON_BASE=//p' Dockerfile)"
+          [[ "$image" =~ ^docker\.m\.daocloud\.io/library/python:[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          docker run --rm --init \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/source,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
+            --entrypoint sh \
+            "$image" \
+            -ceu '
+              export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+              export PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+              mkdir -p /tmp/sasori
+              cp /source/pyproject.toml /source/MANIFEST.in /source/README.md \
+                 /source/LICENSE /source/SECURITY.md /source/THIRD_PARTY_NOTICES.md \
+                 /source/requirements-build.txt /tmp/sasori/
+              cp -a /source/docs /source/licenses /source/src /tmp/sasori/
+              find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+                -prune -exec rm -rf -- {} +
+              cd /tmp/sasori
+              python -m pip install --require-hashes -r requirements-build.txt
+              python -m pip wheel --no-build-isolation --no-deps --wheel-dir /out .
+              python - <<PY
+          from setuptools.build_meta import build_sdist
+          print(build_sdist(chr(47)+chr(111)+chr(117)+chr(116)))
+          PY
+            '
+
+      - name: Verify unversioned artifacts are not release eligible
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          test "${#wheels[@]}" -eq 1 && test "${#sdists[@]}" -eq 1
+          wheel="${wheels[0]}"
+          sdist="${sdists[0]}"
+          candidate_root="$(mktemp -d)"
+          trap 'rm -rf "$candidate_root"' EXIT
+          cp \
+            pyproject.toml \
+            MANIFEST.in \
+            README.md \
+            LICENSE \
+            SECURITY.md \
+            THIRD_PARTY_NOTICES.md \
+            requirements-build.txt \
+            Dockerfile \
+            .dockerignore \
+            "$candidate_root/"
+          cp -a docs licenses src "$candidate_root/"
+          set +e
+          python scripts/release_verify.py \
+            --wheel "$wheel" \
+            --sdist "$sdist" \
+            --source-root "$candidate_root" \
+            --output dist/release-metadata \
+            --allow-dirty-local
+          code=$?
+          set -e
+          test "$code" -eq 5
+
+      - name: Verify exact-tag artifacts are release eligible
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          test "${#wheels[@]}" -eq 1 && test "${#sdists[@]}" -eq 1
+          wheel="${wheels[0]}"
+          sdist="${sdists[0]}"
+          python scripts/release_verify.py \
+            --wheel "$wheel" \
+            --sdist "$sdist" \
+            --source-root . \
+            --output dist/release-metadata
+
+      - name: Upload wheel for installation matrix
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sasori-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Ensure packaging did not change tracked files
+        run: git diff --exit-code HEAD --
+
+  wheel-smoke:
+    name: "Installed wheel / ${{ matrix.os }} / Python ${{ matrix.python-version }}"
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Check out smoke contract
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download the single built wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sasori-wheel
+          path: dist
+
+      - name: Run installed-wheel smoke outside the checkout
+        shell: pwsh
+        run: |
+          $wheels = @(Get-ChildItem -LiteralPath dist -Filter *.whl)
+          if ($wheels.Count -ne 1) { throw "expected exactly one wheel" }
+          $smokeRoot = Join-Path $env:RUNNER_TEMP ("sasori-wheel-smoke-" + [guid]::NewGuid().ToString("N"))
+          python -m venv $smokeRoot
+          if ($LASTEXITCODE -ne 0) { throw "smoke environment creation failed" }
+          if ($IsWindows) {
+            $smokePython = Join-Path $smokeRoot "Scripts/python.exe"
+          } else {
+            $smokePython = Join-Path $smokeRoot "bin/python"
+          }
+          & $smokePython -m pip install --no-index --no-deps $wheels[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "wheel installation failed" }
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $smokePython (Join-Path $env:GITHUB_WORKSPACE "scripts/installed_wheel_smoke.py")
+            if ($LASTEXITCODE -ne 0) { throw "installed-wheel smoke failed" }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Ensure smoke did not change tracked files
+        run: git diff --exit-code HEAD --

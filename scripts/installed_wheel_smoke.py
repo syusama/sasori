@@ -7,6 +7,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
+from pathlib import Path
 
 
 PACKAGES = ("sasori", "sasori_apps", "sasori_market", "sasori_plugins", "sasori_web")
@@ -20,8 +22,10 @@ WEB_RESOURCES = (
 
 
 def main() -> int:
+    with (Path(__file__).resolve().parents[1] / "pyproject.toml").open("rb") as stream:
+        expected_version = tomllib.load(stream)["project"]["version"]
     distribution = importlib.metadata.distribution("sasori")
-    if distribution.metadata["Name"] != "sasori" or distribution.version != "0.1.0.dev0":
+    if distribution.metadata["Name"] != "sasori" or distribution.version != expected_version:
         raise RuntimeError("installed Sasori identity is invalid")
     if distribution.requires:
         raise RuntimeError("installed Sasori unexpectedly declares runtime dependencies")

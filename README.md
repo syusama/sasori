@@ -1,5 +1,7 @@
 # Sasori
 
+[![CI](https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg)](https://github.com/syusama/sasori/actions/workflows/ci.yml)
+
 > A small, inspectable Python runtime for tool-using AI agents.
 
 Sasori ships one async `Harness` for a serial, single-agent tool loop. The core supports Python 3.11-3.13, uses only the standard library, projects versioned semantic events, and can durably pause or resume through `sqlite3`. Two stdlib-only provider adapters, Python/CLI/HTTP entry points, three fixed first-party application compositions, and the bundled Workbench use that same Harness path. The trusted-plugin loader and curated catalog are explicit support surfaces; no bundled application dynamically loads an external entry point. Provider adapters can opt into fail-closed upstream SSE aggregation; public token streaming, embeddings/vector retrieval, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain later gates rather than claimed features.

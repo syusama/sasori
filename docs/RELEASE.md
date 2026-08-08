@@ -1,16 +1,16 @@
 # Release process
 
 This process distinguishes a locally verified candidate from a formal release.
-The current untracked working tree can produce useful hashes and a dirty-local
-record, but its old `HEAD` is not the source identity of the artifacts.
+A dirty or untracked local working tree can produce useful hashes and a
+dirty-local record, but its `HEAD` is not the source identity of the artifacts.
 
 ## 1. Freeze the source
 
 A formal release starts from a reviewed, clean checkout with no untracked files
-and the exact tag `v{project.version}` (currently `v0.1.0.dev0`). A different tag
-at `HEAD` does not make the candidate eligible. Record the matching tag and `git rev-parse HEAD`; never copy a
-revision into provenance from a human-provided string. Run the release process
-from that checkout, not from a shared dirty worktree.
+and the exact tag `v{project.version}`. A different tag at `HEAD` does not make
+the candidate eligible. Record the matching tag and `git rev-parse HEAD`; never
+copy a revision into provenance from a human-provided string. Run the release
+process from that checkout, not from a shared dirty worktree.
 
 The curated `catalog/index.json` remains empty until artifacts are hosted, their
 final hashes are known, review is approved, and a durable provenance URL exists.
@@ -67,18 +67,24 @@ It writes an application-artifact SPDX 2.3 JSON SBOM, artifact manifest, and
 unsigned local provenance record:
 
 ```powershell
+$version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+if ($LASTEXITCODE -ne 0) { throw "project version lookup failed" }
+$wheel = Join-Path (Resolve-Path .).Path "dist\sasori-$version-py3-none-any.whl"
+$sdist = Join-Path (Resolve-Path .).Path "dist\sasori-$version.tar.gz"
 python scripts/release_verify.py `
-  --wheel dist/sasori-0.1.0.dev0-py3-none-any.whl `
-  --sdist dist/sasori-0.1.0.dev0.tar.gz `
+  --wheel $wheel `
+  --sdist $sdist `
   --source-root . `
   --output dist/release-metadata
 ```
 
-Exit `0` requires a clean exact-tag checkout. For diagnostics only,
-`--allow-dirty-local` writes records and intentionally exits `5`; those records
+Exit `0` requires a clean exact-tag checkout. For diagnostics only, a
+successfully verified input that is not release eligible may use
+`--allow-dirty-local`; it writes records and exits `5`. The option does not
+downgrade a clean exact-tag input, which still exits `0`. Non-release records
 say `release_eligible=false`, bind artifacts only to the current working tree,
-and keep the old `HEAD` as a non-authoritative baseline. They are not signed
-SLSA/in-toto provenance or a trusted-builder attestation.
+and keep `HEAD` as a non-authoritative baseline. They are not signed SLSA/in-toto
+provenance or a trusted-builder attestation.
 
 The generated SPDX file covers the wheel/sdist and locked Python build input.
 It is not a container SBOM. Generate and archive a separate SPDX/CycloneDX SBOM
@@ -96,17 +102,19 @@ On Windows, the following uses the Python launcher to select each interpreter:
 
 ```powershell
 $source = (Resolve-Path .).Path
-$wheel = Join-Path $source "dist\sasori-0.1.0.dev0-py3-none-any.whl"
+$version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+if ($LASTEXITCODE -ne 0) { throw "project version lookup failed" }
+$wheel = Join-Path $source "dist\sasori-$version-py3-none-any.whl"
 $smoke = Join-Path $source "scripts\installed_wheel_smoke.py"
-foreach ($version in @("3.11", "3.12", "3.13")) {
-  $venv = Join-Path $source ("dist\verify-py" + $version.Replace(".", ""))
-  py "-$version" -m venv $venv
+foreach ($pythonVersion in @("3.11", "3.12", "3.13")) {
+  $venv = Join-Path $source ("dist\verify-py" + $pythonVersion.Replace(".", ""))
+  py "-$pythonVersion" -m venv $venv
   $python = Join-Path $venv "Scripts\python.exe"
   & $python -m pip install --no-deps $wheel
   Push-Location ([IO.Path]::GetTempPath())
   try { & $python $smoke } finally { Pop-Location }
   & $python -m unittest discover -s (Join-Path $source "tests") -v
-  if ($LASTEXITCODE -ne 0) { throw "Python $version acceptance failed" }
+  if ($LASTEXITCODE -ne 0) { throw "Python $pythonVersion acceptance failed" }
 }
 ```
 
@@ -117,6 +125,8 @@ not skipped before running the full suite:
 
 ```powershell
 $source = (Resolve-Path .).Path
+$version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+if ($LASTEXITCODE -ne 0) { throw "project version lookup failed" }
 $images = @(
   "docker.m.daocloud.io/library/python:3.11@sha256:d0199e2a90bf7a206a485b115323a75bc946f30b463d704c5435a454aca084dd",
   "docker.m.daocloud.io/library/python:3.12@sha256:7ad6d21a25a94b2c00e685e82c2fd298de814353d9ee0e3f7f2cd4fca063df60",
@@ -125,11 +135,12 @@ $images = @(
 foreach ($image in $images) {
   docker run --rm --init --platform linux/amd64 `
     --mount "type=bind,source=$source,target=/source,readonly" `
+    --env "SASORI_VERSION=$version" `
     --entrypoint sh $image -ceu '
       test "$(git --version)" = "git version 2.47.3"
       python -m venv /tmp/sasori-verify
       /tmp/sasori-verify/bin/python -m pip install --no-deps \
-        /source/dist/sasori-0.1.0.dev0-py3-none-any.whl
+        "/source/dist/sasori-${SASORI_VERSION}-py3-none-any.whl"
       cd /tmp
       /tmp/sasori-verify/bin/python /source/scripts/installed_wheel_smoke.py
       cd /source
