@@ -866,6 +866,10 @@ jobs:
       - container
       - wheel-smoke
       - sdist-smoke
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -897,6 +901,19 @@ jobs:
             --bundle-root "$RUNNER_TEMP/sasori-release-candidate" \
             --source-root . \
             --trigger-tag "$SASORI_TRIGGER_TAG"
+
+      - name: Attest the exact eight-file release candidate
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/sasori-release-candidate/sasori-${{ needs.package.outputs.version }}-py3-none-any.whl
+            ${{ runner.temp }}/sasori-release-candidate/sasori-${{ needs.package.outputs.version }}.tar.gz
+            ${{ runner.temp }}/sasori-release-candidate/artifact-manifest.json
+            ${{ runner.temp }}/sasori-release-candidate/sasori-${{ needs.package.outputs.version }}.spdx.json
+            ${{ runner.temp }}/sasori-release-candidate/provenance.local.json
+            ${{ runner.temp }}/sasori-release-candidate/LICENSE
+            ${{ runner.temp }}/sasori-release-candidate/THIRD_PARTY_NOTICES.md
+            ${{ runner.temp }}/sasori-release-candidate/licenses/CPYTHON-3.12-LICENSE.txt
 
       - name: Upload the gated release candidate bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

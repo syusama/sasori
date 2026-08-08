@@ -498,7 +498,7 @@ class ReleaseBundleTests(unittest.TestCase):
         self.assertIn("name: sasori-release-candidate-${{ github.sha }}", workflow)
         marker = "\n  release-bundle:\n"
         self.assertEqual(workflow.count(marker), 1)
-        bundle = workflow.split(marker, 1)[1]
+        workflow_prefix, bundle = workflow.split(marker, 1)
         for job in ("test", "package", "container", "wheel-smoke", "sdist-smoke"):
             with self.subTest(required_job=job):
                 self.assertIn(f"      - {job}\n", bundle)
@@ -511,6 +511,91 @@ class ReleaseBundleTests(unittest.TestCase):
         ):
             with self.subTest(required=required):
                 self.assertIn(required, bundle)
+
+        attest_action = (
+            "uses: actions/attest@"
+            "1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2"
+        )
+        self.assertEqual(workflow.count(attest_action), 1)
+        self.assertEqual(workflow.count("uses: actions/attest@"), 1)
+        self.assertEqual(workflow.count("attestations: write"), 1)
+        self.assertEqual(workflow.count("id-token: write"), 1)
+        self.assertNotIn("actions/attest-build-provenance@", workflow)
+        self.assertNotIn("uses: actions/attest@v", workflow)
+        self.assertNotIn("attestations: write", workflow_prefix)
+        self.assertNotIn("id-token: write", workflow_prefix)
+        self.assertNotIn("artifact-metadata: write", workflow)
+        permissions = bundle.split("    permissions:\n", 1)[1].split(
+            "    runs-on:", 1
+        )[0]
+        permission_lines = {
+            line.strip() for line in permissions.splitlines() if line.strip()
+        }
+        self.assertEqual(
+            permission_lines,
+            {
+                "attestations: write",
+                "contents: read",
+                "id-token: write",
+            },
+        )
+        for permission in (
+            "attestations: write",
+            "contents: read",
+            "id-token: write",
+        ):
+            with self.subTest(permission=permission):
+                self.assertIn(f"      {permission}\n", bundle)
+        subjects = (
+            "sasori-${{ needs.package.outputs.version }}-py3-none-any.whl",
+            "sasori-${{ needs.package.outputs.version }}.tar.gz",
+            "artifact-manifest.json",
+            "sasori-${{ needs.package.outputs.version }}.spdx.json",
+            "provenance.local.json",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.md",
+            "licenses/CPYTHON-3.12-LICENSE.txt",
+        )
+        self.assertIn("subject-path: |", bundle)
+        subject_block = bundle.split("          subject-path: |\n", 1)[1].split(
+            "\n\n      - name: Upload the gated release candidate bundle", 1
+        )[0]
+        subject_lines = tuple(
+            line.strip() for line in subject_block.splitlines() if line.strip()
+        )
+        self.assertEqual(
+            subject_lines,
+            tuple(
+                "${{ runner.temp }}/sasori-release-candidate/" + subject
+                for subject in subjects
+            ),
+        )
+        self.assertFalse(any("*" in subject for subject in subject_lines))
+        attest_step = bundle.split(
+            "      - name: Attest the exact eight-file release candidate\n", 1
+        )[1].split(
+            "\n      - name: Upload the gated release candidate bundle", 1
+        )[0]
+        for forbidden in (
+            "continue-on-error: true",
+            "push-to-registry: true",
+            "subject-digest:",
+            "subject-checksums:",
+            "build-wheelhouse",
+            "image-sbom",
+            "bundle-path",
+            "downloads/",
+        ):
+            with self.subTest(forbidden_attestation_contract=forbidden):
+                self.assertNotIn(forbidden, attest_step)
+        self.assertLess(
+            bundle.index("python scripts/release_bundle.py verify"),
+            bundle.index(attest_action),
+        )
+        self.assertLess(
+            bundle.index(attest_action),
+            bundle.index("Upload the gated release candidate bundle"),
+        )
 
 
 if __name__ == "__main__":

@@ -190,7 +190,8 @@ mismatches, modified notices, a mismatched trigger tag, and any provenance that
 claims signing or trusted attestation. It checks wheel/sdist hashes against the
 manifest, then checks the same subjects in SPDX and local provenance. The local
 provenance remains `signed=false` with the claim `local verification record; not
-a trusted-build attestation`.
+a trusted-build attestation`. A later GitHub-hosted attestation is external to
+this file and never rewrites that local claim.
 
 ## 4. Install and test both distribution paths
 
@@ -220,9 +221,59 @@ On an exact tag, the final `Exact-tag release candidate bundle` job waits
 explicitly for all five gate families: source tests, package verification,
 installed-wheel smoke, rebuilt-sdist smoke, and the container product gate. It
 downloads the short-lived internal candidate, reverifies the exact inventory
-and all subjects from the tagged checkout, and only then uploads the longer-lived
-bundle artifact. This is a gated release candidate, not a published release or
-trusted build attestation.
+and all subjects from the tagged checkout, and then invokes the commit-pinned
+official `actions/attest` action. Only this tag-only job receives
+`id-token: write` and `attestations: write`. The action receives an explicit
+newline-delimited list of the eight verified files, not a directory or broad
+glob, and creates one signed SLSA build-provenance statement containing eight
+name-and-SHA-256 subjects. Attestation failure prevents the longer-lived bundle
+upload.
+
+The Sigstore bundle remains external to the candidate directory, so the release
+artifact still contains exactly the eight files listed above. It does not turn
+`provenance.local.json` or the image-SBOM binding into a signed object. A workflow
+definition on a branch is not attestation evidence: claim GitHub-hosted build
+provenance only after the exact-tag job succeeds and verification binds the
+downloaded subject to this repository, workflow, tag ref, and tag commit. For
+example, after downloading and extracting the candidate, verify all eight
+subjects rather than checking only the wheel:
+
+```powershell
+$version = "<VERSION>"
+$tagCommit = "FULL_40_CHARACTER_TAG_COMMIT"
+$subjects = @(
+  ".\sasori-$version-py3-none-any.whl",
+  ".\sasori-$version.tar.gz",
+  ".\artifact-manifest.json",
+  ".\sasori-$version.spdx.json",
+  ".\provenance.local.json",
+  ".\LICENSE",
+  ".\THIRD_PARTY_NOTICES.md",
+  ".\licenses\CPYTHON-3.12-LICENSE.txt"
+)
+foreach ($subject in $subjects) {
+  gh attestation verify $subject `
+    --repo syusama/sasori `
+    --signer-workflow syusama/sasori/.github/workflows/ci.yml `
+    --source-ref "refs/tags/v$version" `
+    --source-digest $tagCommit `
+    --predicate-type "https://slsa.dev/provenance/v1" `
+    --deny-self-hosted-runners
+  if ($LASTEXITCODE -ne 0) { throw "attestation verification failed: $subject" }
+}
+```
+
+A successful attestation verifies the signed provenance statement and subject
+digest; it is still not a GitHub Release, PyPI publication, registry image,
+deployment approval, SLSA level claim, isolated reusable builder, or proof that
+arbitrary predicate fields are independently trustworthy.
+
+GitHub artifact attestations are available for public repositories on current
+GitHub.com plans. Private or internal repositories require GitHub Enterprise
+Cloud, and GitHub Enterprise Server is unsupported. If the repository
+visibility, plan, Actions policy, or OIDC policy no longer permits attestations,
+this mandatory job must fail closed; do not add `continue-on-error` and upload
+an unattested candidate.
 
 On Windows, the following uses the Python launcher to select each interpreter:
 
@@ -388,8 +439,9 @@ Before uploading or tagging a release, all of the following must be true:
 - OpenAI and Anthropic each pass the real two-turn tool smoke without exposing
   credentials, and any claimed streaming behavior has its own conformance test;
 - the no-cache domestic-source Compose workflow passes on the final revision;
-- wheel/sdist manifest, application SBOM, image SBOM, notices, and trusted build
-  provenance are archived and their subjects match the published digests;
+- wheel/sdist manifest, application SBOM, image SBOM, and notices are archived,
+  and the signed GitHub build-provenance attestation verifies every relied-upon
+  subject against the expected workflow, exact tag ref, and tag commit;
 - the actual workflow trigger tag equals `v{project.version}`, and the gated
   eight-file candidate bundle has passed source, package, wheel, sdist, and
   container jobs;
@@ -397,6 +449,7 @@ Before uploading or tagging a release, all of the following must be true:
 - `catalog/index.json` changes only after hosting, review, and provenance are
   real.
 
-Signing, Trusted Publishing, rollback, and central marketplace publication are
-not implemented by the local verifier. Add them only when a real hosting and
+Artifact-signing formats beyond the GitHub/Sigstore provenance statement, PyPI
+Trusted Publishing, rollback, and central marketplace publication are not
+implemented by the local verifier. Add them only when a real hosting and
 maintainer-operating contract exists.
