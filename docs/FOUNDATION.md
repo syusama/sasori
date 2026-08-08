@@ -220,7 +220,7 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | real create/approve/explicit-resume/final/history/restart path, mobile navigation, keyboard, reduced motion, visible permissions and no application runtime error; deferred capabilities are not fabricated |
+| UI browser acceptance (`PARTIAL`) | real-browser delayed status/cold-event/SSE/create/approval isolation passes; full create/approve/explicit-resume/final/history/restart, mobile navigation, keyboard, reduced motion, visible permissions and console evidence remain required |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, SBOM, provenance, domestic-source Docker build |
 
 ### Honest determinism
@@ -386,7 +386,11 @@ live, cold, and reconnect events enter one pure, Node-tested reducer scoped by
 `run_id`. The reducer advances only a contiguous durable cursor, distinguishes
 an identical duplicate from a conflict, validates SSE metadata and event
 version, and pairs with a selection epoch so a late older response cannot take
-over the current view. See [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
+over the current view. A dependency-free headless-browser fixture now executes
+the production HTML/assets and deterministically releases late status, cold
+history, SSE, create, and approval responses after a newer view is selected;
+the wider product/browser matrix remains partial. See
+[ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 This smaller native implementation met the current product contract, so
 `assistant-ui`, CopilotKit, AG-UI, and Lobe UI were not added. Re-evaluate one
 pinned dependency only when a measured missing capability exceeds the cost of

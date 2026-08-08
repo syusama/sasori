@@ -80,9 +80,14 @@ The Node regression suite covers sequential append, semantically identical
 duplicates from differently ordered JSON, stale-run delivery, gaps,
 conflicting duplicates, malformed/fractional/non-finite sequences, unsupported
 versions, invalid JSON data, forward-compatible version-1 event names, and
-post-acceptance input mutation. Browser integration tests verify the exact
-versioned assets and their load order. A deterministic delayed-response test
-proves that an older run selection cannot replace a newer one.
+post-acceptance input mutation. The real-browser regression loads the production
+HTML and exact versioned assets while a same-origin fixture holds responses
+after request dispatch. It covers late status, cold-event, and SSE delivery,
+same-run epoch replacement, and accepted create/approval mutations. Each held
+response is released only after a newer view is visible, proving that neither a
+different older selection nor an older epoch for the same `run_id` can reclaim
+the DOM. The test has no provider, browser-package, or production-server test
+endpoint dependency.
 
 Python, CLI, and HTTP continue to use the same public event projection. Any
 future change to the event version, stable fields, gap policy, conflict policy,

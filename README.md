@@ -193,7 +193,16 @@ Run the deterministic regression suite from the repository root:
 ```powershell
 python -m unittest discover -s tests -v
 node --test tests/workbench_event_reducer.test.cjs
+python tests/workbench_browser_acceptance.py --require-browser
 ```
+
+The browser acceptance uses an installed Chrome, Chromium, or Edge binary. It
+loads the production HTML and exact versioned assets, then holds and releases
+status, cold-event, SSE, create, and approval responses to prove that an older
+selection or same-run epoch cannot reclaim the visible view. The fixture adds
+no browser package or runtime dependency; CI requires the browser on one
+Ubuntu/Python 3.12 cell instead of multiplying this product test across the
+language matrix.
 
 The accepted architecture, trust boundaries, and later gates live in [docs/FOUNDATION.md](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md).
 
