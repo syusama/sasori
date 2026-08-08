@@ -186,7 +186,46 @@ $env:SASORI_PORT = "18888"
 docker compose up -d --build --wait
 ```
 
-The real acceptance path is `POST /v1/runs` → durable approval → explicit resume → final → SSE cursor reconnect → container restart → unchanged final/effect count. Container health alone is not acceptance. File-backed stores hold a cross-process owner lock; a second server using the same database fails startup. Network filesystems, replicas, failover, public TLS, and arbitrary untrusted tool sandboxing remain out of scope.
+Exercise the same split-phase HTTP workflow used by the container CI gate from
+the repository root. `prepare` approves the deterministic Incident action but
+stops at the durable `resume_required` boundary; `complete` is the only phase
+that explicitly resumes it. The final phase is read-only:
+
+```powershell
+$baseUrl = "http://127.0.0.1:$env:SASORI_PORT"
+$runId = "container-acceptance-$([guid]::NewGuid().ToString('N'))"
+$evidence = Join-Path $env:TEMP "$runId.json"
+
+python scripts/container_acceptance.py prepare `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $evidence --run-id $runId
+python scripts/container_acceptance.py complete `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $evidence
+docker compose restart sasori
+docker compose up -d --wait --wait-timeout 120 sasori
+python scripts/container_acceptance.py after-restart `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $evidence
+Remove-Item -LiteralPath $evidence
+```
+
+The gate requires 11 durable events and zero completed `record_action` effects
+before resume, then exactly 16 events, one effect, and the exact SSE sequence
+11-16 tail after resume. Restart must preserve the projection, events, final,
+cursor, SSE tail, and effect count. The CI job additionally checks the external
+action log as `0 → 1 → 1`, proves a second owner receives
+`ConcurrentRunError`, scans generated evidence and raw logs for the bearer
+token, and uploads only the audited JSON evidence. Container health alone is
+not acceptance. File-backed stores hold a cross-process owner lock; network
+filesystems, replicas, failover, public TLS, and arbitrary untrusted tool
+sandboxing remain out of scope.
+
+This gate exercises the deterministic `incident` composition only. It is not
+evidence for a live OpenAI/Anthropic call, the `research` or `developer`
+composition, an image SBOM/signature, or a public deployment. The workflow
+definition becomes public CI evidence for a revision only when the hosted run
+for that exact commit succeeds.
 
 Run the deterministic regression suite from the repository root:
 
@@ -208,8 +247,9 @@ The accepted architecture, trust boundaries, and later gates live in [docs/FOUND
 
 ## Release, security, and license
 
-The local release verifier, clean-tag requirements, fresh-environment matrix,
-artifact/SBOM/provenance boundaries, and container gate are documented in
+The local artifact verifier, credentialed provider smoke, Compose product gate,
+clean-tag requirements, fresh-environment matrix, and trusted
+SBOM/provenance boundaries are separate release gates documented in
 [docs/RELEASE.md](https://github.com/syusama/sasori/blob/main/docs/RELEASE.md). Report vulnerabilities through the private
 path in [SECURITY.md](https://github.com/syusama/sasori/blob/main/SECURITY.md).
 

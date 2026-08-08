@@ -76,6 +76,330 @@ jobs:
       - name: Ensure tests did not change tracked files
         run: git diff --exit-code HEAD --
 
+  container:
+    name: Container product gate
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: sasori-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      PYTHON_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Prepare isolated Compose inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import secrets
+          import socket
+          from pathlib import Path
+
+          suffix = f"{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+          root = Path(os.environ["RUNNER_TEMP"])
+          paths = {
+              "SASORI_TOKEN_FILE": root / f"sasori-token-{suffix}",
+              "CONTAINER_EVIDENCE_FILE": root / f"sasori-container-evidence-{suffix}.json",
+              "ACTION_PAUSED_FILE": root / f"sasori-action-paused-{suffix}.json",
+              "ACTION_COMPLETE_FILE": root / f"sasori-action-complete-{suffix}.json",
+              "ACTION_RESTARTED_FILE": root / f"sasori-action-restarted-{suffix}.json",
+              "OWNER_LOG_FILE": root / f"sasori-owner-{suffix}.log",
+              "RUNTIME_LOG_FILE": root / f"sasori-runtime-{suffix}.log",
+          }
+          with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+              listener.bind(("127.0.0.1", 0))
+              port = listener.getsockname()[1]
+          token = secrets.token_urlsafe(48)
+          paths["SASORI_TOKEN_FILE"].write_text(token + "\n", encoding="ascii")
+          os.chmod(paths["SASORI_TOKEN_FILE"], 0o600)
+          values = {
+              **{key: str(value) for key, value in paths.items()},
+              "SASORI_PORT": str(port),
+              "SASORI_BASE_URL": f"http://127.0.0.1:{port}",
+              "SASORI_ACCEPTANCE_RUN_ID": f"container-{suffix}",
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              for key, value in values.items():
+                  stream.write(f"{key}={value}\n")
+          print(f"::add-mask::{token}")
+          PY
+
+      - name: Build through configured mainland sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -p "$COMPOSE_PROJECT_NAME" config --quiet
+          docker compose -p "$COMPOSE_PROJECT_NAME" build --no-cache --pull sasori
+
+      - name: Start the Compose candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -p "$COMPOSE_PROJECT_NAME" up \
+            -d --wait --wait-timeout 120 sasori
+
+      - name: Verify workflow, restart persistence, and exclusive ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          action_snapshot() {
+            local expected_count="$1"
+            local output="$2"
+            docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
+              python - "$expected_count" > "$output" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          expected_count = int(sys.argv[1])
+          expected_summary = "Operator review: diagnostic captured for container acceptance incident"
+          path = Path("/data/incident-actions.jsonl")
+          data = path.read_bytes() if path.exists() else b""
+          lines = data.splitlines()
+          if len(lines) != expected_count:
+              raise SystemExit("incident action count is invalid")
+          if expected_count == 0:
+              if data:
+                  raise SystemExit("incident action log must be absent or empty before resume")
+              summary_digest = None
+          elif expected_count == 1:
+              def strict_object(pairs):
+                  value = {}
+                  for key, item in pairs:
+                      if key in value:
+                          raise ValueError("duplicate action key")
+                      value[key] = item
+                  return value
+
+              try:
+                  record = json.loads(lines[0].decode("utf-8"), object_pairs_hook=strict_object)
+              except (UnicodeDecodeError, ValueError):
+                  raise SystemExit("incident action record is invalid") from None
+              if record != {"summary": expected_summary}:
+                  raise SystemExit("incident action summary is invalid")
+              summary_digest = hashlib.sha256(expected_summary.encode("utf-8")).hexdigest()
+          else:
+              raise SystemExit("unsupported expected action count")
+          print(json.dumps({
+              "count": expected_count,
+              "sha256": hashlib.sha256(data).hexdigest(),
+              "summary_sha256": summary_digest,
+          }, sort_keys=True, separators=(",", ":")))
+          PY
+            python - "$output" "$expected_count" <<'PY'
+          import hashlib
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_count = int(sys.argv[2])
+          expected_summary = "Operator review: diagnostic captured for container acceptance incident"
+          expected_summary_digest = (
+              hashlib.sha256(expected_summary.encode("utf-8")).hexdigest()
+              if expected_count == 1 else None
+          )
+          valid = (
+              isinstance(value, dict)
+              and set(value) == {"count", "sha256", "summary_sha256"}
+              and type(value["count"]) is int
+              and value["count"] == expected_count
+              and isinstance(value["sha256"], str)
+              and re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is not None
+              and value["summary_sha256"] == expected_summary_digest
+          )
+          if not valid:
+              raise SystemExit("invalid action-log evidence")
+          PY
+          }
+
+          python scripts/container_acceptance.py prepare \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$CONTAINER_EVIDENCE_FILE" \
+            --run-id "$SASORI_ACCEPTANCE_RUN_ID"
+
+          action_snapshot 0 "$ACTION_PAUSED_FILE"
+
+          python scripts/container_acceptance.py complete \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$CONTAINER_EVIDENCE_FILE"
+
+          action_snapshot 1 "$ACTION_COMPLETE_FILE"
+
+          docker compose -p "$COMPOSE_PROJECT_NAME" restart sasori
+          docker compose -p "$COMPOSE_PROJECT_NAME" up \
+            -d --wait --wait-timeout 120 sasori
+
+          python scripts/container_acceptance.py after-restart \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$CONTAINER_EVIDENCE_FILE"
+
+          action_snapshot 1 "$ACTION_RESTARTED_FILE"
+          if ! cmp -s "$ACTION_COMPLETE_FILE" "$ACTION_RESTARTED_FILE"; then
+            echo "::error::incident action log changed across container restart"
+            exit 1
+          fi
+
+          set +e
+          docker compose -p "$COMPOSE_PROJECT_NAME" run \
+            --rm --no-deps -T --entrypoint python sasori - \
+            > "$OWNER_LOG_FILE" 2>&1 <<'PY'
+          import sys
+          from sasori import ConcurrentRunError, SQLiteStore
+
+          try:
+              store = SQLiteStore("/data/sasori.sqlite3")
+          except ConcurrentRunError:
+              print("ConcurrentRunError", file=sys.stderr)
+              raise SystemExit(2)
+          else:
+              store.close()
+              print("second owner unexpectedly acquired the database", file=sys.stderr)
+              raise SystemExit(97)
+          PY
+          owner_status=$?
+          set -e
+          if [[ "$owner_status" -ne 2 ]]; then
+            echo "::error::second database owner exited $owner_status; expected 2"
+            exit 1
+          fi
+          if ! grep -Fxq -- "ConcurrentRunError" "$OWNER_LOG_FILE"; then
+            echo "::error::second database owner did not prove ConcurrentRunError"
+            exit 1
+          fi
+          git diff --exit-code HEAD --
+
+      - name: Audit logs and generated reports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          token_file="${SASORI_TOKEN_FILE:-$RUNNER_TEMP/sasori-token-$suffix}"
+          evidence_file="${CONTAINER_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-container-evidence-$suffix.json}"
+          paused_file="${ACTION_PAUSED_FILE:-$RUNNER_TEMP/sasori-action-paused-$suffix.json}"
+          complete_file="${ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-action-complete-$suffix.json}"
+          restarted_file="${ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-action-restarted-$suffix.json}"
+          owner_log="${OWNER_LOG_FILE:-$RUNNER_TEMP/sasori-owner-$suffix.log}"
+          runtime_log="${RUNTIME_LOG_FILE:-$RUNNER_TEMP/sasori-runtime-$suffix.log}"
+          export SASORI_TOKEN_FILE="$token_file"
+
+          : > "$runtime_log"
+          set +e
+          docker compose -p "$COMPOSE_PROJECT_NAME" logs --no-color sasori \
+            > "$runtime_log" 2>&1
+          logs_status=$?
+          set -e
+          audit_status=0
+          if [[ ! -s "$token_file" ]]; then
+            echo "::error::bearer token file unavailable for log audit"
+            audit_status=1
+          else
+            token="$(<"$token_file")"
+            if [[ -z "$token" ]]; then
+              echo "::error::bearer token file is empty"
+              audit_status=1
+            else
+              for item in \
+                "runtime log:$runtime_log" \
+                "second-owner log:$owner_log" \
+                "acceptance evidence:$evidence_file" \
+                "paused action evidence:$paused_file" \
+                "completed action evidence:$complete_file" \
+                "restarted action evidence:$restarted_file"; do
+                label="${item%%:*}"
+                path="${item#*:}"
+                if [[ -f "$path" ]] && grep -Fq -- "$token" "$path"; then
+                  echo "::error::bearer token found in $label"
+                  audit_status=1
+                fi
+              done
+            fi
+          fi
+          if [[ "$logs_status" -ne 0 ]]; then
+            echo "::error::unable to collect runtime logs for secret audit"
+            audit_status=1
+          fi
+          {
+            echo "### Container product gate evidence"
+            for item in \
+              "acceptance:$evidence_file" \
+              "paused-action:$paused_file" \
+              "completed-action:$complete_file" \
+              "restarted-action:$restarted_file"; do
+              label="${item%%:*}"
+              path="${item#*:}"
+              if [[ -f "$path" ]]; then
+                lines="$(wc -l < "$path" | tr -d '[:space:]')"
+                digest="$(sha256sum "$path" | cut -d ' ' -f 1)"
+                printf -- '- `%s`: %s lines, SHA-256 `%s`\n' \
+                  "$label" "$lines" "$digest"
+              else
+                printf -- '- `%s`: missing\n' "$label"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$audit_status" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Stop containers and remove sensitive local files
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          token_file="${SASORI_TOKEN_FILE:-$RUNNER_TEMP/sasori-token-$suffix}"
+          owner_log="${OWNER_LOG_FILE:-$RUNNER_TEMP/sasori-owner-$suffix.log}"
+          runtime_log="${RUNTIME_LOG_FILE:-$RUNNER_TEMP/sasori-runtime-$suffix.log}"
+          export SASORI_TOKEN_FILE="$token_file"
+          if [[ ! -e "$token_file" ]]; then
+            umask 077
+            printf '%s\n' cleanup-placeholder > "$token_file"
+          fi
+          docker compose -p "$COMPOSE_PROJECT_NAME" down \
+            --remove-orphans --timeout 20
+          cleanup_status=$?
+          for path in "$token_file" "$owner_log" "$runtime_log"; do
+            rm -f -- "$path" || cleanup_status=1
+          done
+          if [[ "$cleanup_status" -ne 0 ]]; then
+            echo "::error::container cleanup was incomplete"
+            exit 1
+          fi
+
+      - name: Upload audited container evidence
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-container-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/sasori-container-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
   package:
     name: Package and release gates
     runs-on: ubuntu-24.04

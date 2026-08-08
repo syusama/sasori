@@ -184,6 +184,58 @@ POST /v1/runs
   -> second database owner rejected
 ```
 
+The repository's `Container product gate` job performs this workflow on
+`ubuntu-24.04` after the source test matrix. It builds the `sasori:local`
+candidate with `--no-cache --pull`, starts that service through Compose, and runs
+the standard-library acceptance driver in three phases:
+
+```powershell
+$env:SASORI_TOKEN_FILE = "C:\secure-local-path\sasori-token"
+$env:SASORI_PORT = "18888"
+docker compose config --quiet
+docker compose build --no-cache --pull sasori
+docker compose up -d --wait --wait-timeout 120 sasori
+
+$baseUrl = "http://127.0.0.1:$env:SASORI_PORT"
+$runId = "container-acceptance-$([guid]::NewGuid().ToString('N'))"
+$evidence = Join-Path $env:TEMP "$runId.json"
+
+python scripts/container_acceptance.py prepare `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $evidence --run-id $runId
+python scripts/container_acceptance.py complete `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $evidence
+docker compose restart sasori
+docker compose up -d --wait --wait-timeout 120 sasori
+python scripts/container_acceptance.py after-restart `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $evidence
+```
+
+`prepare` must stop at `resume_required` with 11 exact semantic events and no
+completed `record_action`. `complete` must first prove that prepared durable
+state is unchanged, explicitly resume once, then observe 16 exact events, one
+exact action, the expected final, and the exact SSE sequence 11-16 tail.
+`after-restart` performs only GET/SSE reads and requires the projection, event
+and SSE hashes, final, cursor, and effect count to remain unchanged.
+
+The CI job independently snapshots `/data/incident-actions.jsonl` as
+`0 → 1 → 1`, verifies its single JSON record exactly, and starts a second
+container against the same named volume. Only an exact `ConcurrentRunError`
+with exit code `2` passes that ownership probe. Before upload it scans the
+acceptance evidence, three action snapshots, runtime log, and owner log for the
+bearer token. The token and raw logs are deleted; only the four audited JSON
+files are retained. Cleanup deliberately uses `docker compose down
+--remove-orphans --timeout 20` without `-v` or `--volumes`.
+
+This job exercises only the deterministic `incident` composition and the
+locally built `sasori:local` candidate. It does not run either credentialed
+provider smoke, publish an image, generate an image SBOM, sign an artifact, or
+create trusted provenance. The presence of the workflow definition is not a
+passing public gate: record the hosted run URL and exact commit only after that
+run succeeds.
+
 Keep the named data volume during restart/owner testing. Do not publish a public
 deployment without the additional TLS, isolation, authentication, limits,
 backup, monitoring, and secret-management controls in `SECURITY.md`.

@@ -221,7 +221,8 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; real endpoint result, not just process/container health |
 | UI browser acceptance (`PARTIAL`) | real-browser delayed status/cold-event/SSE/create/approval isolation passes; full create/approve/explicit-resume/final/history/restart, mobile navigation, keyboard, reduced motion, visible permissions and console evidence remain required |
-| Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, SBOM, provenance, domestic-source Docker build |
+| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
+| Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
 
 ### Honest determinism
 
@@ -294,7 +295,7 @@ Gate G2:
 - CLI and HTTP projections are semantically equivalent;
 - Docker build and real endpoint pass through mainland sources.
 
-Current G2 evidence on 2026-08-07: deterministic OpenAI Responses and Anthropic Messages JSON/SSE wire tests cover full two-turn tool continuation, strict local schema validation, authoritative terminal aggregation, malformed/incomplete/refused/interrupted results, SSE framing/order, 429/retry-after, redirect rejection, total transport deadline, cancellation, duplicate IDs, oversized bodies, and secret-free exception chains. Upstream deltas never enter the public projection or durable provider state. CLI and HTTP use one public projection; HTTP/SSE approval/resume and cursor reconnect pass. The latest digest-pinned DaoCloud/Tsinghua multi-app/Workbench Compose candidate completed a real 16-event Incident workflow, wrote exactly one approved effect only after explicit resume, reconnected SSE at sequences 11-16, survived restart with the same final/effect count, and rejected a second database owner without disclosing its token. G2 remains **open** because neither provider key/model is configured for the two required live smokes.
+Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic Messages JSON/SSE wire tests cover full two-turn tool continuation, strict local schema validation, authoritative terminal aggregation, malformed/incomplete/refused/interrupted results, SSE framing/order, 429/retry-after, redirect rejection, total transport deadline, cancellation, duplicate IDs, oversized bodies, and secret-free exception chains. Upstream deltas never enter the public projection or durable provider state. CLI and HTTP use one public projection; HTTP/SSE approval/resume and cursor reconnect pass. A local manual, no-cache Compose acceptance built from `d384ab2` through the digest-pinned DaoCloud base and Tsinghua index (`sasori:local` image ID `sha256:196a3db71942fc0c20118e2029c81882ae678963ceaefccd9ce8e271a05b8fc3`) stopped at `resume_required` with 11 events and zero actions, then completed exactly 16 events and one exact approved action only after explicit resume. Its SSE reconnect returned sequences 11-16; restart preserved the projection/event/SSE hashes, final, cursor, and effect count; the external action log remained `0 → 1 → 1`; and a second database owner was rejected with `ConcurrentRunError` without disclosing the token. The current CI definition repeats that split-phase deterministic Incident workflow and uploads only audited JSON evidence after cleanup; a hosted run URL bound to the exact revision is required before claiming public CI evidence. This is not live-provider, image-SBOM, signing, trusted-provenance, or public-deployment evidence. G2 remains **open** because neither provider key/model is configured for the two required live smokes.
 
 ### Days 56-75: switching-value validation
 
@@ -452,4 +453,4 @@ Pause expansion and review the strategy if any occurs:
 
 **Foundation implemented; gated expansion in progress.**
 
-The target user, technical mechanism, risks, alternatives, and first validation slice are coherent. G1 is closed; G2 has deterministic/provider-local and container evidence but still needs live provider smoke. Plugin/product work must keep the single Loop and cannot erase that open gate.
+The target user, technical mechanism, risks, alternatives, and first validation slice are coherent. G1 is closed; G2 has deterministic provider-adapter wire fixtures and local container evidence but still needs live provider smoke. Plugin/product work must keep the single Loop and cannot erase that open gate.
