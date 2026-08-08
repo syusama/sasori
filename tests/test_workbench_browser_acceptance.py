@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -19,6 +20,79 @@ SPEC.loader.exec_module(browser_acceptance)
 
 
 class BrowserProcessTests(unittest.TestCase):
+    def test_windows_install_directory_version_avoids_a_second_browser_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            application = Path(directory) / "Application"
+            application.mkdir()
+            binary = application / "chrome.exe"
+            binary.write_bytes(b"launcher")
+            for version in (
+                "99.0.9999.999",
+                "151.0.7922.9",
+                "151.0.7922.108",
+                "151.0.7922",
+                "not-a-version",
+            ):
+                (application / version).mkdir()
+
+            with mock.patch.object(browser_acceptance.subprocess, "run") as run:
+                version = browser_acceptance.browser_version(binary)
+
+        self.assertEqual(version, "chrome.exe 151.0.7922.108")
+        run.assert_not_called()
+
+    def test_version_command_is_used_without_a_windows_install_directory(self):
+        completed = subprocess.CompletedProcess(
+            ["browser", "--version"],
+            returncode=0,
+            stdout=b"Chromium 151.0.8123.45\n",
+            stderr=b"",
+        )
+        with mock.patch.object(
+            browser_acceptance.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            version = browser_acceptance.browser_version(Path("browser"))
+
+        self.assertEqual(version, "browser 151.0.8123.45")
+        run.assert_called_once_with(
+            ["browser", "--version"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+
+    def test_unreadable_install_directory_falls_back_to_the_version_command(self):
+        completed = subprocess.CompletedProcess(
+            ["browser", "--version"],
+            returncode=0,
+            stdout=b"Chromium 151.0.8123.46\n",
+            stderr=b"",
+        )
+        with mock.patch.object(
+            Path,
+            "iterdir",
+            side_effect=PermissionError("browser directory is unreadable"),
+        ), mock.patch.object(
+            browser_acceptance.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            version = browser_acceptance.browser_version(Path("browser"))
+
+        self.assertEqual(version, "browser 151.0.8123.46")
+        run.assert_called_once()
+
+    def test_version_command_timeout_is_explicit(self):
+        timeout = subprocess.TimeoutExpired(["browser", "--version"], 10)
+        with mock.patch.object(
+            browser_acceptance.subprocess,
+            "run",
+            side_effect=timeout,
+        ), self.assertRaises(subprocess.TimeoutExpired):
+            browser_acceptance.browser_version(Path("browser"))
+
     def test_timeout_retries_once_with_a_fresh_profile(self):
         timeout = subprocess.TimeoutExpired(
             ["browser"], browser_acceptance.BROWSER_TIMEOUT_SECONDS

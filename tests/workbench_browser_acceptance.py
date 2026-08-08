@@ -116,7 +116,29 @@ def create_fixture_server() -> http.server.ThreadingHTTPServer:
     raise RuntimeError("no safe loopback port is available for Workbench browser acceptance")
 
 
+def installed_directory_version(binary: Path) -> str | None:
+    try:
+        if not binary.parent.is_dir():
+            return None
+        installed = sorted(
+            (
+                child.name
+                for child in binary.parent.iterdir()
+                if child.is_dir()
+                and re.fullmatch(r"\d+\.\d+\.\d+\.\d+", child.name)
+            ),
+            key=lambda value: tuple(int(part) for part in value.split(".")),
+        )
+    except OSError:
+        return None
+    return installed[-1] if installed else None
+
+
 def browser_version(binary: Path) -> str:
+    installed = installed_directory_version(binary)
+    if binary.suffix.lower() == ".exe" and installed is not None:
+        return f"{binary.name} {installed}"
+
     completed = subprocess.run(
         [str(binary), "--version"],
         capture_output=True,
@@ -126,18 +148,7 @@ def browser_version(binary: Path) -> str:
     raw = completed.stdout or completed.stderr
     decoded = raw.decode(locale.getpreferredencoding(False), errors="replace")
     match = re.search(r"\d+\.\d+\.\d+\.\d+", decoded)
-    if not match and binary.parent.is_dir():
-        installed = sorted(
-            (
-                child.name
-                for child in binary.parent.iterdir()
-                if child.is_dir() and re.fullmatch(r"\d+\.\d+\.\d+\.\d+", child.name)
-            ),
-            key=lambda value: tuple(int(part) for part in value.split(".")),
-        )
-        if installed:
-            match = re.search(r".+", installed[-1])
-    version = match.group(0) if match else "version-unavailable"
+    version = match.group(0) if match else installed or "version-unavailable"
     return f"{binary.name} {version}"
 
 
