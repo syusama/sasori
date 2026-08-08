@@ -58,6 +58,12 @@ class SdistConsumerTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.sdist = self.root / f"sasori-{PROJECT_VERSION}.tar.gz"
         self.lock = self.root / "requirements-build.txt"
+        self.wheelhouse = self.root / "build-wheelhouse"
+        self.wheelhouse.mkdir()
+        self.build_wheel = (
+            self.wheelhouse / "setuptools-80.9.0-py3-none-any.whl"
+        )
+        self.build_wheel.write_bytes(b"locked build wheel")
         self.check = self.root / "installed_wheel_smoke.py"
         self.verifier = self.root / "release_verify.py"
         self.source = self.root / "source"
@@ -123,6 +129,7 @@ class SdistConsumerTests(unittest.TestCase):
             evidence = sdist_smoke.run_smoke(
                 self.sdist,
                 self.lock,
+                self.wheelhouse,
                 self.check,
                 self.verifier,
                 self.source,
@@ -132,13 +139,23 @@ class SdistConsumerTests(unittest.TestCase):
             evidence,
             {
                 "source_archive": self.sdist.name,
+                "build_wheel": self.build_wheel.name,
                 "rebuilt_wheel": f"sasori-{PROJECT_VERSION}-py3-none-any.whl",
                 "release_verifier_exit": 5,
             },
         )
         self.assertEqual(len(calls), 7)
         commands = [call[0] for call in calls]
+        self.assertIn("--isolated", commands[1])
+        self.assertIn("--no-cache-dir", commands[1])
+        self.assertIn("--no-index", commands[1])
+        self.assertIn("--find-links", commands[1])
+        self.assertIn(self.wheelhouse.resolve(), commands[1])
         self.assertIn("--require-hashes", commands[1])
+        self.assertIn("--only-binary=:all:", commands[1])
+        self.assertIn("--isolated", commands[2])
+        self.assertIn("--no-cache-dir", commands[2])
+        self.assertIn("--no-index", commands[2])
         self.assertIn("--no-build-isolation", commands[2])
         self.assertIn("--no-deps", commands[2])
         self.assertIn("--allow-dirty-local", commands[3])
@@ -146,12 +163,22 @@ class SdistConsumerTests(unittest.TestCase):
         self.assertIn("--sdist", commands[3])
         self.assertEqual(calls[3][3], frozenset({0, 5}))
         self.assertIn("--no-index", commands[5])
+        self.assertIn("--isolated", commands[5])
+        self.assertIn("--no-cache-dir", commands[5])
         self.assertIn("--no-deps", commands[5])
         self.assertNotEqual(commands[1][0], commands[5][0])
         for _, cwd, environment, _ in calls:
             self.assertNotEqual(cwd.resolve(), ROOT.resolve())
             self.assertNotIn("PYTHONPATH", environment)
             self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
+            self.assertEqual(environment["PIP_NO_INDEX"], "1")
+            for name in (
+                "PIP_INDEX_URL",
+                "PIP_EXTRA_INDEX_URL",
+                "PIP_FIND_LINKS",
+                "PIP_TRUSTED_HOST",
+            ):
+                self.assertNotIn(name, environment)
 
     def test_rebuild_rejects_multiple_wheels(self):
         def fake_run(command, *, cwd, environment, accepted=frozenset({0})):
@@ -167,6 +194,7 @@ class SdistConsumerTests(unittest.TestCase):
             sdist_smoke.run_smoke(
                 self.sdist,
                 self.lock,
+                self.wheelhouse,
                 self.check,
                 self.verifier,
                 self.source,
@@ -181,6 +209,95 @@ class SdistConsumerTests(unittest.TestCase):
             sdist_smoke.run_smoke(
                 invalid,
                 self.lock,
+                self.wheelhouse,
+                self.check,
+                self.verifier,
+                self.source,
+            )
+        run.assert_not_called()
+
+    def test_invalid_wheelhouse_fails_before_any_command(self):
+        invalid_roots = []
+
+        empty = self.root / "empty-wheelhouse"
+        empty.mkdir()
+        invalid_roots.append(("empty", empty))
+
+        multiple = self.root / "multiple-wheelhouse"
+        multiple.mkdir()
+        (multiple / "one-py3-none-any.whl").write_bytes(b"one")
+        (multiple / "two-py3-none-any.whl").write_bytes(b"two")
+        invalid_roots.append(("multiple", multiple))
+
+        non_wheel = self.root / "non-wheelhouse"
+        non_wheel.mkdir()
+        (non_wheel / "requirements.txt").write_text("unexpected", encoding="utf-8")
+        invalid_roots.append(("non-wheel", non_wheel))
+
+        nested = self.root / "nested-wheelhouse"
+        nested.mkdir()
+        (nested / "nested").mkdir()
+        invalid_roots.append(("nested", nested))
+
+        non_portable = self.root / "non-portable-wheelhouse"
+        non_portable.mkdir()
+        (non_portable / "setuptools-80.9.0-cp312-cp312-win_amd64.whl").write_bytes(
+            b"platform wheel"
+        )
+        invalid_roots.append(("non-portable", non_portable))
+
+        not_directory = self.root / "wheelhouse.txt"
+        not_directory.write_text("not a directory", encoding="utf-8")
+        invalid_roots.extend(
+            (("missing", self.root / "missing-wheelhouse"), ("file", not_directory))
+        )
+
+        for label, wheelhouse in invalid_roots:
+            with self.subTest(boundary=label), mock.patch.object(
+                sdist_smoke, "_run"
+            ) as run, self.assertRaisesRegex(RuntimeError, "build wheelhouse"):
+                sdist_smoke.run_smoke(
+                    self.sdist,
+                    self.lock,
+                    wheelhouse,
+                    self.check,
+                    self.verifier,
+                    self.source,
+                )
+            run.assert_not_called()
+
+        original = Path.is_symlink
+
+        def pretend_root_symlink(path):
+            return path == self.wheelhouse or original(path)
+
+        with mock.patch.object(
+            Path, "is_symlink", pretend_root_symlink
+        ), mock.patch.object(sdist_smoke, "_run") as run, self.assertRaisesRegex(
+            RuntimeError, "must not be a symlink"
+        ):
+            sdist_smoke.run_smoke(
+                self.sdist,
+                self.lock,
+                self.wheelhouse,
+                self.check,
+                self.verifier,
+                self.source,
+            )
+        run.assert_not_called()
+
+        def pretend_wheel_symlink(path):
+            return path == self.build_wheel or original(path)
+
+        with mock.patch.object(
+            Path, "is_symlink", pretend_wheel_symlink
+        ), mock.patch.object(sdist_smoke, "_run") as run, self.assertRaisesRegex(
+            RuntimeError, "build wheel must not be a symlink"
+        ):
+            sdist_smoke.run_smoke(
+                self.sdist,
+                self.lock,
+                self.wheelhouse,
                 self.check,
                 self.verifier,
                 self.source,

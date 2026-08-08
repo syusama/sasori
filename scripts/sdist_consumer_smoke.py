@@ -58,15 +58,35 @@ def _single_wheel(root: Path) -> Path:
     return wheels[0].resolve(strict=True)
 
 
+def _single_build_wheel(root_path: Path) -> tuple[Path, Path]:
+    if root_path.is_symlink():
+        raise RuntimeError("build wheelhouse must not be a symlink")
+    try:
+        root = root_path.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError("build wheelhouse is missing or unreadable") from exc
+    if not root.is_dir():
+        raise RuntimeError("build wheelhouse is not a directory")
+    try:
+        entries = sorted(root.iterdir(), key=lambda item: item.name)
+    except OSError as exc:
+        raise RuntimeError("build wheelhouse is unreadable") from exc
+    if len(entries) != 1 or not entries[0].name.endswith("-py3-none-any.whl"):
+        raise RuntimeError("build wheelhouse must contain exactly one regular wheel")
+    return root, _regular_file(entries[0], "build wheel")
+
+
 def run_smoke(
     sdist_path: Path,
     build_lock_path: Path,
+    build_wheelhouse_path: Path,
     consumer_check_path: Path,
     release_verifier_path: Path,
     source_root_path: Path,
 ) -> dict[str, str | int]:
     sdist = _regular_file(sdist_path, "source archive")
     build_lock = _regular_file(build_lock_path, "build lock")
+    build_wheelhouse, build_wheel = _single_build_wheel(build_wheelhouse_path)
     consumer_check = _regular_file(consumer_check_path, "consumer check")
     release_verifier = _regular_file(release_verifier_path, "release verifier")
     if source_root_path.is_symlink():
@@ -82,7 +102,15 @@ def run_smoke(
 
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
+    for name in (
+        "PIP_INDEX_URL",
+        "PIP_EXTRA_INDEX_URL",
+        "PIP_FIND_LINKS",
+        "PIP_TRUSTED_HOST",
+    ):
+        environment.pop(name, None)
     environment["PYTHONNOUSERSITE"] = "1"
+    environment["PIP_NO_INDEX"] = "1"
     with tempfile.TemporaryDirectory(prefix="sasori-sdist-smoke-") as directory:
         root = Path(directory)
         build_root = root / "build"
@@ -93,7 +121,21 @@ def run_smoke(
         _run([sys.executable, "-m", "venv", build_root], cwd=root, environment=environment)
         build_python = _venv_python(build_root)
         _run(
-            [build_python, "-m", "pip", "install", "--require-hashes", "-r", build_lock],
+            [
+                build_python,
+                "-m",
+                "pip",
+                "--isolated",
+                "--no-cache-dir",
+                "install",
+                "--no-index",
+                "--find-links",
+                build_wheelhouse,
+                "--only-binary=:all:",
+                "--require-hashes",
+                "-r",
+                build_lock,
+            ],
             cwd=root,
             environment=environment,
         )
@@ -102,7 +144,10 @@ def run_smoke(
                 build_python,
                 "-m",
                 "pip",
+                "--isolated",
+                "--no-cache-dir",
                 "wheel",
+                "--no-index",
                 "--no-build-isolation",
                 "--no-deps",
                 "--wheel-dir",
@@ -135,7 +180,17 @@ def run_smoke(
         _run([sys.executable, "-m", "venv", consumer_root], cwd=root, environment=environment)
         consumer_python = _venv_python(consumer_root)
         _run(
-            [consumer_python, "-m", "pip", "install", "--no-index", "--no-deps", wheel],
+            [
+                consumer_python,
+                "-m",
+                "pip",
+                "--isolated",
+                "--no-cache-dir",
+                "install",
+                "--no-index",
+                "--no-deps",
+                wheel,
+            ],
             cwd=root,
             environment=environment,
         )
@@ -143,6 +198,7 @@ def run_smoke(
 
     return {
         "source_archive": sdist.name,
+        "build_wheel": build_wheel.name,
         "rebuilt_wheel": wheel.name,
         "release_verifier_exit": verifier_code,
     }
@@ -154,6 +210,7 @@ def main(arguments: list[str] | None = None) -> int:
     )
     parser.add_argument("--sdist", required=True, type=Path)
     parser.add_argument("--build-lock", required=True, type=Path)
+    parser.add_argument("--build-wheelhouse", required=True, type=Path)
     parser.add_argument("--consumer-check", required=True, type=Path)
     parser.add_argument("--release-verifier", required=True, type=Path)
     parser.add_argument("--source-root", required=True, type=Path)
@@ -161,6 +218,7 @@ def main(arguments: list[str] | None = None) -> int:
     evidence = run_smoke(
         options.sdist,
         options.build_lock,
+        options.build_wheelhouse,
         options.consumer_check,
         options.release_verifier,
         options.source_root,

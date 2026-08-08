@@ -582,7 +582,7 @@ jobs:
           set -euo pipefail
           image="$(sed -n 's/^ARG PYTHON_BASE=//p' Dockerfile)"
           [[ "$image" =~ ^docker\.m\.daocloud\.io/library/python:[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]
-          mkdir -p "$GITHUB_WORKSPACE/dist"
+          mkdir -p "$GITHUB_WORKSPACE/dist/build-wheelhouse"
           docker run --rm --init \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/source,readonly" \
             --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
@@ -599,8 +599,24 @@ jobs:
               find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
                 -prune -exec rm -rf -- {} +
               cd /tmp/sasori
-              python -m pip install --require-hashes -r requirements-build.txt
-              python -m pip wheel --no-build-isolation --no-deps --wheel-dir /out .
+              python -m pip download \
+                --require-hashes \
+                --only-binary=:all: \
+                --no-deps \
+                --dest /out/build-wheelhouse \
+                -r requirements-build.txt
+              set -- /out/build-wheelhouse/*.whl
+              test "$#" -eq 1
+              test -f "$1"
+              test "${1%-py3-none-any.whl}" != "$1"
+              python -m pip --isolated --no-cache-dir install \
+                --no-index \
+                --find-links /out/build-wheelhouse \
+                --only-binary=:all: \
+                --require-hashes \
+                -r requirements-build.txt
+              python -m pip --isolated --no-cache-dir wheel \
+                --no-index --no-build-isolation --no-deps --wheel-dir /out .
               python - <<PY
           from setuptools.build_meta import build_sdist
           print(build_sdist(chr(47)+chr(111)+chr(117)+chr(116)))
@@ -710,6 +726,15 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      - name: Upload the locked build wheelhouse for rebuild matrix
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-build-wheelhouse-${{ github.sha }}
+          path: dist/build-wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
       - name: Ensure packaging did not change tracked files
         run: git diff --exit-code HEAD --
 
@@ -807,15 +832,23 @@ jobs:
           name: sasori-sdist
           path: ${{ runner.temp }}/sasori-sdist
 
+      - name: Download the locked build wheelhouse
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-build-wheelhouse-${{ github.sha }}
+          path: ${{ runner.temp }}/sasori-build-wheelhouse
+
       - name: Rebuild and smoke the source archive outside the checkout
         shell: pwsh
         run: |
           $sdistRoot = Join-Path $env:RUNNER_TEMP "sasori-sdist"
+          $wheelhouseRoot = Join-Path $env:RUNNER_TEMP "sasori-build-wheelhouse"
           $sdists = @(Get-ChildItem -LiteralPath $sdistRoot -Filter *.tar.gz)
           if ($sdists.Count -ne 1) { throw "expected exactly one source archive" }
           python scripts/sdist_consumer_smoke.py `
             --sdist $sdists[0].FullName `
             --build-lock requirements-build.txt `
+            --build-wheelhouse $wheelhouseRoot `
             --consumer-check scripts/installed_wheel_smoke.py `
             --release-verifier scripts/release_verify.py `
             --source-root .

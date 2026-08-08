@@ -22,9 +22,12 @@ final hashes are known, review is approved, and a durable provenance URL exists.
 ## 2. Build through locked mainland sources
 
 The reproducible input contract is the digest-pinned DaoCloud Python image,
-Tsinghua's configurable Python index, and `requirements-build.txt` installed
-with `--require-hashes`. Build in a temporary copy so stale local `*.egg-info`,
-caches, tests, and agent metadata cannot enter the artifacts:
+Tsinghua's configurable Python index, and `requirements-build.txt` enforced
+with `--require-hashes`. The index is used once to populate a portable build
+wheelhouse; the package build and downstream source consumers install from
+that same wheelhouse with `--no-index`. Build in a temporary copy so stale
+local `*.egg-info`, caches, tests, and agent metadata cannot enter the
+artifacts:
 
 ```powershell
 $source = (Resolve-Path .).Path
@@ -46,8 +49,25 @@ docker run --rm --init `
     find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
       -prune -exec rm -rf -- {} +
     cd /tmp/sasori
-    python -m pip install --require-hashes -r requirements-build.txt
-    python -m pip wheel --no-build-isolation --no-deps --wheel-dir /out .
+    mkdir -p /out/build-wheelhouse
+    python -m pip download \
+      --require-hashes \
+      --only-binary=:all: \
+      --no-deps \
+      --dest /out/build-wheelhouse \
+      -r requirements-build.txt
+    set -- /out/build-wheelhouse/*.whl
+    test "$#" -eq 1
+    test -f "$1"
+    test "${1%-py3-none-any.whl}" != "$1"
+    python -m pip --isolated --no-cache-dir install \
+      --no-index \
+      --find-links /out/build-wheelhouse \
+      --only-binary=:all: \
+      --require-hashes \
+      -r requirements-build.txt
+    python -m pip --isolated --no-cache-dir wheel \
+      --no-index --no-build-isolation --no-deps --wheel-dir /out .
     python - <<PY
 from setuptools.build_meta import build_sdist
 print(build_sdist(chr(47)+chr(111)+chr(117)+chr(116)))
@@ -60,6 +80,15 @@ The mirror is transport only: dependency versions, hashes, base-image digest,
 and license obligations stay unchanged. If a future image uses `apt-get`, it
 must switch Debian sources to a tested mainland mirror such as Aliyun before
 the update and lock the installed versions/closure.
+
+CI uploads the one-wheel build wheelhouse as an unsigned, one-day artifact for
+the six rebuilt-sdist jobs in that same workflow run. It is transport, not an
+integrity authority: `requirements-build.txt` and pip's repeated
+`--require-hashes` checks remain authoritative. The wheelhouse is not included
+in the Sasori wheel, sdist, exact-tag candidate, release bundle, application
+SBOM, or container SBOM. The shared wheelhouse is valid only while every build
+dependency is a `py3-none-any` wheel; platform-specific build dependencies
+require separate OS/Python wheelhouses.
 
 ## 3. Verify artifacts and local records
 
@@ -172,16 +201,20 @@ import the checkout's `src/`. The smoke verifies distribution metadata, zero
 runtime dependencies, five import packages, six Workbench resources, and all
 three console scripts.
 
-The source-archive gate installs `requirements-build.txt` with
-`--require-hashes` into a dedicated build environment, rebuilds the verified
-sdist with `--no-build-isolation --no-deps`, installs the resulting wheel into
-a second clean environment, and only then runs the installed-wheel smoke. The
-rebuilt wheel and original sdist must also pass `release_verify.py`; exit `5`
-is the expected verified-but-unversioned result on branch builds, while an
-exact release-tag build may return `0`. Exit codes `1` through `4` always fail
-the consumer gate. Directly installing the sdist with implicit build isolation
-is not equivalent evidence because it can resolve undeclared or unlocked build
-inputs.
+The source-archive gate rejects a missing, nested, symlinked, non-wheel, or
+multi-file build wheelhouse before launching a subprocess. It clears inherited
+Python-index hints, sets `PIP_NO_INDEX=1`, and installs
+`requirements-build.txt` into a dedicated build environment with
+`--isolated --no-cache-dir --no-index --find-links ... --require-hashes`. It
+rebuilds the verified sdist with
+`--isolated --no-cache-dir --no-index --no-build-isolation --no-deps`, installs
+the resulting wheel into a second clean environment, and only then runs the
+installed-wheel smoke. The rebuilt wheel and original sdist must also pass
+`release_verify.py`; exit `5` is the expected
+verified-but-unversioned result on branch builds, while an exact release-tag
+build may return `0`. Exit codes `1` through `4` always fail the consumer gate.
+Directly installing the sdist with implicit build isolation is not equivalent
+evidence because it can resolve undeclared or unlocked build inputs.
 
 On an exact tag, the final `Exact-tag release candidate bundle` job waits
 explicitly for all five gate families: source tests, package verification,

@@ -391,6 +391,36 @@ class ReleaseVerificationTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("name: sasori-sdist\n          path: dist/*.tar.gz", workflow)
+        package = workflow.split("\n  package:\n", 1)[1].split(
+            "\n  wheel-smoke:\n", 1
+        )[0]
+        self.assertEqual(package.count("python -m pip download"), 1)
+        for required in (
+            "export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple",
+            "python -m pip download",
+            "--require-hashes",
+            "--only-binary=:all:",
+            "--no-deps",
+            "--dest /out/build-wheelhouse",
+            'test "${1%-py3-none-any.whl}" != "$1"',
+            "python -m pip --isolated --no-cache-dir install",
+            "--no-index",
+            "--find-links /out/build-wheelhouse",
+            "name: sasori-build-wheelhouse-${{ github.sha }}",
+            "path: dist/build-wheelhouse/*.whl",
+            "retention-days: 1",
+            "compression-level: 0",
+        ):
+            with self.subTest(package_contract=required):
+                self.assertIn(required, package)
+        self.assertLess(
+            package.index("PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple"),
+            package.index("python -m pip download"),
+        )
+        self.assertLess(
+            package.index("python -m pip download"),
+            package.index("python -m pip --isolated --no-cache-dir install"),
+        )
         marker = "\n  sdist-smoke:\n"
         self.assertEqual(workflow.count(marker), 1)
         smoke = workflow.split(marker, 1)[1].split("\n  release-bundle:\n", 1)[0]
@@ -398,10 +428,14 @@ class ReleaseVerificationTests(unittest.TestCase):
             'name: "Rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"',
             "name: sasori-sdist",
             'path: ${{ runner.temp }}/sasori-sdist',
+            "name: sasori-build-wheelhouse-${{ github.sha }}",
+            'path: ${{ runner.temp }}/sasori-build-wheelhouse',
             '$sdistRoot = Join-Path $env:RUNNER_TEMP "sasori-sdist"',
+            '$wheelhouseRoot = Join-Path $env:RUNNER_TEMP "sasori-build-wheelhouse"',
             "python scripts/sdist_consumer_smoke.py",
             "--sdist $sdists[0].FullName",
             "--build-lock requirements-build.txt",
+            "--build-wheelhouse $wheelhouseRoot",
             "--consumer-check scripts/installed_wheel_smoke.py",
             "--release-verifier scripts/release_verify.py",
             "--source-root .",
@@ -411,6 +445,8 @@ class ReleaseVerificationTests(unittest.TestCase):
         for value in ("ubuntu-24.04", "windows-2025", '"3.11"', '"3.12"', '"3.13"'):
             with self.subTest(matrix_value=value):
                 self.assertEqual(smoke.count(value), 1)
+        self.assertNotIn("pypi", smoke.lower())
+        self.assertNotIn("tuna", smoke.lower())
 
     def test_spdx_rejects_duplicate_checksum_algorithms(self):
         manifest, spdx, _ = release_verify.verify_release(
