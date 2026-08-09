@@ -44,7 +44,7 @@ Runtime：Python、CLI、HTTP 与 Workbench 全部驱动同一条单 Agent Loop�
 | 真实副作用如何控制 | 工具必须声明 `read_only`、`idempotent` 或 `side_effecting`；非只读动作需要 revision 与人工决定 |
 | 崩溃后结果不确定怎么办 | 调用前先持久化 dispatch intent；歧义结果停在 `effect_unknown`，等待人工核验恢复 |
 | 多入口会不会各写一套逻辑 | Python、CLI、HTTP、应用与 Workbench 都汇入 `Harness.run()` / `resume()` |
-| 长对话怎么控预算 | 可选 `sasori_context` 在不拆散工具调用/结果、不改写原记录的前提下投影上下文 |
+| 上下文快装不下时 | 默认做确定性结构投影；可选具名 compactor 选择冷历史时不拆散 tool call/result 原子，完整耐久 transcript 始终不改写 |
 | 交付物如何耐久化 | 可选 `sasori_artifacts` 把 immutable bytes、metadata 与公共事件绑定到精确 run，不扩张 Loop |
 | 如何从小框架长成大产品 | Provider、SQLite、RAG、MCP、Git、workspace、apps、catalog、server、UI 全在核心外装配 |
 | 如何证明不是 PPT | fake model、provider conformance、进程崩溃、reducer 竞态、真实浏览器、包与容器门禁 |
@@ -127,7 +127,7 @@ flowchart LR
     L --> R["Run store contract"]
 
     M -. 可选 .-> P1["OpenAI / Anthropic"]
-    M -. 可选 .-> CX["Bounded context"]
+    M -. 可选 .-> CX["结构投影 + 语义压缩"]
     T -. 可选 .-> X["Workspace / Web / RAG / Git / MCP"]
     R -. 可选 .-> SQ["SQLite durability"]
 ```
@@ -167,9 +167,9 @@ best-effort；消费者用 `(run_id, seq)` 修复缺口。
 idempotency key 或人工恢复策略。完整契约见
 [Foundation](docs/FOUNDATION.md)。
 
-## 不新增第二套 Loop 的上下文预算
+## 压缩模型视图，保留完整原始记录
 
-长历史可以包一层纯标准库 model adapter：
+**上下文更短，原始记录不动。** 长历史可以包一层纯标准库 model adapter：
 
 ```python
 from sasori_context import BoundedContextModel, ContextBudget, ContextProjector
@@ -182,16 +182,30 @@ model = BoundedContextModel(
 )
 ```
 
-默认单位是 canonical UTF-8 JSON bytes，**不是 provider token**。投影器保护开头
-的 system message 与最近 turns，把 assistant tool call 和全部匹配结果当作不可
-拆分原子；orphan 或错配历史会 fail closed。已经被 Harness 拒绝的 malformed / incomplete
-调用会变成带精确 `error_code` 的 provider-safe 文本，让模型能够纠正，但不会重放、修复
-或执行坏调用。删除历史的 wire marker 只摘要公共投影，不会把 vendor 私有状态的稳定指纹
-发给另一模型。它不是语义摘要，也不是 Memory；SQLite 中的完整 transcript 从不被改写。
+默认单位是 canonical UTF-8 JSON bytes，**不是 provider token**。默认投影器保护
+开头的 system message 与最近 turns，把 assistant tool call 和全部匹配结果当作
+不可拆分原子；orphan 或错配历史会 fail closed。已经被 Harness 拒绝的 malformed /
+incomplete 调用只会变成带精确 `error_code` 的普通文本，不再是可执行的 provider
+tool protocol。被移除的历史变成确定性的
+**结构省略标记**，不会把 vendor 私有状态的稳定指纹发给另一模型；这条默认路径不做
+语义事实承诺。
 
-需要精确 token 时应注入具名 provider tokenizer。详见
-[Context](docs/CONTEXT.md) 与
-[ADR-0009](docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md)。
+显式启用后，`SemanticCompactionModel` 只把选中的冷区公共投影交给具名 summarizer，
+且 `tools=()`。Sasori 只接受一个回显整包 source SHA-256 的严格响应，把自由文本作为
+有损、未经事实验证的 assistant 历史注记，再重新测量完整主模型请求。tool call、超时、拒绝、
+畸形/超限输出、source 不匹配或最终预算溢出都会 fail closed，主模型不会继续调用。
+进程内诊断会绑定 summarizer identity/policy digest、source/summary digest、canonical
+source/prompt/summary 字节计数、cache 状态与失败码；它不是耐久公共事件，也不是
+provider token 账单。
+
+Digest 回显只证明这段注记对应哪一整包请求，不证明其中任何句子可由 source 推导。
+源文本仍可能影响 summarizer，注记也仍可能影响主模型。Sasori 不会把它写入 approval
+或 effect ledger；主模型提出的每个工具调用仍必须经过 Harness 原有的审批/副作用边界。
+
+SQLite 中的完整 transcript 始终不改写。这是语义压缩，不是长期 Memory、无损压缩或
+无限上下文。详见 [Context](docs/CONTEXT.md)、
+[ADR-0009](docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md) 与
+[ADR-0011](docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md)。
 
 ## 不让产物拖大核心的 ArtifactRef
 
@@ -250,7 +264,7 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 | `sasori` | contracts、single-agent Harness/Loop、事件投影、内存 store |
 | `SQLiteStore` | 原子 revision/checkpoint/event、CAS、重启恢复、跨进程单 owner |
 | Providers | 标准库 OpenAI Responses 与 Anthropic Messages；strict schema 与共享 conformance |
-| `sasori_context` | 可选确定性预算投影、结构验证、自定义 estimator |
+| `sasori_context` | 确定性结构投影；可选具名 semantic compactor；source lineage、有界输出/cache/诊断、显式失败 |
 | `sasori_artifacts` | immutable content-addressed blobs、run/event association、verified list/content/HEAD/Range |
 | CLI | run/status/events/approval/resume/effect；JSON/JSONL 模式 |
 | HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、readiness、Workbench |
@@ -376,17 +390,21 @@ python tests/workbench_browser_journey.py --require-browser `
 该 main branch run **没有**创建 tag、签名 attestation 或最终 release bundle。
 Exact-tag provenance 仍是单独的发布门禁。
 
+本 source candidate 的 Semantic compaction 已通过确定性本地合同测试；在 exact
+implementation commit 的 Hosted run 全绿前，不把它描述为 Hosted-verified 或真实
+provider 摘要质量证据。
+
 ## Current / Next
 
 | Current：可用且有测试 | Next：尚不宣称 |
 |---|---|
 | 标准库轻核 | Artifact access grant、版本链与 lifecycle/GC |
 | immutable run-scoped ArtifactRef + 安全文本/JSON 预览 | 通过专项内容校验门禁后的安全 PDF/image preview |
-| 单 Agent Loop 与一个 Runtime path | 语义 compaction 与 durable bounded Memory |
+| 单 Agent Loop 与一个 Runtime path | 具备 scope/version/source 的 durable bounded Memory |
 | 版本化耐久事件与纯 UI reducer | 动态 skill selection 与受审市场 |
 | approval、effect fingerprint、崩溃歧义恢复 | 复用同一 tool/effect contract 的 typed Workflow |
 | OpenAI + Anthropic conformance | 通过共享套件后的更多 providers |
-| 确定性 bounded context projection | Project Charter/Board 与多 Agent orchestration |
+| 结构投影 + 可选整包请求绑定、未经事实验证的语义注记 | Project Charter/Board 与多 Agent orchestration |
 | CLI、HTTP/SSE、三种应用、Workbench | 安全 versioned GenUI 与更丰富产品面 |
 | single-owner SQLite/Compose | leased durable executor 与真正隔离边界 |
 

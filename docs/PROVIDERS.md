@@ -31,6 +31,53 @@ The OpenAI adapter reads `OPENAI_API_KEY`; the Anthropic adapter reads `ANTHROPI
 
 `timeout` is a monotonic total transport deadline as well as a socket guard. Cancellation propagates immediately to the caller and asks the blocking reader to stop/close; it does not prove that a remote provider stopped generation or billing.
 
+## First-party application context settings
+
+The configured Research and Developer applications can wrap the selected
+provider without changing their Python/CLI/HTTP/Workbench runtime path.
+Context control is disabled unless `SASORI_CONTEXT_MAX_UNITS` is present.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `SASORI_CONTEXT_MAX_UNITS` | disabled | Enable bounded context with this hard estimator budget |
+| `SASORI_CONTEXT_RESERVE_UNITS` | 20% of max | Reserve units for tool schemas, provider framing, and output |
+| `SASORI_CONTEXT_HOT_TURNS` | `2` | Minimum recent user turns protected by structural projection |
+| `SASORI_COMPACTION_MODEL` | disabled | Explicitly enable semantic compaction with this model |
+| `SASORI_COMPACTION_PROVIDER` | primary provider | `openai` or `anthropic`; provider or endpoint changes can change the data recipient |
+| `SASORI_COMPACTION_BASE_URL` | matching primary URL or provider default | Explicit summarizer endpoint |
+| `SASORI_COMPACTION_ALLOW_LOCALHOST` | matching primary flag | Permit only an explicitly configured loopback mock endpoint |
+| `SASORI_COMPACTION_TIMEOUT` | min(primary timeout, 30s) | Local summarizer-stage deadline; late child results are discarded |
+| `SASORI_COMPACTION_MAX_SOURCE_BYTES` | `2097152` | Maximum canonical public history bytes sent to the summarizer |
+| `SASORI_COMPACTION_MAX_SUMMARY_BYTES` | `16384` | Maximum accepted summary UTF-8 bytes |
+| `SASORI_COMPACTION_CACHE_ENTRIES` | `128` | Bounded process-local validated-summary entries; `0` disables the cache |
+| `SASORI_COMPACTION_DIAGNOSTIC_ENTRIES` | `128` | Bounded process-local diagnostic records |
+
+The ordinary `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for the selected provider
+is still used. Sasori does not accept keys in these settings, events, URLs, or
+Workbench state. A compaction provider/model without a context budget, an
+invalid limit, or an unknown provider fails application construction instead
+of silently disabling the policy.
+
+The first-party cache/diagnostic identity is a non-secret digest of summarizer
+provider, model, and effective base URL; changing the endpoint therefore cannot
+reuse the same entry. It is not a complete legal or organizational trust-domain
+identity and does not encode the API-key owner or provider data policy.
+
+The summarizer transport guard is configured slightly longer than the semantic
+stage deadline so the semantic layer owns the local timeout classification. The
+Research and Developer Harness deadline is computed as primary transport timeout
+plus semantic-stage timeout (when enabled) plus a five-second local margin. With
+defaults that is `60 + 30 + 5 = 95` seconds, so a summary request cannot consume
+the primary model's entire Harness window.
+
+Semantic compaction adds at most one summarizer call on an exact cache miss and
+passes `tools=()`. It has no hidden retry. Typed provider timeout, rate limit,
+refusal, incomplete response, and protocol failures receive stable semantic
+codes without retaining provider prose in the cause chain. Failure prevents the
+primary model call; cancellation while waiting for the summarizer propagates
+unchanged. See [Context](CONTEXT.md) and
+[ADR-0011](ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md).
+
 ## Upstream SSE aggregation
 
 `stream=True` is opt-in and changes only the provider's upstream HTTP transport.

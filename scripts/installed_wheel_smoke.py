@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.metadata
 import importlib.resources
+import json
 import os
 import shutil
 import subprocess
@@ -82,6 +84,74 @@ def main() -> int:
     )
     if context_projection.messages != context_messages or context_projection.compacted:
         raise RuntimeError("installed sasori_context projection contract is invalid")
+    ModelReply = getattr(modules["sasori"], "ModelReply", None)
+    SemanticCompactionModel = getattr(
+        modules["sasori_context"], "SemanticCompactionModel", None
+    )
+    SemanticCompactionPolicy = getattr(
+        modules["sasori_context"], "SemanticCompactionPolicy", None
+    )
+    if not all(
+        callable(item)
+        for item in (ModelReply, SemanticCompactionModel, SemanticCompactionPolicy)
+    ):
+        raise RuntimeError("installed semantic compaction exports are incomplete")
+
+    class SummaryModel:
+        def __init__(self):
+            self.calls = 0
+
+        async def complete(self, messages, tools):
+            self.calls += 1
+            if tools:
+                raise RuntimeError("installed summarizer received runtime tools")
+            envelope = json.loads(messages[1].content)
+            return ModelReply(
+                content=json.dumps(
+                    {
+                        "version": 1,
+                        "source_sha256": envelope["source_sha256"],
+                        "summary": "Installed wheel summary is source bound.",
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+
+    class PrimaryModel:
+        def __init__(self):
+            self.messages = ()
+
+        async def complete(self, messages, tools):
+            self.messages = messages
+            return ModelReply(content="installed semantic primary")
+
+    summary_model = SummaryModel()
+    primary_model = PrimaryModel()
+    semantic = SemanticCompactionModel(
+        primary_model,
+        ContextProjector(ContextBudget(2000, hot_turns=1)),
+        summary_model,
+        summarizer_name="installed:summary-v1",
+        policy=SemanticCompactionPolicy(cache_entries=0),
+    )
+    semantic_history = (
+        Message("system", "installed policy"),
+        Message("user", "old installed history " + "x" * 5000),
+        Message("assistant", "old installed answer"),
+        Message("user", "current installed request"),
+    )
+    semantic_reply = asyncio.run(semantic.complete(semantic_history, ()))
+    semantic_records = semantic.diagnostics()
+    if (
+        semantic_reply.content != "installed semantic primary"
+        or summary_model.calls != 1
+        or len(semantic_records) != 1
+        or semantic_records[0].outcome != "succeeded"
+        or not any("derived history" in item.content for item in primary_model.messages)
+        or any("x" * 100 in item.content for item in primary_model.messages)
+    ):
+        raise RuntimeError("installed semantic compaction contract is invalid")
     Event = getattr(modules["sasori"], "Event", None)
     SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
     ArtifactStore = getattr(modules["sasori_artifacts"], "ArtifactStore", None)

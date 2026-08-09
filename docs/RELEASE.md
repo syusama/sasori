@@ -200,7 +200,7 @@ Run three distinct gates on Python 3.11, 3.12, and 3.13 across Linux and
 Windows: the source regression suite, the installed-wheel smoke, and a source
 archive consumer rebuild. Both consumer paths run from a directory that cannot
 import the checkout's `src/`. The smoke verifies distribution metadata, zero
-runtime dependencies, five import packages, six Workbench resources, and all
+runtime dependencies, seven import packages, eight Workbench resources, and all
 three console scripts.
 
 The source-archive gate rejects a missing, nested, symlinked, non-wheel, or
@@ -359,7 +359,7 @@ same-origin HTTP fixture. The second loads the same production assets but
 forwards every product request to a real local `sasori.server` and deterministic
 Incident application. It must prove `approval_required → resume_required →
 explicit resume → completed`, the external action count `0 → 0 → 1`, the exact
-16-event timeline, cold page reload/history reopen, final output, and visible
+17-event timeline, cold page reload/history reopen, final output, and visible
 trusted-process permission disclosure. Its test-only action-count probe is
 out-of-band evidence, not a Sasori API. These checks do not replace the
 container restart or credentialed provider gates.
@@ -415,8 +415,8 @@ python scripts/container_acceptance.py after-restart `
 
 `prepare` must stop at `resume_required` with 11 exact semantic events and no
 completed `record_action`. `complete` must first prove that prepared durable
-state is unchanged, explicitly resume once, then observe 16 exact events, one
-exact action, the expected final, and the exact SSE sequence 11-16 tail.
+state is unchanged, explicitly resume once, then observe 17 exact events, one
+exact action, the expected final, and the exact SSE sequence 11-17 tail.
 `after-restart` performs only GET/SSE reads and requires the projection, event
 and SSE hashes, final, cursor, and effect count to remain unchanged.
 

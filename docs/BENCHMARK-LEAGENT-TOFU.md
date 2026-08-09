@@ -6,6 +6,8 @@
 >
 > 本文对 Sasori Current 能力的结论绑定上述 exact commit/run；后续 revision 必须重新取得自己的证据，不能继承该结论
 >
+> 当前 source candidate 新增了 opt-in Semantic compaction；在 exact implementation commit 的 Hosted run 完成前，本文只把它计为本地确定性合同证据，不继承 `94f4d0e` 的 Hosted 结论
+>
 > LeAgent 基线：[`1f16badc`](https://github.com/vixues/LeAgent/tree/1f16badc834abbd829d3cb7e9f8fcb5b2d57f443)
 >
 > ToFu 基线：[`8b459a6f`](https://github.com/NiuTrans/ToFu/tree/8b459a6f3ca771e82136fc583d588664469850a1)
@@ -58,7 +60,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 公共事件 | 版本化语义投影；SQLite commit 后 sink；live/cold/reconnect 共用纯 reducer | 结构化事件丰富，但热 event/approval/output registry 有进程内状态 | `EVENT_CONTRACT_VERSION=1`、durable-before-visible、committed-before-done、稳定 `_msgId` | Sasori/ToFu 各有长处 |
 | 工具协议 | malformed/truncated 不执行；异常显式 tool error；duplicate call 拒绝 | 统一 ToolExecutor，类型/审批面丰富 | ToolSpec/registry 与统一 dispatch 较完整 | Sasori 故障语义胜 |
 | 副作用恢复 | effect/revision/idempotency、dispatch intent、`effect_unknown`、人工恢复、真实 crash tests | 有审批/checkpoint，但未见等价的 side-effect ambiguity contract | 有事件、审批、写入 freshness/idempotency 元数据；崩溃后执行恢复边界不等价 | Sasori 明显胜 |
-| Context | `94f4d0e` 已托管验证核心外、结构安全的确定性预算投影与拒绝调用恢复 | ContextSource、预算、压缩与 recall 比 Sasori 全面 | 三层 compaction、cache-stable prefix、token 压力与 archive 很强 | ToFu 广度胜；Sasori 底座已托管验证 |
+| Context | `94f4d0e` 已托管验证结构安全投影；source candidate 又实现核心外、具名的整包 digest 回显/低信任未验证注记 adapter，严格 schema、最终复测、typed failure 与进程内 lineage/cache；真实模型质量、tool-truth ledger、durable archive、provider usage 尚未验证 | ContextSource、预算、压缩与 recall 更全面；固定快照的 `memory.compact.build_autocompact` 路径在 cache miss 时直接用 recent tail，key 对每条旧 message content 只取前 200 characters，summarizer transcript 按字符 `[:20_000]` 截断 | 三层 compaction、cache-aware 预算与 archive 产品面很强；固定快照的 L2 query-aware formatter 排除 tool message，L2 archive write 返回 `None` 后仍可继续 compact，cheap capability fallback 也没有 summary-provider affinity 保证 | Sasori 结构/失败边界更严格；ToFu 分层广度仍胜 |
 | Memory | RAG/FTS5 是独立插件，不等于长期 Memory | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 落后 |
 | Artifact/FileRef | `94f4d0e` 已托管验证核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 的最小可靠闭环胜；竞品广度仍胜 |
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
@@ -153,9 +155,20 @@ ToFu 的 `EVENT_CONTRACT_VERSION=1`、集中 EventType/build/emit、persistent
 
 ToFu 的 context pipeline 包含零 LLM micro-compaction、结构裁剪、压力触发 LLM
 summary、原文 archive，以及 prompt-cache 稳定前缀。Memory 采用 bounded recall
-与 cheap-model rerank，失败/超时宁可不注入。Sasori 本次先落地了
-[`sasori_context`](CONTEXT.md) 的确定性预算与工具组原子性；下一阶段再增加可评测
-的 semantic summary 和检索 Memory。
+与 cheap-model rerank。Sasori 已在 [`sasori_context`](CONTEXT.md) 的同一 Model
+adapter 路径上叠加显式 opt-in semantic summary：先复用结构投影选择完整 cold turns，
+把去除 `provider_state`、但仍可被模型读取且可能包含 prompt injection 的 canonical
+JSON 交给具名 summarizer 且 `tools=()`，严格验证整包 digest 回显与响应 schema，再以
+有损、未经事实验证的低信任 assistant note 注入并最终复测预算。摘要失败
+不会静默切 tail、切 provider 或继续调用主模型；完整 transcript 不变。
+
+Digest 回显不证明摘要中的事实或工具 outcome；注记仍可能影响主模型，只是不能绕过
+Harness 原有 approval/effect 合同。这证明的是 Sasori 的协议和故障边界，不是通用摘要
+质量。ToFu 固定快照的分层 micro-compaction、巨型单 turn 策略、部分 estimator 优先
+使用 provider usage（缺失时回退 tokenizer/heuristic）、L1 persisted high-water prefix
+保护，以及原文 snapshot/event/retention 产品面仍领先；L2 advanced compaction 会重写
+prefix，archive write failure 也可在返回 `None` 后继续。Sasori 的进程内 cache/diagnostics
+不能冒充 durable archive、真实 provider cache hit 或长期 Memory。
 
 ### 4. 截断工具调用防线值得学，但授权语义仍可更严格
 
@@ -224,7 +237,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 
 | 增量 | 验收定义 |
 |---|---|
-| Semantic compaction | 工具组不拆分；事实保真评测；成本/模型/失败可见；原 transcript 不变 |
+| Semantic compaction | source candidate 已实现：冷区选择不拆工具组、`tools=()`、排除 `provider_state` 的整包 public-projection digest 回显、严格 schema、有损未验证 assistant note、最终预算复测、typed failure、summarizer-stage cancellation、有界进程 cache/诊断、原 transcript 不变；尚无 tool-truth ledger，待 exact Hosted run 与真实模型 recall/unsupported/contradiction/denied-effect/citation 评测 |
 | Durable Memory | bounded retrieval；source/score/version；同 session 多 turn；删除/重建；注入失败关闭 |
 | Artifact Workbench | `94f4d0e` 已交付并托管验证 text/JSON 安全预览、认证下载、冷加载、stale-run 隔离与真实浏览器链；图片/PDF 需独立内容校验后再开放 |
 | Skill selection | progressive disclosure；确定性 eligibility；预算；恶意 SKILL.md；不自动执行安装脚本 |

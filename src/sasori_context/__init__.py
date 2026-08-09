@@ -10,6 +10,13 @@ from .budget import (
     ContextStructureError,
     default_message_units,
 )
+from .semantic import (
+    SemanticCompactionError,
+    SemanticCompactionModel,
+    SemanticCompactionPolicy,
+    SemanticCompactionRecord,
+    SemanticSummaryCache,
+)
 
 __all__ = [
     "BoundedContextModel",
@@ -19,5 +26,10 @@ __all__ = [
     "ContextProjectionError",
     "ContextProjector",
     "ContextStructureError",
+    "SemanticCompactionError",
+    "SemanticCompactionModel",
+    "SemanticCompactionPolicy",
+    "SemanticCompactionRecord",
+    "SemanticSummaryCache",
     "default_message_units",
 ]

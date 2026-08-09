@@ -75,9 +75,10 @@ tool envelope or its vendor-private continuation state.
   therefore remains wire-specific. This adapter does not claim that a run can
   switch providers while such a turn is retained. Once that old turn is
   removed, only the provider-neutral public marker is sent onward.
-- A future semantic compactor may implement another model adapter or projector,
-  but must keep tool atoms intact, expose its nondeterminism, and receive its own
-  regression and decision record.
+- The opt-in semantic compactor accepted by
+  [ADR-0011](ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md) is another model adapter.
+  It keeps tool atoms intact, exposes its nondeterminism through bounded local
+  diagnostics, and does not rewrite this first structural-projection decision.
 - A future durable Memory or retrieval module remains outside core and may feed
   new leading context; it does not mutate the stored transcript.
 

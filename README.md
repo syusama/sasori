@@ -47,7 +47,7 @@ drive the same single-agent loop.
 | Real side effects | every tool declares `read_only`, `idempotent`, or `side_effecting`; mutable effects require a revision and a human decision |
 | Crash ambiguity | dispatch intent is durable; unknown outcomes stop at `effect_unknown` for explicit operator recovery |
 | One runtime everywhere | Python, CLI, HTTP, first-party apps, and Workbench converge on `Harness.run()` / `resume()` |
-| Long conversations | optional `sasori_context` budgets model input without splitting tool calls/results or rewriting the transcript |
+| Context under pressure | deterministic structural projection is the default; an opt-in named compactor selects cold history without splitting tool-call/result atoms, while the durable transcript stays unchanged |
 | Durable deliverables | optional `sasori_artifacts` binds immutable bytes, metadata, and a public event to the exact run without enlarging the Loop |
 | Small-to-large composition | providers, SQLite, RAG, MCP, Git, workspace tools, apps, catalog, server, and UI stay outside core |
 | Evidence, not slogans | deterministic fakes, provider conformance, process-crash tests, live/cold reducer tests, real-browser journeys, package and container gates |
@@ -132,7 +132,7 @@ flowchart LR
     L --> R["Run store contract"]
 
     M -. optional .-> P1["OpenAI / Anthropic adapters"]
-    M -. optional .-> CX["Bounded context adapter"]
+    M -. optional .-> CX["Structural + semantic context adapters"]
     T -. optional .-> X["Workspace / Web / RAG / Git / MCP"]
     R -. optional .-> SQ["SQLite durability"]
 ```
@@ -173,9 +173,10 @@ This is **step-boundary recovery**, not exactly-once execution. Side-effecting
 systems still need an idempotency key or a manual-recovery policy. See
 [Foundation](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md) and the recovery tests for the full contract.
 
-## Bounded context without a second loop
+## Compact the view. Keep the record.
 
-Long histories can opt into a standard-library-only model adapter:
+**Shorter context. Durable source.** Long histories can opt into a
+standard-library-only model adapter:
 
 ```python
 from sasori_context import BoundedContextModel, ContextBudget, ContextProjector
@@ -189,18 +190,34 @@ model = BoundedContextModel(
 ```
 
 The default unit is canonical UTF-8 JSON bytes, **not provider tokens**. The
-projector protects leading system messages and recent turns, treats an
+default projector protects leading system messages and recent turns, treats an
 assistant tool call plus all matching results as one atom, and fails closed on
-orphan or mismatched tool history. A malformed/incomplete call already refused
-by the Harness becomes provider-safe text carrying its exact error code, so the
-model can correct it without replaying or executing the bad call. Removed
-history becomes a deterministic public-projection marker; vendor-private state
-is excluded from the wire-visible digest. This is not a semantic summary or
-Memory, and the complete durable transcript remains unchanged.
+orphan or mismatched history. Removed history becomes a deterministic
+structural omission marker; vendor-private state is excluded from its public
+digest. This path makes no semantic claims.
 
-Use a named provider tokenizer when exact token accounting matters. Details:
-[bounded context](https://github.com/syusama/sasori/blob/main/docs/CONTEXT.md) and
-[ADR-0009](https://github.com/syusama/sasori/blob/main/docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md).
+When explicitly enabled, `SemanticCompactionModel` sends only the selected cold
+public projection to a named summarizer with `tools=()`. Sasori accepts one
+strict response that echoes the whole-source digest, inserts its free text as a
+lossy, unverified assistant note, and remeasures the complete primary request. A
+tool call, timeout, refusal,
+malformed/oversized output, source mismatch, or final budget overflow fails
+closed before the primary model is called. The process-local diagnostic binds
+the configured summarizer identity and policy digests, source/summary digests,
+canonical source/prompt/summary byte counts, cache state, and failure code; it
+is not a durable public event or provider-token bill.
+
+The digest echo proves which whole request produced the note; it does not prove
+that any sentence is entailed by the source. Source text can still influence the
+summarizer and the note can still influence the primary model. Sasori never
+writes the note into approvals or the effect ledger, so every proposed tool call
+still crosses the ordinary Harness approval/effect boundary.
+
+The complete durable transcript remains unchanged. This is semantic
+compaction, not long-term Memory, lossless compression, or an unlimited context
+window. Details: [Context](https://github.com/syusama/sasori/blob/main/docs/CONTEXT.md),
+[ADR-0009](https://github.com/syusama/sasori/blob/main/docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md),
+and [ADR-0011](https://github.com/syusama/sasori/blob/main/docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md).
 
 ## Immutable artifacts without core bloat
 
@@ -263,7 +280,7 @@ The no-build UI includes:
 | `sasori` | contracts, single-agent Harness/loop, event projection, in-memory store |
 | `SQLiteStore` | atomic revisions/checkpoints/events, CAS, restart recovery, one cross-process owner |
 | Providers | stdlib OpenAI Responses and Anthropic Messages adapters; strict schema and shared conformance |
-| `sasori_context` | optional deterministic budget projection; structural validation; custom estimator support |
+| `sasori_context` | deterministic structural projection; opt-in named semantic compactor; source lineage, bounded output/cache/diagnostics, explicit failure |
 | `sasori_artifacts` | immutable content-addressed blobs; run/event association; verified list/content/HEAD/Range |
 | CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
 | HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
@@ -399,17 +416,21 @@ passed [Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/3
 That branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.
 
+Semantic compaction in this source candidate is covered by deterministic local
+contract tests. It is not described as Hosted-verified or real-provider quality
+evidence until the exact implementation commit passes its own Hosted run.
+
 ## Current and Next
 
 | Current — usable and tested | Next — not claimed yet |
 |---|---|
 | Tiny standard-library core | Artifact access grants, version lineage, and lifecycle/GC |
 | Immutable run-scoped ArtifactRef + safe text/JSON preview | Safe PDF/image preview after dedicated content-validation gates |
-| Single-agent loop and one runtime path | Semantic compaction and durable bounded Memory |
+| Single-agent loop and one runtime path | Durable bounded Memory with scoped, versioned retrieval |
 | Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
 | Approval, effect fingerprints, crash ambiguity recovery | Typed Workflow on the same tool/effect contracts |
 | OpenAI + Anthropic conformance | More providers after the shared suite passes |
-| Deterministic bounded context projection | Project Charter/Board and multi-agent orchestration |
+| Structural projection + opt-in whole-request-bound unverified compaction note | Project Charter/Board and multi-agent orchestration |
 | CLI, local HTTP/SSE, three app compositions, Workbench | Safe versioned GenUI and richer product surfaces |
 | Single-owner SQLite/Compose delivery | Leased durable executor and genuine isolation boundary |
 

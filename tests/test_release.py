@@ -49,10 +49,10 @@ def metadata(*, dependency=False, extra=""):
 
 
 class ReleaseVerificationTests(unittest.TestCase):
-    def test_release_contract_version_tracks_context_and_asset_inventory(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "5")
+    def test_release_contract_version_tracks_semantic_context_inventory(self):
+        self.assertEqual(release_verify.VERIFIER_VERSION, "6")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v3"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v4"
         )
 
     def setUp(self):

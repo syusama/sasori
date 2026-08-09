@@ -3,7 +3,7 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Real-provider smoke, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
+Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Real-provider semantic-quality evaluation, durable Memory, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
 
 ## 1. Decision
 
@@ -49,7 +49,7 @@ The project must not use official Naruto artwork, character silhouettes, costume
 flowchart TB
     P["Product: bounded Workbench and fixed digital employees (NOW)"]
     A["Adapters: Python / CLI / HTTP / UI (NOW)"]
-    X["Extensions: providers / stores / Web / RAG / Git / MCP (NOW); flows (LATER)"]
+    X["Extensions: providers / context / stores / Web / RAG / Git / MCP (NOW); Memory / flows (LATER)"]
     H["Harness: budgets / approvals / trace / checkpoint boundary (NOW)"]
     K["Kernel: contracts / single-agent loop / tool dispatch / event projection (NOW)"]
     P --> A
@@ -84,6 +84,15 @@ The Harness owns policy around the loop, not a second loop. It composes:
 
 Python, CLI, HTTP, and UI adapters must call this Harness. Product code gets no private execution path.
 
+Context policy composes at the `Model` boundary, not inside the Harness. Both
+adapters derive from the same accepted run history, but the optional named
+summarizer receives only the cold public subset selected by the deterministic
+projector, with provider-private continuation state removed. It receives no
+runtime tools; its unverified derived assistant note and process-local
+diagnostics are not written to checkpoints or public events. See
+[ADR-0009](ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md) and
+[ADR-0011](ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md).
+
 ### 3.3 Optional adapter and extension boundaries (`NOW/LATER`)
 
 These are boundaries, not directories to scaffold before use:
@@ -92,6 +101,7 @@ These are boundaries, not directories to scaffold before use:
 |---|---|---|
 | OpenAI-compatible provider | `sasori.OpenAIResponsesModel` backed by `sasori.provider_openai`; split only after an external package consumer exists | deterministic JSON/SSE conformance implemented; live smoke open |
 | Anthropic provider | `sasori.AnthropicMessagesModel` backed by `sasori.provider_anthropic`; split only after an external package consumer exists | deterministic JSON/SSE conformance implemented; live smoke open |
+| Context projection and semantic compaction | `sasori_context` model adapters | structural/tool-atom contracts and opt-in whole-request digest echo/unverified-note protocol implemented; real-model quality evaluation open |
 | SQLite checkpoint/trace | currently `sasori.sqlite_store`; split only after an external package consumer exists | recovery state machine accepted |
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
@@ -220,7 +230,7 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus a real-server Incident create/approve/explicit-resume/final/16-event/history-reload/permission journey pass in a real browser; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
+| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus a real-server Incident create/approve/explicit-resume/final/17-event/history-reload/permission journey pass in a real browser; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
 | Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
 
@@ -397,7 +407,7 @@ An independent same-origin test proxy now injects a real-browser journey while
 forwarding all product APIs to `sasori.server`. That journey uses the production
 Workbench and deterministic Incident composition, verifies approval does not
 execute `record_action`, requires the explicit resume control, proves the
-external action log changes exactly `0 → 0 → 1`, observes the exact 16-event
+external action log changes exactly `0 → 0 → 1`, observes the exact 17-event
 completed timeline, cold-reloads and reopens history, and rechecks final output
 plus the visible `FULL HOST PROCESS PRIVILEGES` / `enforced=false` disclosure.
 The proxy's action-count endpoint is out-of-band test evidence, not a shipped

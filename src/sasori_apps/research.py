@@ -7,7 +7,7 @@ from sasori import Harness, Model, SQLiteStore
 from sasori_plugins.rag_sqlite import rag_sqlite_registration
 from sasori_plugins.web_fetch import web_fetch_registration
 
-from ._shared import PromptedModel, configured_model
+from ._shared import PromptedModel, configured_model_and_timeout
 
 
 SYSTEM_PROMPT = """You are Sasori's research worker.
@@ -52,6 +52,7 @@ def research_harness(
     *,
     allowed_hosts: tuple[str, ...] = (),
     rag_database: str | os.PathLike[str],
+    model_timeout: float = 30.0,
 ) -> Harness:
     web = web_fetch_registration(allowed_hosts)
     rag = rag_sqlite_registration(rag_database)
@@ -59,6 +60,7 @@ def research_harness(
         PromptedModel(model, SYSTEM_PROMPT),
         web.tools + rag.tools,
         store=store,
+        model_timeout=model_timeout,
     )
 
 
@@ -67,11 +69,13 @@ def create_harness(store: SQLiteStore) -> Harness:
     allowed = tuple(part.strip() for part in raw_hosts.split(",") if part.strip())
     database = os.environ.get("SASORI_RAG_DB", "").strip()
     path = database or str(Path.cwd() / ".sasori-research.sqlite3")
+    model, model_timeout = configured_model_and_timeout()
     return research_harness(
         store,
-        configured_model(),
+        model,
         allowed_hosts=allowed,
         rag_database=path,
+        model_timeout=model_timeout,
     )
 
 
