@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import re
 
 from .runtime import Harness
@@ -16,7 +17,12 @@ class AppLoadError(Exception):
     pass
 
 
-def load_harness(spec: object, store: SQLiteStore) -> Harness:
+def load_harness(
+    spec: object,
+    store: SQLiteStore,
+    *,
+    app_id: str | None = None,
+) -> Harness:
     """Load trusted installed Python code using ``module:factory``."""
     if not isinstance(spec, str) or _APP_SPEC.fullmatch(spec) is None:
         raise AppLoadError("app must use module:factory syntax")
@@ -28,7 +34,27 @@ def load_harness(spec: object, store: SQLiteStore) -> Harness:
     if not callable(factory):
         raise AppLoadError("app factory must be callable")
     try:
-        harness = factory(store)
+        parameters = inspect.signature(factory).parameters.values()
+        accepts_app_id = any(
+            (
+                parameter.name == "app_id"
+                and parameter.kind
+                in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            )
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        accepts_app_id = False
+    try:
+        harness = (
+            factory(store, app_id=app_id)
+            if app_id is not None and accepts_app_id
+            else factory(store)
+        )
     except Exception as exc:
         raise AppLoadError(f"app factory failed: {type(exc).__name__}: {exc}") from exc
     if not isinstance(harness, Harness):

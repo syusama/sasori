@@ -49,10 +49,10 @@ def metadata(*, dependency=False, extra=""):
 
 
 class ReleaseVerificationTests(unittest.TestCase):
-    def test_release_contract_version_tracks_semantic_context_inventory(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "6")
+    def test_release_contract_version_tracks_memory_inventory(self):
+        self.assertEqual(release_verify.VERIFIER_VERSION, "7")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v4"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v5"
         )
 
     def setUp(self):
@@ -93,6 +93,43 @@ class ReleaseVerificationTests(unittest.TestCase):
                 ):
                     release_verify._build_inputs(self.source)
         dockerignore.write_text(original, encoding="utf-8")
+
+    def test_docker_context_must_recursively_exclude_python_build_caches(self):
+        dockerignore = self.source / ".dockerignore"
+        original = dockerignore.read_text(encoding="utf-8")
+        for required in (
+            "**/__pycache__",
+            "**/__pycache__/**",
+            "**/*.py[cod]",
+            "**/*.egg-info",
+            "**/*.egg-info/**",
+        ):
+            with self.subTest(required=required):
+                unsafe = original.replace(required + "\n", "")
+                dockerignore.write_text(unsafe, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    release_verify.ReleaseVerificationError,
+                    "recursively exclude Python build caches",
+                ):
+                    release_verify._build_inputs(self.source)
+        dockerignore.write_text(original, encoding="utf-8")
+
+    def test_docker_builder_must_prune_generated_python_build_state(self):
+        dockerfile = self.source / "Dockerfile"
+        original = dockerfile.read_text(encoding="utf-8")
+        for marker in (
+            "COPY pyproject.toml MANIFEST.in ",
+            'find src -type d \\( -name "*.egg-info" -o -name "__pycache__" \\)',
+            'find src -type f \\( -name "*.pyc" -o -name "*.pyo" \\) -delete',
+        ):
+            with self.subTest(marker=marker):
+                dockerfile.write_text(original.replace(marker, "removed", 1), encoding="utf-8")
+                with self.assertRaisesRegex(
+                    release_verify.ReleaseVerificationError,
+                    "Docker builder must prune generated Python build state",
+                ):
+                    release_verify._build_inputs(self.source)
+        dockerfile.write_text(original, encoding="utf-8")
 
     def wheel(
         self,

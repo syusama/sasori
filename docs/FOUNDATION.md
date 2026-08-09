@@ -3,7 +3,7 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Real-provider semantic-quality evaluation, durable Memory, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
+Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Memory is accepted only for a deployment-owned local-single-owner namespace after its deterministic, package, and mainland-source container gates passed; exact-revision Hosted evidence remains pending. Real-provider semantic/Memory quality evaluation, per-request user/tenant identity, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
 
 ## 1. Decision
 
@@ -49,7 +49,7 @@ The project must not use official Naruto artwork, character silhouettes, costume
 flowchart TB
     P["Product: bounded Workbench and fixed digital employees (NOW)"]
     A["Adapters: Python / CLI / HTTP / UI (NOW)"]
-    X["Extensions: providers / context / stores / Web / RAG / Git / MCP (NOW); Memory / flows (LATER)"]
+    X["Extensions: providers / context / Memory / stores / Web / RAG / Git / MCP (NOW); flows (LATER)"]
     H["Harness: budgets / approvals / trace / checkpoint boundary (NOW)"]
     K["Kernel: contracts / single-agent loop / tool dispatch / event projection (NOW)"]
     P --> A
@@ -93,6 +93,14 @@ diagnostics are not written to checkpoints or public events. See
 [ADR-0009](ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md) and
 [ADR-0011](ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md).
 
+Durable Memory also composes at that boundary and through ordinary Harness
+tools/events. Its SQLite authority, fixed deployment binding, one-use invocation
+lease, bounded lexical projection, suppression, and generation rebuild stay in
+`sasori_memory`; core has no Memory table, identity rule, extractor, or second
+Loop. Fresh recall is an ordinary assistant data message protected only from
+silent budget eviction, never promoted to system/tool authority. See
+[ADR-0012](ADR-0012-DURABLE-BOUNDED-MEMORY.md).
+
 ### 3.3 Optional adapter and extension boundaries (`NOW/LATER`)
 
 These are boundaries, not directories to scaffold before use:
@@ -102,6 +110,7 @@ These are boundaries, not directories to scaffold before use:
 | OpenAI-compatible provider | `sasori.OpenAIResponsesModel` backed by `sasori.provider_openai`; split only after an external package consumer exists | deterministic JSON/SSE conformance implemented; live smoke open |
 | Anthropic provider | `sasori.AnthropicMessagesModel` backed by `sasori.provider_anthropic`; split only after an external package consumer exists | deterministic JSON/SSE conformance implemented; live smoke open |
 | Context projection and semantic compaction | `sasori_context` model adapters | structural/tool-atom contracts and opt-in whole-request digest echo/unverified-note protocol implemented; real-model quality evaluation open |
+| Durable bounded Memory | `sasori_memory` separate SQLite authority + model/tool adapters | fixed local owner/app/scope/session, immutable revisions/CAS, verified idempotent replay, bounded lexical recall/final-budget merge, suppression and atomic rebuild accepted; exact-revision Hosted evidence and real-model quality remain open |
 | SQLite checkpoint/trace | currently `sasori.sqlite_store`; split only after an external package consumer exists | recovery state machine accepted |
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
@@ -156,7 +165,7 @@ Golden tests compare type, version, run/step identity, tool identity, call ident
 | `cancelled` | Cancellation is a durable terminal fact | Propagate cancellation and refuse resume. An unknown effect may still be reconciled for audit, but the cancelled run cannot become completed. |
 | `failed` | A terminal runtime/model failure was committed | Refuse normal continuation. |
 
-The tool call fingerprint binds `run_id`, accepted model step, call ordinal, tool name, and canonical JSON arguments. Provider call IDs remain evidence fields and are unique only within a run; they are not effect idempotency keys. For an idempotent tool, Sasori reserves the keyword-only handler argument `idempotency_key`, refuses a model-supplied value, persists the computed key before dispatch, and injects exactly that key on every recovery attempt.
+The tool call fingerprint binds `run_id`, accepted model step, call ordinal, tool name, and canonical JSON arguments. Provider call IDs are opaque, case-preserving evidence fields containing 1 through 256 UTF-8 bytes and no NUL; invalid or 257-byte IDs are rejected before dispatch. Valid IDs are unique only within a run, are not namespaces, and are not effect idempotency keys. For an idempotent tool, Sasori reserves the keyword-only handler argument `idempotency_key`, refuses a model-supplied value, persists the computed key before dispatch, and injects exactly that key on every recovery attempt.
 
 File-backed stores are deliberately single-owner in G1. A cross-platform non-blocking OS file lock is held for the store lifetime, SQLite requests exclusive locking, and revision CAS rejects stale run drivers. There is no heartbeat, multi-worker executor, distributed transaction, or external exactly-once guarantee. Local and container probes prove a second owner process fails startup; network filesystems remain out of scope. SQLite cannot atomically commit an HTTP request, file write, email, payment, or service restart with its local transaction.
 
@@ -229,7 +238,7 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Deterministic Harness | scripted model and tool outcomes; semantic golden trace; no network |
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
-| Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; real endpoint result, not just process/container health |
+| Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; Memory-enabled Research/Developer still use that path; real endpoint result, not just process/container health |
 | UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus a real-server Incident create/approve/explicit-resume/final/17-event/history-reload/permission journey pass in a real browser; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
 | Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |

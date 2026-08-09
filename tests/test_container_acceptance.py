@@ -22,6 +22,13 @@ SPEC = importlib.util.spec_from_file_location(
 container_acceptance = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = container_acceptance
 SPEC.loader.exec_module(container_acceptance)
+MEMORY_SPEC = importlib.util.spec_from_file_location(
+    "sasori_container_memory_acceptance",
+    ROOT / "scripts" / "container_memory_acceptance.py",
+)
+container_memory_acceptance = importlib.util.module_from_spec(MEMORY_SPEC)
+sys.modules[MEMORY_SPEC.name] = container_memory_acceptance
+MEMORY_SPEC.loader.exec_module(container_memory_acceptance)
 
 from sasori.server import create_server  # noqa: E402
 
@@ -57,6 +64,12 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertIn('Path("/data/artifacts/blobs/sha256")', workflow)
         self.assertIn("tampered = bytes([content[0] ^ 1]) + content[1:]", workflow)
         self.assertIn("scripts/container_acceptance.py tamper-check", workflow)
+        self.assertIn("scripts/container_memory_acceptance.py", workflow)
+        self.assertIn('python - prepare \\', workflow)
+        self.assertIn('python - after-restart \\', workflow)
+        self.assertIn("container Memory restart evidence is inconsistent", workflow)
+        self.assertIn("sasori-memory-prepared-${{ github.run_id }}", workflow)
+        self.assertIn("sasori-memory-restarted-${{ github.run_id }}", workflow)
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -121,6 +134,64 @@ class ContainerAcceptanceTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             result = container_acceptance.main(arguments)
         return result, stdout.getvalue(), stderr.getvalue()
+
+    def _memory_main(self, arguments: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = container_memory_acceptance.main(arguments)
+        return result, stdout.getvalue(), stderr.getvalue()
+
+    def test_memory_acceptance_write_search_and_fresh_store_restart(self) -> None:
+        database = self.root / "memory-acceptance.sqlite3"
+        evidence = self.root / "memory-acceptance-evidence.json"
+        common = ["--database", str(database), "--evidence", str(evidence)]
+        with mock.patch.object(
+            container_memory_acceptance.importlib.metadata,
+            "version",
+            return_value="0.1.0.dev0",
+        ):
+            code, stdout, stderr = self._memory_main(["prepare", *common])
+        self.assertEqual((code, stderr), (0, ""))
+        prepared = json.loads(stdout)
+        self.assertEqual(prepared["phase"], "prepare")
+        self.assertEqual(prepared["revision"], 1)
+        self.assertEqual(prepared["run_id"], "RunABC_Container")
+        self.assertEqual(prepared["source_call_id"], "call_AbC123_X")
+        self.assertEqual(len(prepared["memory_id"]), 64)
+
+        code, stdout, stderr = self._memory_main(["after-restart", *common])
+        self.assertEqual((code, stderr), (0, ""))
+        verified = json.loads(stdout)
+        self.assertTrue(verified["verified"])
+        self.assertTrue(verified["run_binding_reloaded"])
+        self.assertEqual(verified["memory_id"], prepared["memory_id"])
+        self.assertEqual(verified["revision"], prepared["revision"])
+        self.assertEqual(
+            verified["collection_revision"], prepared["collection_revision"]
+        )
+
+    def test_memory_acceptance_evidence_tamper_fails_closed(self) -> None:
+        database = self.root / "memory-tamper.sqlite3"
+        evidence = self.root / "memory-tamper-evidence.json"
+        common = ["--database", str(database), "--evidence", str(evidence)]
+        with mock.patch.object(
+            container_memory_acceptance.importlib.metadata,
+            "version",
+            return_value="0.1.0.dev0",
+        ):
+            self.assertEqual(self._memory_main(["prepare", *common])[0], 0)
+        value = json.loads(evidence.read_text(encoding="utf-8"))
+        value["collection_revision"] = 999_999
+        evidence.write_bytes(
+            (
+                json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+        )
+        code, stdout, stderr = self._memory_main(["after-restart", *common])
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("changed across restart", stderr)
 
     def test_real_incident_flow_and_restart_preserve_exactly_one_effect(self) -> None:
         server, base_url = self._start_sasori()

@@ -568,6 +568,21 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
     async def test_openai_rejects_malformed_or_unsafe_tool_calls(self) -> None:
         cases = (
             (
+                "oversized call ID",
+                {
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "function_call",
+                            "call_id": "x" * 257,
+                            "name": "lookup",
+                            "arguments": '{"city":"a"}',
+                            "status": "completed",
+                        }
+                    ],
+                },
+            ),
+            (
                 "duplicate IDs",
                 {
                     "status": "completed",
@@ -696,6 +711,17 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_anthropic_rejects_malformed_or_unsafe_tool_calls(self) -> None:
         cases = (
+            (
+                "oversized call ID",
+                [
+                    {
+                        "type": "tool_use",
+                        "id": "x" * 257,
+                        "name": "lookup",
+                        "input": {"city": "a"},
+                    }
+                ],
+            ),
             (
                 "duplicate IDs",
                 [

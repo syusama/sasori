@@ -117,6 +117,8 @@ jobs:
           paths = {
               "SASORI_TOKEN_FILE": root / f"sasori-token-{suffix}",
               "CONTAINER_EVIDENCE_FILE": root / f"sasori-container-evidence-{suffix}.json",
+              "MEMORY_PREPARED_FILE": root / f"sasori-memory-prepared-{suffix}.json",
+              "MEMORY_RESTARTED_FILE": root / f"sasori-memory-restarted-{suffix}.json",
               "ARTIFACT_TAMPER_FILE": root / f"sasori-artifact-tamper-{suffix}.json",
               "ACTION_PAUSED_FILE": root / f"sasori-action-paused-{suffix}.json",
               "ACTION_COMPLETE_FILE": root / f"sasori-action-complete-{suffix}.json",
@@ -301,6 +303,11 @@ jobs:
 
           action_snapshot 1 "$ACTION_COMPLETE_FILE"
 
+          docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
+            python - prepare \
+            < scripts/container_memory_acceptance.py \
+            > "$MEMORY_PREPARED_FILE"
+
           docker compose -p "$COMPOSE_PROJECT_NAME" restart sasori
           docker compose -p "$COMPOSE_PROJECT_NAME" up \
             -d --wait --wait-timeout 120 sasori
@@ -309,6 +316,34 @@ jobs:
             --base-url "$SASORI_BASE_URL" \
             --token-file "$SASORI_TOKEN_FILE" \
             --evidence "$CONTAINER_EVIDENCE_FILE"
+
+          docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
+            python - after-restart \
+            < scripts/container_memory_acceptance.py \
+            > "$MEMORY_RESTARTED_FILE"
+
+          python - "$MEMORY_PREPARED_FILE" "$MEMORY_RESTARTED_FILE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          prepared = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          restarted = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if (
+              prepared.get("kind") != "sasori.container-memory-acceptance"
+              or prepared.get("phase") != "prepare"
+              or restarted.get("kind") != prepared.get("kind")
+              or restarted.get("phase") != "after-restart"
+              or restarted.get("verified") is not True
+              or restarted.get("run_binding_reloaded") is not True
+              or restarted.get("memory_id") != prepared.get("memory_id")
+              or restarted.get("revision") != prepared.get("revision")
+              or restarted.get("collection_revision")
+              != prepared.get("collection_revision")
+              or restarted.get("generation") != prepared.get("generation")
+          ):
+              raise SystemExit("container Memory restart evidence is inconsistent")
+          PY
 
           action_snapshot 1 "$ACTION_RESTARTED_FILE"
           if ! cmp -s "$ACTION_COMPLETE_FILE" "$ACTION_RESTARTED_FILE"; then
@@ -471,6 +506,8 @@ jobs:
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           token_file="${SASORI_TOKEN_FILE:-$RUNNER_TEMP/sasori-token-$suffix}"
           evidence_file="${CONTAINER_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-container-evidence-$suffix.json}"
+          memory_prepared="${MEMORY_PREPARED_FILE:-$RUNNER_TEMP/sasori-memory-prepared-$suffix.json}"
+          memory_restarted="${MEMORY_RESTARTED_FILE:-$RUNNER_TEMP/sasori-memory-restarted-$suffix.json}"
           tamper_file="${ARTIFACT_TAMPER_FILE:-$RUNNER_TEMP/sasori-artifact-tamper-$suffix.json}"
           paused_file="${ACTION_PAUSED_FILE:-$RUNNER_TEMP/sasori-action-paused-$suffix.json}"
           complete_file="${ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-action-complete-$suffix.json}"
@@ -503,6 +540,8 @@ jobs:
                 "runtime log:$runtime_log" \
                 "second-owner log:$owner_log" \
                 "acceptance evidence:$evidence_file" \
+                "Memory prepared evidence:$memory_prepared" \
+                "Memory restarted evidence:$memory_restarted" \
                 "artifact tamper evidence:$tamper_file" \
                 "paused action evidence:$paused_file" \
                 "completed action evidence:$complete_file" \
@@ -528,6 +567,8 @@ jobs:
             echo "### Container product gate evidence"
             for item in \
               "acceptance:$evidence_file" \
+              "memory-prepared:$memory_prepared" \
+              "memory-restarted:$memory_restarted" \
               "artifact-tamper:$tamper_file" \
               "paused-action:$paused_file" \
               "completed-action:$complete_file" \
@@ -584,6 +625,8 @@ jobs:
           name: sasori-container-${{ github.sha }}
           path: |
             ${{ runner.temp }}/sasori-container-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-memory-prepared-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-memory-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-artifact-tamper-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json

@@ -8,10 +8,13 @@ ENV PIP_INDEX_URL=${PYTHON_INDEX_URL} \
 WORKDIR /build
 COPY requirements-build.txt ./
 RUN python -m pip install --require-hashes -r requirements-build.txt
-COPY pyproject.toml README.md LICENSE THIRD_PARTY_NOTICES.md ./
+COPY pyproject.toml MANIFEST.in README.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY licenses ./licenses
 COPY src ./src
-RUN python -m pip wheel --no-build-isolation --no-deps --wheel-dir /wheels .
+RUN find src -type d \( -name "*.egg-info" -o -name "__pycache__" \) \
+      -prune -exec rm -rf -- {} + \
+    && find src -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete \
+    && python -m pip wheel --no-build-isolation --no-deps --wheel-dir /wheels .
 
 FROM ${PYTHON_BASE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \

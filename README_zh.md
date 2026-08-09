@@ -13,6 +13,7 @@
   <a href="README.md">English</a> ·
   <a href="#30-秒启动">快速开始</a> ·
   <a href="docs/FOUNDATION.md">架构</a> ·
+  <a href="docs/MEMORY.md">Memory</a> ·
   <a href="docs/BENCHMARK-LEAGENT-TOFU.md">LeAgent / ToFu 对标</a> ·
   <a href="docs/RELEASE.md">发布证据</a>
 </p>
@@ -45,6 +46,7 @@ Runtime：Python、CLI、HTTP 与 Workbench 全部驱动同一条单 Agent Loop�
 | 崩溃后结果不确定怎么办 | 调用前先持久化 dispatch intent；歧义结果停在 `effect_unknown`，等待人工核验恢复 |
 | 多入口会不会各写一套逻辑 | Python、CLI、HTTP、应用与 Workbench 都汇入 `Harness.run()` / `resume()` |
 | 上下文快装不下时 | 默认做确定性结构投影；可选具名 compactor 选择冷历史时不拆散 tool call/result 原子，完整耐久 transcript 始终不改写 |
+| Memory 如何避免玄学 | 可选 `sasori_memory` 用独立 SQLite 保存 immutable revisions，完整 fixed scope 在排序前过滤，每次 mutation 都走 Harness approval/idempotency |
 | 交付物如何耐久化 | 可选 `sasori_artifacts` 把 immutable bytes、metadata 与公共事件绑定到精确 run，不扩张 Loop |
 | 如何从小框架长成大产品 | Provider、SQLite、RAG、MCP、Git、workspace、apps、catalog、server、UI 全在核心外装配 |
 | 如何证明不是 PPT | fake model、provider conformance、进程崩溃、reducer 竞态、真实浏览器、包与容器门禁 |
@@ -128,8 +130,11 @@ flowchart LR
 
     M -. 可选 .-> P1["OpenAI / Anthropic"]
     M -. 可选 .-> CX["结构投影 + 语义压缩"]
+    M -. 可选 .-> MM["Durable bounded Memory adapter"]
     T -. 可选 .-> X["Workspace / Web / RAG / Git / MCP"]
+    T -. 可选 .-> MT["Memory search / remember / forget"]
     R -. 可选 .-> SQ["SQLite durability"]
+    MM -. 独立权威库 .-> MSQ["Memory SQLite"]
 ```
 
 实线属于核心；虚线模块可替换、按需安装，并留在 Loop 外。Workbench 背后没有
@@ -207,6 +212,60 @@ SQLite 中的完整 transcript 始终不改写。这是语义压缩，不是长�
 [ADR-0009](docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md) 与
 [ADR-0011](docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md)。
 
+## 有边界的 Memory，不讲玄学
+
+`sasori_memory` 是核心外、显式 opt-in 的耐久投影。它不会把 transcript、RAG 索引
+或 semantic-compaction cache 换个名字冒充 Memory。一套 record protocol 同时支持
+`episodic`、`semantic`、`procedural` 三种 kind，并提供：
+
+- immutable revision 与 expected-revision CAS；
+- 来自已提交 Harness tool call 的精确 source lineage，以及互相独立的 operation /
+  observation identity；
+- provider call ID 在共享的 1–256 UTF-8 字节、无 NUL 合同内保持 opaque、区分大小写；
+  非法值或 257-byte 值会在审批与执行前停止，也绝不会成为 Memory idempotency key；
+- SQL 先按完整 owner/app/scope/session 过滤，再做确定性 lexical ranking；query、
+  candidate、result、injection 和 final context 都有硬上限，分数明确是
+  `term_coverage_bps` 相关度，不是真实性或置信度；
+- exact item、source 和 whole scope suppression；重放与 generation rebuild 都不能
+  让删除的投影复活；
+- 新索引 generation 完整构建后一次原子切换；
+- 幂等重放会核验 request、operation kind、完整 binding、audit digest、严格结果
+  envelope 与底层 immutable record/suppression，不会把伪造 JSON 当成历史真相；
+- 每个已提交 model/tool phase 只有一次进程内 invocation lease，旧的父 task 或复制
+  context 不能再次调用 Memory。
+
+Research 与 Developer 只有在四项 deployment-owned 配置全部存在时才启用：
+
+```bash
+export SASORI_MEMORY_DB=./sasori-memory.sqlite3
+export SASORI_MEMORY_OWNER_ID=local-owner
+export SASORI_MEMORY_SCOPE_ID=private
+export SASORI_MEMORY_SESSION_ID=default
+```
+
+自动 recall 会把普通长 user turn 确定性地投影到显式 search API 的 byte/term 限制，
+不会因为第 17 个词或大于 2048 bytes 就让整个 Agent 失败。fresh recall 以普通
+assistant data 进入 host-only protected prelude，仍与当前问题、结构投影和语义压缩
+共用同一个最终预算。空间不足时只按稳定 rank 删除完整低位记录并报告
+`omitted_count`；绝不切半一条记录，也不会把本轮 recall 当作旧对话静默删除。
+
+`search_memory` 是 read-only；`remember_memory` 与 `forget_memory` 是 idempotent，
+必须先经过操作者批准。v1 没有后台 extractor：model proposal 保存为
+`model-proposed-unverified`，批准只授权写入，不证明内容为真。被召回文本仍可能
+影响模型；它不会直接成为 system policy、tool call/result、approval、effect
+evidence、公共 event 或 checkpoint，模型新提出的 effect 仍走 Harness 原闸门。
+
+whole-scope forget 后，read 返回带 `scope_status=suppressed` 的版本化空结果，因此
+当前确认回复和后续 run 都能继续；写入与 rebuild 继续拒绝，v1 没有隐式 restore。
+删除只影响 Memory 投影，不会删除 source run、events、artifacts、provider data、
+日志或备份。
+
+这一阶段的身份边界是 `local-single-owner`：每个 runtime 只有固定的 application /
+scope / session namespace。当前 bearer token 认证的是 Sasori instance，不是用户或
+tenant，所以不能宣称 shared SaaS 中的 per-user private Memory。详见
+[Memory](docs/MEMORY.md) 与
+[ADR-0012](docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md)。
+
 ## 不让产物拖大核心的 ArtifactRef
 
 可信 Python host 可以在真实 run 建立后显式注册有界交付物：
@@ -265,11 +324,12 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 | `SQLiteStore` | 原子 revision/checkpoint/event、CAS、重启恢复、跨进程单 owner |
 | Providers | 标准库 OpenAI Responses 与 Anthropic Messages；strict schema 与共享 conformance |
 | `sasori_context` | 确定性结构投影；可选具名 semantic compactor；source lineage、有界输出/cache/诊断、显式失败 |
+| `sasori_memory` | 可选 fixed-scope SQLite 权威库；immutable revision/CAS、source lineage、有界 lexical recall、suppression、atomic rebuild、Harness-gated tools |
 | `sasori_artifacts` | immutable content-addressed blobs、run/event association、verified list/content/HEAD/Range |
 | CLI | run/status/events/approval/resume/effect；JSON/JSONL 模式 |
 | HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、readiness、Workbench |
 | Applications | 确定性 Incident；需配置的 Research 与 Developer |
-| Plugins | workspace、allowlisted HTTPS、SQLite/FTS5 RAG、Git、冻结 MCP stdio |
+| Plugins | workspace、allowlisted HTTPS、SQLite/FTS5 RAG、Git、冻结 MCP stdio；配置后注册第一方 Memory |
 | Catalog | 严格本地 curated index；中央 marketplace 尚未上线 |
 | Delivery | source、wheel、重建 sdist、Compose candidate、SBOM binding、多系统矩阵 |
 
@@ -277,9 +337,9 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 
 - **Incident Chamber**：确定性诊断 + 一个经操作者批准的本地审计动作。
 - **Research Atelier**：已配置 provider + allowlisted web evidence + 保留引用的
-  SQLite/FTS5 retrieval。
+  SQLite/FTS5 retrieval + 可选 fixed-scope Memory。
 - **Puppet Workshop**：已配置 provider + 有界 workspace tools + state-bound Git
-  + 可选冻结 MCP tools。
+  + 可选冻结 MCP tools 与 fixed-scope Memory。
 
 配置不足会显示 unavailable，不会偷偷用 Incident Demo 冒充成功。
 
@@ -401,7 +461,8 @@ token 用量、账单或成本收益证据；这些凭据化评测仍然开放�
 |---|---|
 | 标准库轻核 | Artifact access grant、版本链与 lifecycle/GC |
 | immutable run-scoped ArtifactRef + 安全文本/JSON 预览 | 通过专项内容校验门禁后的安全 PDF/image preview |
-| 单 Agent Loop 与一个 Runtime path | 具备 scope/version/source 的 durable bounded Memory |
+| 单 Agent Loop 与一个 Runtime path | multi-user Memory 所需的可信 per-request user/tenant identity |
+| 本地 single-owner durable bounded Memory | 自动低信任 extraction、conflict policy、embedding/rerank、TTL/export/restore |
 | 版本化耐久事件与纯 UI reducer | 动态 skill selection 与受审市场 |
 | approval、effect fingerprint、崩溃歧义恢复 | 复用同一 tool/effect contract 的 typed Workflow |
 | OpenAI + Anthropic conformance | 通过共享套件后的更多 providers |

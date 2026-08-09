@@ -13,6 +13,7 @@
   <a href="https://github.com/syusama/sasori/blob/main/README_zh.md">简体中文</a> ·
   <a href="#thirty-second-start">Quick Start</a> ·
   <a href="https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md">Architecture</a> ·
+  <a href="https://github.com/syusama/sasori/blob/main/docs/MEMORY.md">Memory</a> ·
   <a href="https://github.com/syusama/sasori/blob/main/docs/BENCHMARK-LEAGENT-TOFU.md">LeAgent / ToFu benchmark</a> ·
   <a href="https://github.com/syusama/sasori/blob/main/docs/RELEASE.md">Release evidence</a>
 </p>
@@ -48,6 +49,7 @@ drive the same single-agent loop.
 | Crash ambiguity | dispatch intent is durable; unknown outcomes stop at `effect_unknown` for explicit operator recovery |
 | One runtime everywhere | Python, CLI, HTTP, first-party apps, and Workbench converge on `Harness.run()` / `resume()` |
 | Context under pressure | deterministic structural projection is the default; an opt-in named compactor selects cold history without splitting tool-call/result atoms, while the durable transcript stays unchanged |
+| Memory without mythology | opt-in `sasori_memory` keeps immutable revisions in a separate SQLite authority, filters the complete fixed namespace before ranking, and routes every mutation through Harness approval/idempotency |
 | Durable deliverables | optional `sasori_artifacts` binds immutable bytes, metadata, and a public event to the exact run without enlarging the Loop |
 | Small-to-large composition | providers, SQLite, RAG, MCP, Git, workspace tools, apps, catalog, server, and UI stay outside core |
 | Evidence, not slogans | deterministic fakes, provider conformance, process-crash tests, live/cold reducer tests, real-browser journeys, package and container gates |
@@ -133,8 +135,11 @@ flowchart LR
 
     M -. optional .-> P1["OpenAI / Anthropic adapters"]
     M -. optional .-> CX["Structural + semantic context adapters"]
+    M -. optional .-> MM["Durable bounded Memory adapter"]
     T -. optional .-> X["Workspace / Web / RAG / Git / MCP"]
+    T -. optional .-> MT["Search / remember / forget Memory tools"]
     R -. optional .-> SQ["SQLite durability"]
+    MM -. separate authority .-> MSQ["Memory SQLite"]
 ```
 
 The core owns only the solid path. Dotted modules are replaceable and stay out
@@ -219,6 +224,81 @@ window. Details: [Context](https://github.com/syusama/sasori/blob/main/docs/CONT
 [ADR-0009](https://github.com/syusama/sasori/blob/main/docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md),
 and [ADR-0011](https://github.com/syusama/sasori/blob/main/docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md).
 
+## Memory with boundaries, not mythology
+
+`sasori_memory` is an opt-in, core-external durable projection. It does not
+rename the transcript, RAG index, or semantic-compaction cache as “Memory.” One
+record protocol supports `episodic`, `semantic`, and `procedural` kinds with:
+
+- immutable revisions and expected-revision CAS;
+- exact source lineage from the committed Harness tool call, plus separate
+  operation and observation identities;
+- provider call IDs remain opaque, case-preserving evidence within the shared
+  1-through-256 UTF-8 byte/no-NUL contract; invalid or 257-byte IDs stop before
+  approval and dispatch and never become Memory idempotency keys;
+- SQL scope filtering before deterministic lexical ranking, hard query/
+  candidate/result/injection limits, stable tie-breaks, and an explicitly named
+  `term_coverage_bps` relevance score;
+- automatic recall projects long ordinary user turns into the explicit search
+  limits, then keeps fresh recall as fully budgeted ordinary assistant data;
+- final context pressure removes whole lowest-ranked hits and reports omissions;
+  it never clips a Memory record or silently drops the entire recall as old chat;
+- exact-item, source, and whole-scope suppression; replay and generation rebuild
+  cannot resurrect a deleted projection;
+- a new derived-index generation built and validated before one atomic active
+  generation switch;
+- replay of a committed Memory mutation with the same Harness key returning the
+  audit-digest- and durable-record-verified original result instead of appending
+  a second active revision;
+- one-use invocation leases that make copied or stale model/tool contexts fail
+  before a second Memory access.
+
+First-party Research and Developer applications enable it only when all four
+deployment-owned settings are present:
+
+```bash
+export SASORI_MEMORY_DB=./sasori-memory.sqlite3
+export SASORI_MEMORY_OWNER_ID=local-owner
+export SASORI_MEMORY_SCOPE_ID=private
+export SASORI_MEMORY_SESSION_ID=default
+```
+
+When enabled, Memory is required: a missing run bridge, changed binding,
+consumed invocation lease, incompatible/corrupt database, or bounded-retrieval
+failure stops before the primary model. A deliberately suppressed whole scope
+instead returns a versioned empty read result so the deleting and later runs can
+continue; writes and rebuild remain blocked. The composition stays on the one
+runtime path:
+
+```text
+Harness
+  -> application prompt
+  -> MemoryContextModel
+  -> structural / semantic context adapter
+  -> provider
+```
+
+`search_memory` is read-only. `remember_memory` and `forget_memory` are
+idempotent tools and therefore stop for explicit operator approval. There is no
+background extractor: model-proposed content is stored as
+`model-proposed-unverified`, and approval authorizes the write without proving
+the text true.
+
+Recalled text is serialized under a host guard as ordinary untrusted assistant
+data with a host-only budget-protection marker. Providers still see an assistant
+message, not system/tool authority. It can influence the model. It never directly
+becomes system policy, a provider tool call/result, approval, effect evidence, a
+public event, or a checkpoint; any newly proposed effect still crosses the
+ordinary Harness gate.
+
+This first slice is deliberately `local-single-owner` with one immutable
+application/scope/session namespace per configured runtime. The current bearer
+token authenticates a Sasori instance, not a person or tenant, so this is not
+private per-user SaaS Memory. Memory deletion removes only the Memory projection,
+not source runs, events, artifacts, provider data, logs, or backups. See
+[Memory](https://github.com/syusama/sasori/blob/main/docs/MEMORY.md) and
+[ADR-0012](https://github.com/syusama/sasori/blob/main/docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md).
+
 ## Immutable artifacts without core bloat
 
 Trusted Python hosts can publish a bounded deliverable after a run exists:
@@ -281,11 +361,12 @@ The no-build UI includes:
 | `SQLiteStore` | atomic revisions/checkpoints/events, CAS, restart recovery, one cross-process owner |
 | Providers | stdlib OpenAI Responses and Anthropic Messages adapters; strict schema and shared conformance |
 | `sasori_context` | deterministic structural projection; opt-in named semantic compactor; source lineage, bounded output/cache/diagnostics, explicit failure |
+| `sasori_memory` | opt-in fixed-scope SQLite authority; immutable revisions/CAS, source lineage, bounded lexical recall, suppression, atomic rebuild, Harness-gated tools |
 | `sasori_artifacts` | immutable content-addressed blobs; run/event association; verified list/content/HEAD/Range |
 | CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
 | HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
 | Applications | deterministic Incident; configured Research; configured Developer |
-| Plugins | bounded workspace, allowlisted HTTPS fetch, SQLite/FTS5 RAG, local Git, frozen MCP stdio |
+| Plugins | bounded workspace, allowlisted HTTPS fetch, SQLite/FTS5 RAG, local Git, frozen MCP stdio; first-party Memory registration when configured |
 | Catalog | strict local curated index and manifest checks; no central marketplace yet |
 | Delivery | source, wheel, rebuilt sdist, Compose candidate, SBOM binding, Windows/Linux matrices |
 
@@ -294,9 +375,9 @@ The three applications are compositions, not three engines:
 - **Incident Chamber** — deterministic diagnosis and one operator-approved
   local audit action.
 - **Research Atelier** — configured provider + allowlisted web evidence +
-  citation-preserving SQLite/FTS5 retrieval.
+  citation-preserving SQLite/FTS5 retrieval + optional fixed-scope Memory.
 - **Puppet Workshop** — configured provider + bounded workspace tools +
-  state-bound local Git + optional frozen MCP tools.
+  state-bound local Git + optional frozen MCP tools and fixed-scope Memory.
 
 Unavailable configuration is reported as unavailable; Sasori does not silently
 replace an app with the demo.
@@ -340,6 +421,7 @@ Read the trust records before enabling third-party code:
 - [ADR-0004: Git boundary](https://github.com/syusama/sasori/blob/main/docs/ADR-0004-GIT-PLUGIN-BOUNDARY.md)
 - [ADR-0005: MCP stdio](https://github.com/syusama/sasori/blob/main/docs/ADR-0005-MCP-STDIO-BOUNDARY.md)
 - [ADR-0007: external plugin host](https://github.com/syusama/sasori/blob/main/docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md)
+- [ADR-0012: Durable bounded Memory](https://github.com/syusama/sasori/blob/main/docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md)
 
 ## CLI and local service
 
@@ -429,7 +511,8 @@ or cost savings; those credentialed evaluations remain open.
 |---|---|
 | Tiny standard-library core | Artifact access grants, version lineage, and lifecycle/GC |
 | Immutable run-scoped ArtifactRef + safe text/JSON preview | Safe PDF/image preview after dedicated content-validation gates |
-| Single-agent loop and one runtime path | Durable bounded Memory with scoped, versioned retrieval |
+| Single-agent loop and one runtime path | Trusted per-request user/tenant identity for multi-user Memory |
+| Local single-owner durable bounded Memory | Automatic low-trust extraction, conflict policy, embeddings/rerank, TTL/export/restore |
 | Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
 | Approval, effect fingerprints, crash ambiguity recovery | Typed Workflow on the same tool/effect contracts |
 | OpenAI + Anthropic conformance | More providers after the shared suite passes |

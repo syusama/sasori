@@ -4,9 +4,11 @@
 >
 > Sasori 最新已托管验证基线：[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206)，[Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164) 全绿
 >
-> 本文对 Sasori Current 能力的结论绑定上述 exact commit/run；后续 revision 必须重新取得自己的证据，不能继承该结论
+> 上述 exact commit/run 只绑定它实际包含的 Sasori Current 能力；后续 revision 必须重新取得自己的证据，不能继承该结论
 >
 > 该 exact commit/run 已覆盖 opt-in Semantic compaction 的确定性合同和集成门禁；真实模型摘要质量、事实召回、unsupported/contradiction、provider token 与账单仍未验证
+>
+> 本文中的 Durable Memory Current 结论例外：它描述 [ADR-0012](ADR-0012-DURABLE-BOUNDED-MEMORY.md) 已接受的本地 `local-single-owner` 切片，证据仅为确定性测试、package 和国内源 container 门禁；它不在 `8751b4e` / run `31306732164` 中，exact-revision Hosted 证据尚待后续晋升
 >
 > LeAgent 基线：[`1f16badc`](https://github.com/vixues/LeAgent/tree/1f16badc834abbd829d3cb7e9f8fcb5b2d57f443)
 >
@@ -14,7 +16,7 @@
 
 这不是按 README 关键词计数的功能表。LeAgent/ToFu 结论来自上述固定 commit
 的入口、运行循环、事件、持久化、工具、上下文、插件、部署、测试和 UI 源码；
-Sasori 的 Hosted 结论只绑定 `8751b4e` 与 run `31306732164`。上游随时会变化；
+Sasori 的 Hosted 结论只绑定 `8751b4e` 与 run `31306732164`，不包含本地接受的 Memory 切片。上游随时会变化；
 重新做产品决策前必须刷新 Sasori、LeAgent、ToFu 的 commit 与证据。
 
 ## 结论先行
@@ -24,9 +26,9 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 
 - 相比 LeAgent，Sasori 的工具副作用语义、批准指纹、崩溃歧义恢复、运行时
   权限披露、发布锁定和真实浏览器闭环更严格；LeAgent 的文件产物、上下文、
-  Workflow、Memory、GenUI 和桌面产品更完整。
+  Workflow、automatic Memory extraction/rerank、GenUI 和桌面产品更完整。
 - 相比 ToFu，Sasori 的核心可读性、不可变契约、纯事件投影、工具协议拒绝、
-  依赖/镜像完整性和 claim 边界更强；ToFu 的上下文工程、长期 Memory、项目
+  依赖/镜像完整性和 claim 边界更强；ToFu 的多层上下文、Memory rerank、项目
   协作、多 Agent、API/客户端和产品覆盖面更广。
 - “比两者强”不能等价为堆出更多菜单。Sasori 的胜出公式是：**先让每一项
   机制在失败与恢复路径上更可信，再通过核心外模块快速扩展产品面**。
@@ -37,7 +39,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 > Workbench 牵引到同一条可恢复、可审计的单 Agent 路径；Provider、Context、
 > Storage、RAG、Apps 与 UI 在核心外按需装配。
 
-不得在当前 README 中宣称：已具备完整语义 Memory、Artifact access grant/版本
+不得在当前 README 中宣称：已具备 per-user/tenant 或自动抽取的完整语义 Memory、Artifact access grant/版本
 生命周期、Workflow、多 Agent、插件沙箱、水平扩展、中央市场或正式签名发布。
 
 ## 判定口径
@@ -61,7 +63,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 工具协议 | malformed/truncated 不执行；异常显式 tool error；duplicate call 拒绝 | 统一 ToolExecutor，类型/审批面丰富 | ToolSpec/registry 与统一 dispatch 较完整 | Sasori 故障语义胜 |
 | 副作用恢复 | effect/revision/idempotency、dispatch intent、`effect_unknown`、人工恢复、真实 crash tests | 有审批/checkpoint，但未见等价的 side-effect ambiguity contract | 有事件、审批、写入 freshness/idempotency 元数据；崩溃后执行恢复边界不等价 | Sasori 明显胜 |
 | Context | `8751b4e` 已托管验证结构安全投影及核心外、具名的整包 digest 回显/低信任未验证注记 adapter，包括严格 schema、最终复测、typed failure、summarizer cancellation、deadline 装配与进程内 lineage/cache；真实模型质量、tool-truth ledger、durable archive、provider usage 尚未验证 | ContextSource、预算、压缩与 recall 更全面；固定快照的 `memory.compact.build_autocompact` 路径在 cache miss 时直接用 recent tail，key 对每条旧 message content 只取前 200 characters，summarizer transcript 按字符 `[:20_000]` 截断 | 三层 compaction、cache-aware 预算与 archive 产品面很强；固定快照的 L2 query-aware formatter 排除 tool message，L2 archive write 返回 `None` 后仍可继续 compact，cheap capability fallback 也没有 summary-provider affinity 保证 | Sasori 结构/失败边界更严格；ToFu 分层广度仍胜 |
-| Memory | RAG/FTS5 是独立插件，不等于长期 Memory | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 落后 |
+| Memory | 本地已接受的核心外 fixed-scope SQLite authority：三类 kind 共用 immutable revision/CAS/source lineage；operation/observation identity、audit-verified replay、SQL scope-first lexical rank、whole-record final-budget merge、exact/source/scope suppression、atomic generation switch；exact Hosted 待验证，仅 local-single-owner，无自动 extractor/vector/rerank/profile quality claim | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 耐久/恢复/删除合同更强；竞品产品与语义检索广度仍胜 |
 | Artifact/FileRef | `94f4d0e` 已托管验证核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 的最小可靠闭环胜；竞品广度仍胜 |
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
 | Workflow | 未交付 | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 落后 |
@@ -123,7 +125,9 @@ prompt；Milvus 默认关闭，向量不可用时走 BM25/ILIKE lexical fallback
    queue 是进程内状态；PostgreSQL 和 sticky session 不是 durable worker protocol。
 3. **Memory 去重缺陷。** `observe_turn()` 以 `turn_id` 去重，但当前
    `TurnObservation` 无该字段，key 退化为 session；同 session 后续回合可能被误判
-   为重复。Sasori 的 Memory 验收必须包含同会话两个不同 turn 与崩溃重放。
+   为重复。Sasori 已把同会话不同 run/turn observation、Memory commit 后 core
+   result commit 前崩溃重放、伪造 operation result/audit、uppercase opaque call ID
+   固化成确定性验收；这证明身份/恢复合同，不证明事实质量。
 4. **Skill 供应链。** 普通登录用户可走 API 安装全局 skill；URL 重定向/私网边界、
    archive link、可选 sha256、自动向 backend interpreter 安装 Python 依赖等组合
    风险不能进入 Sasori。第三方 skill 必须继续被称为 trusted installed code，直到
@@ -169,6 +173,14 @@ Harness 原有 approval/effect 合同。这证明的是 Sasori 的协议和故�
 保护，以及原文 snapshot/event/retention 产品面仍领先；L2 advanced compaction 会重写
 prefix，archive write failure 也可在返回 `None` 后继续。Sasori 的进程内 cache/diagnostics
 不能冒充 durable archive、真实 provider cache hit 或长期 Memory。
+
+Sasori 当前的 `sasori_memory` 已补上窄而强的 durable baseline：固定 deployment
+binding 在 SQL ranking 前过滤；三类 Memory 共用 immutable revision/CAS、source
+lineage、operation/observation identity、suppression 与 atomic generation switch；
+fresh recall 作为普通 assistant data 与 current turn/semantic compaction 合用最终预算，
+低位记录整条淘汰而不是切片。whole-scope forget 后 read 明确为空、write/rebuild
+仍拒绝。它没有复制 ToFu 的 BM25 top-40 + cheap-model rerank、profile core/detail、
+archive 或跨用户产品面，也没有真实 Recall@k/factual precision 证据。
 
 ### 4. 截断工具调用防线值得学，但授权语义仍可更严格
 
@@ -217,7 +229,8 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 
 - “100% secure / production ready / exactly once / isolated sandbox”。
 - “支持所有模型、所有部署、无限扩展”。
-- 未真实运行的 provider smoke、marketplace、workflow、多 Agent、Memory。
+- 未真实运行的 provider smoke、marketplace、workflow、多 Agent、per-user Memory、
+  automatic extraction/vector/rerank 或真实 Memory quality。
 - 把安装 entry point、路径检查、manifest permission 说成隔离或权限 enforcement。
 - 为了显得功能多，复制竞品的菜单、文案或视觉资产。
 
@@ -238,7 +251,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 | 增量 | 验收定义 |
 |---|---|
 | Semantic compaction | `8751b4e` / Hosted run `31306732164` 已验证：冷区选择不拆工具组、`tools=()`、排除 `provider_state` 的整包 public-projection digest 回显、严格 schema、有损未验证 assistant note、最终预算复测、typed failure、summarizer-stage cancellation、有界进程 cache/诊断、原 transcript 不变；尚无 tool-truth ledger，真实模型 recall/unsupported/contradiction/denied-effect/citation 评测仍开放 |
-| Durable Memory | bounded retrieval；source/score/version；同 session 多 turn；删除/重建；注入失败关闭 |
+| Durable Memory | 本地 `local-single-owner` 切片已在 deterministic、package 与国内源 container 门禁后标为 accepted；已实现 fixed binding、source/score/version、same-session multi-turn、CAS、audit-verified replay、whole-record final-budget merge、删除/重建/崩溃回归；exact-revision Hosted 证据尚待晋升，真实模型质量与 per-user identity 仍是 Next |
 | Artifact Workbench | `94f4d0e` 已交付并托管验证 text/JSON 安全预览、认证下载、冷加载、stale-run 隔离与真实浏览器链；图片/PDF 需独立内容校验后再开放 |
 | Skill selection | progressive disclosure；确定性 eligibility；预算；恶意 SKILL.md；不自动执行安装脚本 |
 | Curated marketplace | immutable digest、publisher/review、compatibility、撤回、升级差异、权限再批准 |

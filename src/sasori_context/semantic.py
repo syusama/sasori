@@ -32,6 +32,7 @@ from sasori import (
 
 from .budget import (
     ContextProjector,
+    _protected_prefix_length,
     _canonical,
     _digest,
     _measure,
@@ -551,9 +552,13 @@ class SemanticCompactionModel:
         if not projection.compacted:
             return await self.model.complete(projection.messages, tools)
 
-        prefix_length = 0
-        while prefix_length < len(messages) and messages[prefix_length].role == "system":
-            prefix_length += 1
+        prefix_length = _protected_prefix_length(messages)
+        system_prefix_length = 0
+        while (
+            system_prefix_length < prefix_length
+            and messages[system_prefix_length].role == "system"
+        ):
+            system_prefix_length += 1
         source_end = prefix_length + projection.removed_messages
         source = messages[prefix_length:source_end]
         source_value, source_sha256 = _public_source(source)
@@ -646,8 +651,10 @@ class SemanticCompactionModel:
                 ),
             )
             return (
-                projection.messages[:prefix_length]
-                + (marker, Message("assistant", selected.text))
+                projection.messages[:system_prefix_length]
+                + (marker,)
+                + projection.messages[system_prefix_length:prefix_length]
+                + (Message("assistant", selected.text),)
                 + projection.messages[retained_start:]
             )
 

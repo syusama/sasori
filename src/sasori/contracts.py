@@ -7,6 +7,40 @@ from typing import Literal, Protocol
 
 
 ToolEffect = Literal["read_only", "idempotent", "side_effecting"]
+MAX_TOOL_CALL_ID_BYTES = 256
+MAX_APP_ID_BYTES = 64
+
+
+def is_valid_app_id(value: object) -> bool:
+    """Return whether an application ID fits the public runtime contract."""
+
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        encoded = value.encode("ascii", "strict")
+    except UnicodeEncodeError:
+        return False
+    return (
+        len(encoded) <= MAX_APP_ID_BYTES
+        and ("a" <= value[0] <= "z" or "0" <= value[0] <= "9")
+    ) and all(
+        "a" <= character <= "z"
+        or "0" <= character <= "9"
+        or character in "._-"
+        for character in value[1:]
+    )
+
+
+def is_valid_tool_call_id(value: object) -> bool:
+    """Return whether an opaque provider call ID fits the public core contract."""
+
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        encoded = value.encode("utf-8", "strict")
+    except UnicodeEncodeError:
+        return False
+    return b"\x00" not in encoded and len(encoded) <= MAX_TOOL_CALL_ID_BYTES
 
 
 def _freeze_event_value(value: object) -> object:

@@ -16,6 +16,8 @@ from .app import AppLoadError, load_harness
 from .contracts import (
     ApprovalRequest,
     Event,
+    MAX_APP_ID_BYTES,
+    MAX_TOOL_CALL_ID_BYTES,
     Message,
     Model,
     ModelReply,
@@ -26,6 +28,8 @@ from .contracts import (
     ToolCall,
     ToolEffect,
     WorkerSpec,
+    is_valid_app_id,
+    is_valid_tool_call_id,
 )
 from .plugins import (
     FULL_HOST_PROCESS_PRIVILEGES,
@@ -88,6 +92,8 @@ __all__ = [
     "Harness",
     "FULL_HOST_PROCESS_PRIVILEGES",
     "InjectedFault",
+    "MAX_APP_ID_BYTES",
+    "MAX_TOOL_CALL_ID_BYTES",
     "MaxStepsExceeded",
     "Message",
     "ManifestError",
@@ -133,6 +139,8 @@ __all__ = [
     "StoreError",
     "StoredEvent",
     "event_projection",
+    "is_valid_app_id",
+    "is_valid_tool_call_id",
     "disclose_permissions",
     "discover_plugins",
     "load_enabled_plugins",

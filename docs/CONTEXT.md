@@ -42,6 +42,12 @@ projector = ContextProjector(
 Structural projection guarantees:
 
 - leading system messages are never silently discarded;
+- a host may place a contiguous `ProtectedContextMessage` prelude immediately
+  after those system messages. It remains ordinary assistant data and is fully
+  charged to the same budget, but cannot be silently treated as old history;
+- protected data in the middle/tail, with a non-assistant role, or carrying
+  tool-call/result/error/provider metadata fails closed. An ordinary assistant
+  message never gains this protection automatically;
 - at least `hot_turns` recent user turns are kept;
 - assistant tool calls and their complete immediate result set are atomic;
 - orphan, duplicate, mismatched, or incomplete tool results fail closed;
@@ -54,6 +60,12 @@ Structural projection guarantees:
   local audit digest and byte budget but not the digest sent to another model.
 
 The marker preserves no omitted facts and tells the model not to infer them.
+
+This narrow marker is used by the optional Memory adapter. It does not elevate
+recalled text to system authority. If protected data plus the current hot turn
+cannot fit, projection raises `ContextBudgetExceeded`; callers may first remove
+whole lower-ranked records, but the projector never clips a record or the
+current request.
 
 ## Semantic compaction is explicit opt-in
 
@@ -126,9 +138,10 @@ compaction failure.
 The primary model receives:
 
 1. the original leading system messages;
-2. a host-authored system guard with source and summary digests;
-3. the model-generated summary as a lossy, unverified ordinary assistant note;
-4. the protected recent turns, with every retained tool atom complete.
+2. any validated protected ordinary-data prelude, still in assistant role;
+3. a host-authored system guard with source and summary digests;
+4. the model-generated summary as a lossy, unverified ordinary assistant note;
+5. the protected recent turns, with every retained tool atom complete.
 
 The digest echo proves whole-request association, not factual entailment. Source
 content can still influence the summarizer, and its free-text note can influence

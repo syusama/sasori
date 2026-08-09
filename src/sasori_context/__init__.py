@@ -8,6 +8,7 @@ from .budget import (
     ContextProjectionError,
     ContextProjector,
     ContextStructureError,
+    ProtectedContextMessage,
     default_message_units,
 )
 from .semantic import (
@@ -26,6 +27,7 @@ __all__ = [
     "ContextProjectionError",
     "ContextProjector",
     "ContextStructureError",
+    "ProtectedContextMessage",
     "SemanticCompactionError",
     "SemanticCompactionModel",
     "SemanticCompactionPolicy",

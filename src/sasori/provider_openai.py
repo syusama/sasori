@@ -24,7 +24,7 @@ from ._provider_common import (
     validate_model,
     validate_tool_arguments,
 )
-from .contracts import Message, ModelReply, Tool, ToolCall
+from .contracts import Message, ModelReply, Tool, ToolCall, is_valid_tool_call_id
 
 
 _PROVIDER = "openai.responses"
@@ -162,8 +162,8 @@ def _text_and_calls(
             call_id = item.get("call_id")
             name = item.get("name")
             arguments = item.get("arguments")
-            if not isinstance(call_id, str) or not call_id:
-                raise _protocol("OpenAI function call has no call_id", request_id)
+            if not is_valid_tool_call_id(call_id):
+                raise _protocol("OpenAI function call has an invalid call_id", request_id)
             if call_id in call_ids:
                 raise _protocol("OpenAI function call IDs must be unique", request_id)
             if not isinstance(name, str) or not name:

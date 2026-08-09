@@ -13,6 +13,7 @@ from sasori_context import (
     ContextBudgetExceeded,
     ContextProjector,
     ContextStructureError,
+    ProtectedContextMessage,
     default_message_units,
 )
 
@@ -31,6 +32,79 @@ def units(messages: tuple[Message, ...]) -> int:
 
 
 class ContextBudgetTests(unittest.TestCase):
+    def test_protected_data_prelude_survives_long_history_and_is_budgeted(self) -> None:
+        system = Message("system", "policy")
+        protected = ProtectedContextMessage(
+            "assistant", '{"matches":[{"content":"alpha durable fact"}]}'
+        )
+        old = (
+            Message("user", "old user " * 400),
+            Message("assistant", "old answer " * 400),
+        )
+        current = Message("user", "alpha")
+        projection = ContextProjector(
+            ContextBudget(2600, reserve_units=0, hot_turns=1)
+        ).project((system, protected, *old, current))
+
+        self.assertIn(protected, projection.messages)
+        self.assertIn(current, projection.messages)
+        self.assertNotIn(old[0], projection.messages)
+        self.assertLessEqual(projection.projected_units, 2600)
+        with self.assertRaises(ContextBudgetExceeded):
+            ContextProjector(ContextBudget(300)).project(
+                (
+                    system,
+                    ProtectedContextMessage("assistant", "x" * 1000),
+                    current,
+                )
+            )
+
+    def test_protected_data_prelude_is_strictly_positioned_and_ordinary(self) -> None:
+        invalid = (
+            (
+                Message("system", "policy"),
+                Message("user", "hello"),
+                ProtectedContextMessage("assistant", "late"),
+            ),
+            (ProtectedContextMessage("user", "wrong role"), Message("user", "hello")),
+            (
+                ProtectedContextMessage(
+                    "assistant", "call", tool_calls=(ToolCall("x", "lookup", {}),)
+                ),
+                Message("user", "hello"),
+            ),
+            (
+                ProtectedContextMessage(
+                    "assistant", "result", tool_call_id="x", tool_name="lookup"
+                ),
+                Message("user", "hello"),
+            ),
+            (
+                ProtectedContextMessage(
+                    "assistant", "private", provider_state="opaque"
+                ),
+                Message("user", "hello"),
+            ),
+        )
+        projector = ContextProjector(ContextBudget(100_000))
+        for messages in invalid:
+            with self.subTest(messages=messages), self.assertRaises(
+                ContextStructureError
+            ):
+                projector.project(messages)
+
+    def test_ordinary_assistant_message_does_not_gain_budget_protection(self) -> None:
+        ordinary = Message("assistant", "ordinary oldest data " * 300)
+        messages = (
+            Message("system", "policy"),
+            ordinary,
+            Message("user", "old " * 300),
+            Message("assistant", "old answer " * 300),
+            Message("user", "latest"),
+        )
+        projection = ContextProjector(ContextBudget(2200)).project(messages)
+        self.assertNotIn(ordinary, projection.messages)
+
     def test_under_budget_preserves_exact_message_objects(self) -> None:
         messages = (Message("system", "policy"), Message("user", "hello"))
         projection = ContextProjector(ContextBudget(units(messages))).project(messages)

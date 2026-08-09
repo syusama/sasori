@@ -22,6 +22,17 @@ class ContextBudgetExceeded(ContextProjectionError):
 
 MessageUnits = Callable[[Message], int]
 
+
+class ProtectedContextMessage(Message):
+    """Ordinary model-visible data that budget projection must not drop.
+
+    This marker does not change the message role or grant system/tool authority.
+    It is reserved for a bounded host-authored prelude placed between the leading
+    system prefix and ordinary conversation turns.
+    """
+
+    __slots__ = ()
+
 _STRUCTURAL_REJECTION_CODES = frozenset(
     {"incomplete_tool_call", "malformed_arguments", "malformed_tool_call"}
 )
@@ -352,6 +363,41 @@ def _wire_history(messages: Sequence[Message]) -> tuple[Message, ...]:
     return tuple(projected)
 
 
+def _protected_prefix_length(messages: Sequence[Message]) -> int:
+    """Validate and return the system + protected-data prefix length."""
+
+    system_end = 0
+    while system_end < len(messages) and messages[system_end].role == "system":
+        system_end += 1
+    protected_end = system_end
+    while protected_end < len(messages) and isinstance(
+        messages[protected_end], ProtectedContextMessage
+    ):
+        message = messages[protected_end]
+        if (
+            type(message) is not ProtectedContextMessage
+            or message.role != "assistant"
+            or not isinstance(message.content, str)
+            or message.tool_calls
+            or message.tool_call_id is not None
+            or message.tool_name is not None
+            or message.error_code is not None
+            or message.provider_state is not None
+        ):
+            raise ContextStructureError(
+                "protected context must be ordinary assistant data"
+            )
+        protected_end += 1
+    if any(
+        isinstance(message, ProtectedContextMessage)
+        for message in messages[protected_end:]
+    ):
+        raise ContextStructureError(
+            "protected context must be a contiguous prelude after system messages"
+        )
+    return protected_end
+
+
 def _turns(messages: Sequence[Message]) -> tuple[tuple[Message, ...], ...]:
     turns: list[list[Message]] = []
     for atom in _atoms(messages):
@@ -409,6 +455,7 @@ class ContextProjector:
         history = tuple(messages)
         if any(not isinstance(message, Message) for message in history):
             raise TypeError("context history must contain only Message instances")
+        prefix_length = _protected_prefix_length(history)
         original_units = _measure(history, self.estimator)
         wire_history = _wire_history(history)
         wire_units = _measure(wire_history, self.estimator)
@@ -422,17 +469,11 @@ class ContextProjector:
                 self.estimator_name,
             )
 
-        prefix_length = 0
-        while (
-            prefix_length < len(history)
-            and history[prefix_length].role == "system"
-        ):
-            prefix_length += 1
         prefix = history[:prefix_length]
         turns = _turns(history[prefix_length:])
         if not turns:
             raise ContextBudgetExceeded(
-                "protected system context exceeds the configured message budget"
+                "protected system and data context exceeds the configured message budget"
             )
 
         hot_count = min(self.budget.hot_turns, len(turns))
@@ -451,8 +492,8 @@ class ContextProjector:
         protected_units = _measure(protected, self.estimator)
         if protected_units > self.budget.message_units:
             raise ContextBudgetExceeded(
-                "system prefix, compaction marker, and protected hot turns exceed "
-                "the configured message budget"
+                "system/data prefix, compaction marker, and protected hot turns "
+                "exceed the configured message budget"
             )
 
         while selected_start > 0:
@@ -524,5 +565,6 @@ __all__ = [
     "ContextProjectionError",
     "ContextProjector",
     "ContextStructureError",
+    "ProtectedContextMessage",
     "default_message_units",
 ]

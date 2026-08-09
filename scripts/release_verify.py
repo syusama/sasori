@@ -21,8 +21,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "6"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v4"
+VERIFIER_VERSION = "7"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v5"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -56,11 +56,13 @@ RELEASE_DOCS = (
     "docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md",
     "docs/ADR-0010-ARTIFACT-REF-BOUNDARY.md",
     "docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md",
+    "docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md",
     "docs/ARTIFACTS.md",
     "docs/BENCHMARK-LEAGENT-TOFU.md",
     "docs/CONTEXT.md",
     "docs/FOUNDATION.md",
     "docs/HTTP_API.md",
+    "docs/MEMORY.md",
     "docs/PROVIDERS.md",
     "docs/RELEASE.md",
 )
@@ -75,6 +77,7 @@ TOP_LEVEL_PACKAGES = (
     "sasori_artifacts",
     "sasori_context",
     "sasori_market",
+    "sasori_memory",
     "sasori_plugins",
     "sasori_web",
 )
@@ -575,6 +578,28 @@ def _build_inputs(source_root: Path) -> dict[str, object]:
     ):
         raise ReleaseVerificationError(
             "Docker context must exclude .secrets without negation", 3
+        )
+    recursive_cache_exclusions = {
+        "**/__pycache__",
+        "**/__pycache__/**",
+        "**/*.py[cod]",
+        "**/*.egg-info",
+        "**/*.egg-info/**",
+    }
+    if not recursive_cache_exclusions.issubset(dockerignore_patterns):
+        raise ReleaseVerificationError(
+            "Docker context must recursively exclude Python build caches", 3
+        )
+    if not all(
+        marker in docker
+        for marker in (
+            "COPY pyproject.toml MANIFEST.in ",
+            'find src -type d \\( -name "*.egg-info" -o -name "__pycache__" \\)',
+            'find src -type f \\( -name "*.pyc" -o -name "*.pyo" \\) -delete',
+        )
+    ):
+        raise ReleaseVerificationError(
+            "Docker builder must prune generated Python build state", 3
         )
     base = re.search(r"^ARG PYTHON_BASE=(\S+@sha256:[0-9a-f]{64})$", docker, re.MULTILINE)
     index = re.search(r"^ARG PYTHON_INDEX_URL=(https://\S+)$", docker, re.MULTILINE)

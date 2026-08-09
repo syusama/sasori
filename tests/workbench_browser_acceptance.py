@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
-EXPECTED = "PASS:stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
+EXPECTED = "PASS:memory-skill-surface,stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
 BROWSER_TIMEOUT_SECONDS = 35
 BROWSER_ATTEMPTS = 2
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"

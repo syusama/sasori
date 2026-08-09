@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib
 import importlib.metadata
 import importlib.resources
@@ -20,6 +21,7 @@ PACKAGES = (
     "sasori_artifacts",
     "sasori_context",
     "sasori_market",
+    "sasori_memory",
     "sasori_plugins",
     "sasori_web",
 )
@@ -152,6 +154,51 @@ def main() -> int:
         or any("x" * 100 in item.content for item in primary_model.messages)
     ):
         raise RuntimeError("installed semantic compaction contract is invalid")
+    MemoryBinding = getattr(modules["sasori_memory"], "MemoryBinding", None)
+    MemorySource = getattr(modules["sasori_memory"], "MemorySource", None)
+    MemoryStore = getattr(modules["sasori_memory"], "MemoryStore", None)
+    MemoryContextModel = getattr(
+        modules["sasori_memory"], "MemoryContextModel", None
+    )
+    if not all(
+        callable(item)
+        for item in (MemoryBinding, MemorySource, MemoryStore, MemoryContextModel)
+    ):
+        raise RuntimeError("installed Memory public exports are incomplete")
+    with tempfile.TemporaryDirectory(prefix="sasori-installed-memory-") as directory:
+        memory = MemoryStore(Path(directory) / "memory.sqlite3")
+        binding = MemoryBinding("local-owner", "research", "private", "default", 1)
+        source = MemorySource(
+            "harness-tool-call",
+            "installed-run",
+            "step-1",
+            1,
+            "installed-call",
+            hashlib.sha256(b"installed-call").hexdigest(),
+            "model-proposed-unverified",
+            "explicit-tool-v1",
+            hashlib.sha256(b"explicit-tool-v1").hexdigest(),
+        )
+        memory.bind_run("installed-run", binding)
+        remembered = json.loads(
+            memory.remember(
+                binding,
+                logical_key="installed.fact",
+                kind="semantic",
+                content="installed wheel Memory",
+                priority=50,
+                expected_revision=0,
+                source=source,
+                idempotency_key="installed-operation",
+            )
+        )
+        recalled = json.loads(memory.search(binding, "installed", 1))
+        if (
+            remembered.get("revision") != 1
+            or len(recalled.get("matches", ())) != 1
+            or recalled["matches"][0].get("memory_id") != remembered.get("memory_id")
+        ):
+            raise RuntimeError("installed Memory durability/retrieval contract is invalid")
     Event = getattr(modules["sasori"], "Event", None)
     SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
     ArtifactStore = getattr(modules["sasori_artifacts"], "ArtifactStore", None)

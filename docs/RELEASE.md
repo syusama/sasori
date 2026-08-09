@@ -200,8 +200,11 @@ Run three distinct gates on Python 3.11, 3.12, and 3.13 across Linux and
 Windows: the source regression suite, the installed-wheel smoke, and a source
 archive consumer rebuild. Both consumer paths run from a directory that cannot
 import the checkout's `src/`. The smoke verifies distribution metadata, zero
-runtime dependencies, seven import packages, eight Workbench resources, and all
-three console scripts.
+runtime dependencies, eight import packages (including the optional
+`sasori_memory` extension), eight Workbench resources, and all three console
+scripts. The installed-wheel smoke also creates a separate Memory database,
+writes one immutable revision, and retrieves it through the installed package;
+it does not import the source checkout.
 
 The source-archive gate rejects a missing, nested, symlinked, non-wheel, or
 multi-file build wheelhouse before launching a subprocess. It clears inherited
@@ -420,15 +423,30 @@ exact action, the expected final, and the exact SSE sequence 11-17 tail.
 `after-restart` performs only GET/SSE reads and requires the projection, event
 and SSE hashes, final, cursor, and effect count to remain unchanged.
 
+When the candidate includes `sasori_memory`, the same installed container image
+also runs a deterministic extension smoke against a separate file on the named
+data volume: bind one uppercase-valid run ID, append one immutable Memory
+revision with an opaque provider-style call ID, retrieve it, restart the
+container, and retrieve the same `memory_id`/revision again. CI pipes
+`scripts/container_memory_acceptance.py` into the installed container in
+`prepare` and `after-restart` phases, retains both strict JSON results on the
+host, and cross-checks their identity, revision, collection revision, and active
+generation. This proves package inventory and SQLite durability through the
+built image; it is not a credentialed provider, personal-Memory,
+factual-quality, or multi-tenant test.
+Do not enable first-party Research/Developer Memory in this Incident workflow
+or introduce a second Loop merely to perform the extension smoke.
+
 The CI job independently snapshots `/data/incident-actions.jsonl` as
-`0 → 1 → 1`, verifies its single JSON record exactly, and starts a second
+`0 -> 1 -> 1`, verifies its single JSON record exactly, and starts a second
 container against the same named volume. Only an exact `ConcurrentRunError`
 with exit code `2` passes that ownership probe. Before upload it scans the
 acceptance evidence, three action snapshots, runtime log, owner log, image SPDX,
 native Syft catalog, and image binding for the bearer token. The token and raw
-logs are deleted. The four audited acceptance JSON files are retained for seven
-days, while the image SPDX, native catalog, and unsigned binding are uploaded as
-a separate 30-day artifact. Cleanup deliberately uses `docker compose down
+logs are deleted. The seven audited acceptance JSON files (Incident, Memory
+prepared, Memory restarted, artifact tamper, and three action snapshots) are
+retained for seven days, while the image SPDX, native catalog, and unsigned
+binding are uploaded as a separate 30-day artifact. Cleanup deliberately uses `docker compose down
 --remove-orphans --timeout 20` without `-v` or `--volumes`.
 
 On native Linux the token file remains host-private at mode `0640`. Its numeric
@@ -459,7 +477,8 @@ Before uploading or tagging a release, all of the following must be true:
   final revision;
 - OpenAI and Anthropic each pass the real two-turn tool smoke without exposing
   credentials, and any claimed streaming behavior has its own conformance test;
-- the no-cache domestic-source Compose workflow passes on the final revision;
+- the no-cache domestic-source Compose workflow and installed-container Memory
+  write/search/restart smoke pass on the final revision;
 - wheel/sdist manifest, application SBOM, image SBOM, and notices are archived,
   and the signed GitHub build-provenance attestation verifies every relied-upon
   subject against the expected workflow, exact tag ref, and tag commit;

@@ -114,7 +114,14 @@ def _print_error(code: str, message: str, json_output: bool) -> None:
 def _need_app(args: argparse.Namespace, store: SQLiteStore):
     if not args.app:
         raise AppLoadError("--app or SASORI_APP is required for this command")
-    return load_harness(args.app, store)
+    app_id = None
+    try:
+        from sasori_apps.registry import app_id_for_spec
+
+        app_id = app_id_for_spec(args.app)
+    except ImportError:
+        pass
+    return load_harness(args.app, store, app_id=app_id)
 
 
 def _events(args: argparse.Namespace, store: SQLiteStore) -> int:
@@ -164,9 +171,20 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
             if len(prompt.encode("utf-8")) > 1024 * 1024:
                 raise ValueError("prompt exceeds the 1 MiB limit")
             run_id = validate_run_id(args.run_id) if args.run_id else None
+            app_id = None
+            try:
+                from sasori_apps.registry import app_id_for_spec
+
+                app_id = app_id_for_spec(args.app)
+            except ImportError:
+                pass
             try:
                 result = asyncio.run(
-                    harness.run((Message("user", prompt),), run_id=run_id)
+                    harness.run(
+                        (Message("user", prompt),),
+                        run_id=run_id,
+                        app_id=app_id,
+                    )
                 )
                 run_id = result.run_id
             except RunPaused as paused:

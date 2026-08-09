@@ -32,7 +32,7 @@ from sasori_artifacts import (
 )
 
 from .app import AppLoadError, load_harness
-from .contracts import Message
+from .contracts import Message, is_valid_app_id
 from .projection import (
     event_projection,
     run_list_projection,
@@ -65,7 +65,6 @@ _RUN_PATH = re.compile(r"/v1/runs/([^/]+)(?:/(resume|approval|effect|events))?\Z
 _ARTIFACT_PATH = re.compile(
     r"/v1/runs/([^/]+)/artifacts(?:/([^/]+)/content)?\Z"
 )
-_APP_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 _WORKBENCH_ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8", "no-cache"),
     "/assets/app.0.1.0.css": ("app.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
@@ -206,7 +205,7 @@ class _Owner:
             raise ServerConfigurationError("at least one application is required")
         if any(
             not isinstance(app_id, str)
-            or _APP_ID.fullmatch(app_id) is None
+            or not is_valid_app_id(app_id)
             or not isinstance(spec, str)
             or not spec
             for app_id, spec in self.apps.items()
@@ -269,7 +268,9 @@ class _Owner:
                 first_error: BaseException | None = None
                 for app_id, spec in self.apps.items():
                     try:
-                        self._harnesses[app_id] = load_harness(spec, self._store)
+                        self._harnesses[app_id] = load_harness(
+                            spec, self._store, app_id=app_id
+                        )
                     except BaseException as exc:
                         first_error = first_error or exc
                         self._unavailable[app_id] = "app_factory_failed"
@@ -1364,7 +1365,7 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
         if not 1 <= limit <= 100 or before is not None and before < 1:
             raise InvalidRequest("history cursor or limit is out of range")
         app_id = values.get("app_id", [None])[0]
-        if app_id is not None and _APP_ID.fullmatch(app_id) is None:
+        if app_id is not None and not is_valid_app_id(app_id):
             raise InvalidRequest("app_id is invalid")
         return limit, before, app_id
 
@@ -1519,7 +1520,7 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 app_id = body.get("app_id")
                 if app_id is not None and (
                     not isinstance(app_id, str)
-                    or _APP_ID.fullmatch(app_id) is None
+                    or not is_valid_app_id(app_id)
                 ):
                     raise InvalidRequest("app_id is invalid")
                 status, value = self.sasori.owner.call(
@@ -1690,7 +1691,7 @@ def main() -> int:
         else:
             spec = value
             app_id = app_id_for_spec(spec) or "default"
-        if _APP_ID.fullmatch(app_id) is None or not spec or app_id in apps:
+        if not is_valid_app_id(app_id) or not spec or app_id in apps:
             raise SystemExit("--app must use unique [id=]module:factory values")
         apps[app_id] = spec
     token = None

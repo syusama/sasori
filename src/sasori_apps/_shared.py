@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+from collections.abc import Callable, Sequence
 
 from sasori import (
     AnthropicMessagesModel,
@@ -11,6 +12,8 @@ from sasori import (
     Model,
     ModelReply,
     OpenAIResponsesModel,
+    PluginRegistration,
+    SkillSpec,
     Tool,
 )
 from sasori_context import (
@@ -20,6 +23,14 @@ from sasori_context import (
     SemanticCompactionModel,
     SemanticCompactionPolicy,
 )
+from sasori_memory import (
+    MemoryBinding,
+    MemoryContextModel,
+    MemoryError,
+    MemoryRunBridge,
+    MemoryStore,
+    memory_registration,
+)
 
 
 class AppConfigurationError(Exception):
@@ -27,9 +38,22 @@ class AppConfigurationError(Exception):
 
 
 class PromptedModel:
-    def __init__(self, model: Model, system_prompt: str) -> None:
+    def __init__(
+        self,
+        model: Model,
+        system_prompt: str,
+        skills: Sequence[SkillSpec] = (),
+    ) -> None:
         self.model = model
-        self.system_prompt = system_prompt
+        self.skills = tuple(skills)
+        rendered = "".join(
+            (
+                f"\n\n[Sasori skill {skill.skill_id}@{skill.version}]\n"
+                f"{skill.instructions}"
+            )
+            for skill in self.skills
+        )
+        self.system_prompt = system_prompt + rendered
 
     async def complete(
         self, messages: tuple[Message, ...], tools: tuple[Tool, ...]
@@ -280,9 +304,61 @@ def configured_model() -> Model:
     return configured_model_and_timeout()[0]
 
 
+def configured_memory_runtime(
+    core_store,
+    app_id: str,
+    model: Model,
+) -> tuple[Model, PluginRegistration | None, Callable[[object], None] | None]:
+    database = os.environ.get("SASORI_MEMORY_DB", "").strip()
+    settings = {
+        "SASORI_MEMORY_OWNER_ID": os.environ.get("SASORI_MEMORY_OWNER_ID", "").strip(),
+        "SASORI_MEMORY_SCOPE_ID": os.environ.get("SASORI_MEMORY_SCOPE_ID", "").strip(),
+        "SASORI_MEMORY_SESSION_ID": os.environ.get("SASORI_MEMORY_SESSION_ID", "").strip(),
+    }
+    if not database:
+        if any(settings.values()):
+            raise AppConfigurationError(
+                "SASORI_MEMORY_DB is required for Memory configuration"
+            )
+        return model, None, None
+    missing = [name for name, value in settings.items() if not value]
+    if missing:
+        raise AppConfigurationError(
+            "Memory configuration requires owner, scope, and session IDs"
+        )
+    try:
+        binding = MemoryBinding(
+            settings["SASORI_MEMORY_OWNER_ID"],
+            app_id,
+            settings["SASORI_MEMORY_SCOPE_ID"],
+            settings["SASORI_MEMORY_SESSION_ID"],
+            1,
+        )
+        memory_store = MemoryStore(database)
+        registration = memory_registration(memory_store, binding)
+
+        def resolve_app_id(run_id: str) -> str | None:
+            try:
+                return core_store.load(run_id).app_id
+            except Exception:
+                return None
+
+        bridge = MemoryRunBridge(memory_store, binding, resolve_app_id)
+        return (
+            MemoryContextModel(model, memory_store, binding),
+            registration,
+            bridge,
+        )
+    except MemoryError as error:
+        raise AppConfigurationError(
+            f"Memory configuration is invalid: {type(error).__name__}"
+        ) from error
+
+
 __all__ = [
     "AppConfigurationError",
     "PromptedModel",
     "configured_model",
     "configured_model_and_timeout",
+    "configured_memory_runtime",
 ]

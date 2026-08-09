@@ -13,24 +13,29 @@ or public event type.
 The first projection policy is deliberately structural rather than semantic:
 
 1. leading system messages are protected;
-2. a user turn and its following assistant/tool messages form one removable
+2. a contiguous host-authored `ProtectedContextMessage` prelude may follow the
+   leading system prefix. It remains an ordinary assistant data message, counts
+   against the same budget, and gains no system/tool authority, but it cannot be
+   silently removed as old conversation history. The marker is rejected outside
+   that exact position or when it carries tool/result/error/provider metadata;
+3. a user turn and its following assistant/tool messages form one removable
    unit;
-3. an assistant tool-call message and every matching tool result are an
+4. an assistant tool-call message and every matching tool result are an
    indivisible atom;
-4. a malformed or incomplete call that the core has already refused, followed
+5. a malformed or incomplete call that the core has already refused, followed
    by its exact structural-error result, is valid durable history. Because that
    history cannot be represented on provider tool wires, the adapter replaces
    the rejected atom with deterministic assistant/user text for the next model
    call. The text preserves each `error_code` but cannot authorize or repair a
    tool call;
-5. at least the configured number of hot turns is protected;
-6. removed messages are replaced by a deterministic system marker carrying
+6. at least the configured number of hot turns is protected;
+7. removed messages are replaced by a deterministic system marker carrying
    counts and a SHA-256 digest over the public message projection. The local
    `ContextProjection.removed_sha256` separately covers the exact canonical
    history including opaque provider state;
-7. if the protected prefix, marker, and hot tail do not fit, projection fails
+8. if the system/data prefix, marker, and hot tail do not fit, projection fails
    closed instead of clipping content or splitting a tool protocol;
-8. the standard-library estimator measures canonical UTF-8 JSON bytes. It is
+9. the standard-library estimator measures canonical UTF-8 JSON bytes. It is
    not described as a token counter. A provider-specific tokenizer may be
    supplied explicitly.
 
@@ -58,6 +63,14 @@ results still fail closed. Both OpenAI and Anthropic wire encoders accept the
 normalized rejection record as ordinary text; neither receives the rejected
 tool envelope or its vendor-private continuation state.
 
+The protected data prelude exists for bounded host adapters such as durable
+Memory recall. A fresh recall is part of the current model input, not an old
+conversation turn. Treating it as an ordinary oldest assistant turn made recall
+disappear exactly when long-history projection activated. Making it a system
+message would incorrectly raise its authority. A typed ordinary-data marker is
+the smallest shared boundary: providers still see `role=assistant`, while the
+projector validates placement, metadata, and final-budget accounting.
+
 ## Consequences
 
 - Applications opt in by wrapping a model with `BoundedContextModel`.
@@ -79,8 +92,10 @@ tool envelope or its vendor-private continuation state.
   [ADR-0011](ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md) is another model adapter.
   It keeps tool atoms intact, exposes its nondeterminism through bounded local
   diagnostics, and does not rewrite this first structural-projection decision.
-- A future durable Memory or retrieval module remains outside core and may feed
-  new leading context; it does not mutate the stored transcript.
+- Durable Memory remains outside core. Its bounded host-authored projection may
+  use the protected ordinary-data prelude, drop complete low-ranked records to
+  fit, and then share this exact final budget with structural or semantic
+  projection. It does not mutate the stored transcript.
 
 ## Rejected alternatives
 

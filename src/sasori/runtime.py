@@ -16,8 +16,10 @@ from .contracts import (
     Model,
     ModelReply,
     RunResult,
+    SkillSpec,
     Tool,
     ToolCall,
+    is_valid_tool_call_id,
 )
 from .sqlite_store import (
     ApprovalConflict,
@@ -155,6 +157,7 @@ class Harness:
         event_sink: Callable[[Event], None] | None = None,
         store: SQLiteStore | None = None,
         fault_injector: Callable[[str], None] | None = None,
+        skills: Sequence[SkillSpec] = (),
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
@@ -165,6 +168,7 @@ class Harness:
 
         self.model = model
         self.tools = tuple(tools)
+        self.skills = tuple(skills)
         self.max_steps = max_steps
         self.model_timeout = model_timeout
         self.tool_timeout = tool_timeout
@@ -185,6 +189,19 @@ class Harness:
                         "idempotent tool handlers require keyword-only idempotency_key"
                     )
             self._tools[tool.name] = tool
+        skill_ids: set[str] = set()
+        for skill in self.skills:
+            if not isinstance(skill, SkillSpec) or not skill.skill_id:
+                raise ValueError("skills must be SkillSpec values with an ID")
+            if skill.skill_id in skill_ids:
+                raise ValueError(f"duplicate skill ID: {skill.skill_id}")
+            unknown = set(skill.tool_names).difference(self._tools)
+            if unknown:
+                raise ValueError(
+                    f"skill {skill.skill_id} references unknown tools: "
+                    + ", ".join(sorted(unknown))
+                )
+            skill_ids.add(skill.skill_id)
         self._owns_store = store is None
         self.store = SQLiteStore() if store is None else store
 
@@ -575,7 +592,7 @@ class Harness:
         records = []
         for ordinal, raw in enumerate(reply.tool_calls):
             if isinstance(raw, ToolCall):
-                call_id = raw.id or None
+                call_id = raw.id if is_valid_tool_call_id(raw.id) else None
                 if call_id and call_id in seen:
                     raise DuplicateToolCallError(
                         f"duplicate provider call id in one run: {call_id}"

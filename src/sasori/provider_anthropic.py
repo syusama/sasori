@@ -24,7 +24,7 @@ from ._provider_common import (
     validate_positive_integer,
     validate_tool_arguments,
 )
-from .contracts import Message, ModelReply, Tool, ToolCall
+from .contracts import Message, ModelReply, Tool, ToolCall, is_valid_tool_call_id
 
 
 _PROVIDER = "anthropic.messages"
@@ -108,8 +108,8 @@ def _text_and_calls(
             call_id = block.get("id")
             name = block.get("name")
             arguments = block.get("input")
-            if not isinstance(call_id, str) or not call_id:
-                raise _protocol("Anthropic tool_use has no id", request_id)
+            if not is_valid_tool_call_id(call_id):
+                raise _protocol("Anthropic tool_use has an invalid id", request_id)
             if call_id in call_ids:
                 raise _protocol("Anthropic tool-use IDs must be unique", request_id)
             if not isinstance(name, str) or not name:

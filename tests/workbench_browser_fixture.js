@@ -16,9 +16,34 @@
     description: "Deterministic browser fixture application",
     availability: { status: "ready", reason_code: null },
     worker: { id: "fixture-worker", title: "Fixture worker", model_slot: "deterministic" },
-    skills: [],
-    tools: [],
-    plugins: [],
+    skills: [{
+      id: "com.sasori.memory/bounded-recall",
+      version: "1",
+      title: "Durable bounded recall",
+      description: "Recall fixed-scope Memory through Harness-gated tools.",
+      tool_names: ["search_memory", "remember_memory", "forget_memory"],
+      content_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }],
+    tools: [
+      { name: "search_memory", description: "Search Memory", effect: "read_only", tool_revision: null, plugin_id: "com.sasori.memory", input_schema: {}, schema_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      { name: "remember_memory", description: "Remember Memory", effect: "idempotent", tool_revision: "memory-v1", plugin_id: "com.sasori.memory", input_schema: {}, schema_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+      { name: "forget_memory", description: "Forget Memory", effect: "idempotent", tool_revision: "memory-v1", plugin_id: "com.sasori.memory", input_schema: {}, schema_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+    ],
+    plugins: [{
+      id: "com.sasori.memory",
+      name: "Sasori Durable bounded Memory",
+      version: "0.1.0.dev0",
+      execution_mode: "trusted_process",
+      requested_permissions: {
+        filesystem_read: ["configured:memory.sqlite3"],
+        filesystem_write: ["configured:memory.sqlite3"],
+        network_egress: [],
+        host_process: [],
+        secrets: [],
+      },
+      effective_access: "FULL HOST PROCESS PRIVILEGES",
+      enforced: false,
+    }],
   };
 
   function projection(runId, input, state = "completed", overrides = {}) {
@@ -438,6 +463,19 @@
     record("approval");
   }
 
+  function memorySkillSurfaceCase() {
+    document.querySelector("#surface-tab").click();
+    const text = document.querySelector("#surface-content").textContent;
+    assert(text.includes("Durable bounded recall"), "Memory skill is not visible");
+    assert(text.includes("search_memory"), "Memory search tool is not visible");
+    assert(text.includes("remember_memory"), "Memory remember tool is not visible");
+    assert(text.includes("forget_memory"), "Memory forget tool is not visible");
+    assert(text.includes("com.sasori.memory"), "Memory plugin identity is not visible");
+    assert(text.includes("configured:memory.sqlite3"), "Memory permission disclosure is not visible");
+    document.querySelector("#timeline-tab").click();
+    record("memory-skill-surface");
+  }
+
   async function run() {
     const fixture = global.__sasoriFixture;
     await waitFor(
@@ -445,6 +483,7 @@
         !document.querySelector("#run-button").disabled,
       "production Workbench did not finish initial loading",
     );
+    memorySkillSurfaceCase();
     await staleStatusCase(fixture);
     await sameRunEpochCase(fixture);
     await coldEventsCase(fixture);

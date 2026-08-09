@@ -23,6 +23,11 @@ and one process-wide mutation gate. Application selection is one dictionary
 lookup; it does not introduce another Loop, router Harness, queue, scheduler,
 workflow engine, or event replay executor.
 
+The shared public application-ID contract is 1–64 lowercase ASCII bytes: the
+first byte is alphanumeric and later bytes may also contain `.`, `_`, or `-`.
+Trailing punctuation remains valid. Extension-owned state such as Memory reuses
+this validator rather than narrowing a configured application alias.
+
 New HTTP runs bind the selected `app_id` in the same store transaction that
 creates the run. The binding is immutable. Resume, approval, and effect routes
 do not accept an application ID; they load the durable binding and select the

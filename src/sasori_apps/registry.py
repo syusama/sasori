@@ -55,6 +55,9 @@ _TOOL_ORIGINS = {
     "git_show": "com.sasori.git",
     "git_stage": "com.sasori.git",
     "git_commit": "com.sasori.git",
+    "search_memory": "com.sasori.memory",
+    "remember_memory": "com.sasori.memory",
+    "forget_memory": "com.sasori.memory",
 }
 
 
@@ -97,6 +100,26 @@ def _plugins(app_id: str, tool_names: set[str]) -> list[dict[str, object]]:
     else:
         manifests = ()
     result = [_permissions(manifest) for manifest in manifests]
+    if tool_names.intersection(
+        {"search_memory", "remember_memory", "forget_memory"}
+    ):
+        result.append(
+            {
+                "id": "com.sasori.memory",
+                "name": "Sasori Durable bounded Memory",
+                "version": "0.1.0.dev0",
+                "execution_mode": "trusted_process",
+                "requested_permissions": {
+                    "filesystem_read": ["configured:memory.sqlite3"],
+                    "filesystem_write": ["configured:memory.sqlite3"],
+                    "network_egress": [],
+                    "host_process": [],
+                    "secrets": [],
+                },
+                "effective_access": FULL_HOST_PROCESS_PRIVILEGES,
+                "enforced": False,
+            }
+        )
     if app_id == "incident":
         result.append(
             {
@@ -142,6 +165,19 @@ def application_surface_catalog(
         tool_names = {tool.name for tool in tools}
         if harness is not None:
             metadata["worker"]["tool_names"] = [tool.name for tool in tools]
+            known_skills = {str(skill["id"]) for skill in metadata["skills"]}
+            metadata["skills"].extend(
+                {
+                    "id": skill.skill_id,
+                    "version": skill.version,
+                    "title": skill.title,
+                    "description": skill.description,
+                    "tool_names": list(skill.tool_names),
+                    "content_sha256": skill.content_sha256,
+                }
+                for skill in harness.skills
+                if skill.skill_id not in known_skills
+            )
         metadata["availability"] = {
             "status": "ready" if harness is not None else "unavailable",
             "reason_code": None if harness is not None else reason or "not_enabled",
