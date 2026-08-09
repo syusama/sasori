@@ -2,9 +2,9 @@
 
 > 研究日期：2026-08-09
 >
-> Sasori Artifact 前已托管验证基线：[`028d664`](https://github.com/syusama/sasori/commit/028d664bf6f7531937c21bf333a06f6ade887a14)，[Hosted run 31298332150](https://github.com/syusama/sasori/actions/runs/31298332150) 全绿
+> Sasori 最新已托管验证基线：[`94f4d0e`](https://github.com/syusama/sasori/commit/94f4d0e58823e88c868c10297a7844289e4fbd5d)，[Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/31302552621) 全绿
 >
-> Sasori 本次候选：本文所在 revision；ArtifactRef/Workbench 证据先标记为本地候选，不能追溯成 `028d664` 已交付能力
+> 本文对 Sasori Current 能力的结论绑定上述 exact commit/run；后续 revision 必须重新取得自己的证据，不能继承该结论
 >
 > LeAgent 基线：[`1f16badc`](https://github.com/vixues/LeAgent/tree/1f16badc834abbd829d3cb7e9f8fcb5b2d57f443)
 >
@@ -12,9 +12,8 @@
 
 这不是按 README 关键词计数的功能表。LeAgent/ToFu 结论来自上述固定 commit
 的入口、运行循环、事件、持久化、工具、上下文、插件、部署、测试和 UI 源码；
-Sasori 的既有 Hosted 结论只绑定 `028d664`，本次新增能力绑定本文所在候选源码与
-文中明确列出的本地测试，直到该 revision 的 Hosted run 结束。上游随时会变化；
-重新做产品决策前必须刷新 commit 与证据。
+Sasori 的 Hosted 结论只绑定 `94f4d0e` 与 run `31302552621`。上游随时会变化；
+重新做产品决策前必须刷新 Sasori、LeAgent、ToFu 的 commit 与证据。
 
 ## 结论先行
 
@@ -59,9 +58,9 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 公共事件 | 版本化语义投影；SQLite commit 后 sink；live/cold/reconnect 共用纯 reducer | 结构化事件丰富，但热 event/approval/output registry 有进程内状态 | `EVENT_CONTRACT_VERSION=1`、durable-before-visible、committed-before-done、稳定 `_msgId` | Sasori/ToFu 各有长处 |
 | 工具协议 | malformed/truncated 不执行；异常显式 tool error；duplicate call 拒绝 | 统一 ToolExecutor，类型/审批面丰富 | ToolSpec/registry 与统一 dispatch 较完整 | Sasori 故障语义胜 |
 | 副作用恢复 | effect/revision/idempotency、dispatch intent、`effect_unknown`、人工恢复、真实 crash tests | 有审批/checkpoint，但未见等价的 side-effect ambiguity contract | 有事件、审批、写入 freshness/idempotency 元数据；崩溃后执行恢复边界不等价 | Sasori 明显胜 |
-| Context | `028d664` 已托管验证核心外、结构安全的确定性预算投影与拒绝调用恢复 | ContextSource、预算、压缩与 recall 比 Sasori 全面 | 三层 compaction、cache-stable prefix、token 压力与 archive 很强 | ToFu 广度胜；Sasori 底座已托管验证 |
+| Context | `94f4d0e` 已托管验证核心外、结构安全的确定性预算投影与拒绝调用恢复 | ContextSource、预算、压缩与 recall 比 Sasori 全面 | 三层 compaction、cache-stable prefix、token 压力与 archive 很强 | ToFu 广度胜；Sasori 底座已托管验证 |
 | Memory | RAG/FTS5 是独立插件，不等于长期 Memory | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 落后 |
-| Artifact/FileRef | 本次候选已有核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 候选的最小可靠闭环胜；竞品广度仍胜 |
+| Artifact/FileRef | `94f4d0e` 已托管验证核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 的最小可靠闭环胜；竞品广度仍胜 |
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
 | Workflow | 未交付 | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 落后 |
 | 多 Agent/项目协作 | 未交付 | Subagent 与 workflow agent | Swarm、Charter/Board/activity/path soft lease | Sasori 落后 |
@@ -71,7 +70,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 依赖与镜像完整性 | base digest、Python/build hash、国内镜像、SBOM/binding、wheel/sdist matrix | base/apt/pip 未等价锁定，Docker label 版本漂移 | 多 `>=` 无 hash、Docker 未用国内源/digest、Playwright 安装可吞错 | Sasori 明显胜 |
 | 默认沙箱表述 | 明示 full host process privilege；路径限制不冒充沙箱 | README 称 isolation，但当前 inproc/subprocess 实现与宿主同权 | Shell/桌面/浏览器执行主要是主机能力与可选防护，取消 best-effort | Sasori 诚实性胜 |
 | 水平扩展 | 明确单 owner/单 mutation，不声称多 worker | PG 不消除 process-local registry/queue 热状态 | 多用户/PG 功能广，但 task dict/进程执行与恢复边界复杂 | 三者均不能仅凭数据库宣称完整 HA |
-| 测试证据 | `028d664` 已有 Windows/Linux × Python 3.11–3.13、源码/wheel/sdist/容器/浏览器 Hosted 门禁；Artifact 候选本地已跑 277 项全量、Chrome 竞态与真实 17-event Artifact lifecycle，仍需重新取得 exact-revision Hosted 结果 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 基线发布证据胜；Artifact 候选待 Hosted 刷新 |
+| 测试证据 | `94f4d0e` 的 Windows/Linux × Python 3.11–3.13、277 项源码、wheel/sdist、国内源容器、同尺寸篡改、Chrome 竞态与真实 17-event Artifact lifecycle 已由 Hosted run `31302552621` 全绿验证 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 当前证据链胜 |
 
 ToFu 当前 HEAD 的 hosted jobs 没有获得 GitHub hosted runner，页面显示平台内部
 错误；这意味着“缺少当前绿色托管证据”，**不**意味着源码测试已被证明失败。
@@ -217,8 +216,8 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 |---|---|---|
 | 品牌 README + 中英文入口 + 真图 + current/next | 本次 | 链接检查、图片渲染、claim review、`git diff --check` |
 | 固定 commit 的 LeAgent/ToFu 对标文档 | 本次 | commit/许可证/证据路径复核 |
-| 结构安全 context budget | `028d664` 已托管验证 | under/over budget、parallel calls、orphan/incomplete、custom estimator、adapter 回归 |
-| ArtifactRef + immutable blob metadata + run association | 本次候选 | filename/MIME 不可信、digest/size 校验、同事务 event/metadata、no-overwrite、range/download、跨重启、cross-run 拒绝、篡改 fail closed |
+| 结构安全 context budget | `94f4d0e` 已托管验证 | under/over budget、parallel calls、orphan/incomplete、custom estimator、adapter 回归 |
+| ArtifactRef + immutable blob metadata + run association | `94f4d0e` 已托管验证 | filename/MIME 不可信、digest/size 校验、同事务 event/metadata、no-overwrite、range/download、跨重启、cross-run 拒绝、篡改 fail closed |
 | cooperative cancellation | 暂缓至独立 ADR | awaiting approval/resume/effect_unknown/running/terminal race matrix；不误杀其他 run |
 
 ### P1：有用的模块生态
@@ -227,7 +226,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 |---|---|
 | Semantic compaction | 工具组不拆分；事实保真评测；成本/模型/失败可见；原 transcript 不变 |
 | Durable Memory | bounded retrieval；source/score/version；同 session 多 turn；删除/重建；注入失败关闭 |
-| Artifact Workbench | 本次候选已交付 text/JSON 安全预览、认证下载、冷加载、stale-run 隔离与真实浏览器链；图片/PDF 需独立内容校验后再开放 |
+| Artifact Workbench | `94f4d0e` 已交付并托管验证 text/JSON 安全预览、认证下载、冷加载、stale-run 隔离与真实浏览器链；图片/PDF 需独立内容校验后再开放 |
 | Skill selection | progressive disclosure；确定性 eligibility；预算；恶意 SKILL.md；不自动执行安装脚本 |
 | Curated marketplace | immutable digest、publisher/review、compatibility、撤回、升级差异、权限再批准 |
 | Provider breadth | 每个适配器跑共享 malformed/timeout/429/interrupted/duplicate/cancel suite + 可选 live smoke |

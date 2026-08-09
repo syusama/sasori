@@ -383,17 +383,18 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-The latest verified pre-artifact baseline,
-[`028d664`](https://github.com/syusama/sasori/commit/028d664bf6f7531937c21bf333a06f6ade887a14),
-passed [Hosted run 31298332150](https://github.com/syusama/sasori/actions/runs/31298332150):
+The latest verified Artifact baseline,
+[`94f4d0e`](https://github.com/syusama/sasori/commit/94f4d0e58823e88c868c10297a7844289e4fbd5d),
+passed [Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/31302552621):
 
 - Ubuntu + Windows × Python 3.11, 3.12, and 3.13 source matrix;
 - installed-wheel and rebuilt-sdist matrices;
 - package and release gates;
-- mainland-source image build and real Compose workflow/restart/owner lock;
+- mainland-source image build and real Compose workflow/restart/owner lock,
+  including run-scoped artifact GET/HEAD/Range and same-size tamper rejection;
 - SBOM generation, image binding, and audited evidence upload;
-- delayed-response UI race acceptance and a real 16-event Incident lifecycle in
-  Chrome on Ubuntu/Python 3.12.
+- delayed-response UI race acceptance and a real 17-event Artifact-enabled
+  Incident lifecycle in Chrome on Ubuntu/Python 3.12.
 
 That branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.

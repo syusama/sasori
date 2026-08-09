@@ -360,16 +360,18 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-最新已托管验证的 Artifact 前基线
-[`028d664`](https://github.com/syusama/sasori/commit/028d664bf6f7531937c21bf333a06f6ade887a14)
-通过了 [Hosted run 31298332150](https://github.com/syusama/sasori/actions/runs/31298332150)：
+最新已托管验证的 Artifact 基线
+[`94f4d0e`](https://github.com/syusama/sasori/commit/94f4d0e58823e88c868c10297a7844289e4fbd5d)
+通过了 [Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/31302552621)：
 
 - Ubuntu + Windows × Python 3.11 / 3.12 / 3.13 source matrix；
 - installed wheel 与 rebuilt sdist matrix；
 - package/release gates；
-- 国内源 image build、真实 Compose workflow/restart/owner lock；
+- 国内源 image build、真实 Compose workflow/restart/owner lock，包括精确 run
+  关联的 Artifact GET/HEAD/Range 与同尺寸篡改拒绝；
 - SBOM、image binding 与审计证据上传；
-- Ubuntu/Python 3.12 上的延迟响应竞态与真实 Chrome 16-event Incident lifecycle。
+- Ubuntu/Python 3.12 上的延迟响应竞态与真实 Chrome 17-event Artifact
+  lifecycle。
 
 该 main branch run **没有**创建 tag、签名 attestation 或最终 release bundle。
 Exact-tag provenance 仍是单独的发布门禁。
