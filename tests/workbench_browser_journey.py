@@ -208,7 +208,9 @@ def validate_store(database: Path, run_id: str) -> dict[str, object]:
     }
 
 
-def run_acceptance(binary: Path) -> dict[str, object]:
+def run_acceptance(
+    binary: Path, *, screenshot: Path | None = None
+) -> dict[str, object]:
     with tempfile.TemporaryDirectory(prefix="sasori-real-journey-") as directory:
         root = Path(directory)
         database = root / "runs.sqlite3"
@@ -241,7 +243,10 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             )
             proxy_thread.start()
             completed = run_browser_process(
-                binary, proxy.server_address[1], virtual_time_budget=20000
+                binary,
+                proxy.server_address[1],
+                virtual_time_budget=20000,
+                screenshot=screenshot,
             )
         finally:
             try:
@@ -304,6 +309,11 @@ def main() -> int:
         action="store_true",
         help="fail instead of skipping when Chrome/Edge is unavailable",
     )
+    parser.add_argument(
+        "--screenshot",
+        type=Path,
+        help="capture the completed cold-history Workbench view to this PNG",
+    )
     arguments = parser.parse_args()
     candidates = browser_candidates()
     if not candidates:
@@ -311,7 +321,12 @@ def main() -> int:
             raise SystemExit("Chrome, Chromium, or Edge is required for Workbench browser acceptance")
         print(json.dumps({"skipped": True, "reason": "browser_not_found"}))
         return 0
-    evidence = run_acceptance(candidates[0])
+    screenshot = arguments.screenshot.resolve() if arguments.screenshot else None
+    if screenshot is not None and not screenshot.parent.is_dir():
+        raise SystemExit("screenshot parent directory must already exist")
+    evidence = run_acceptance(candidates[0], screenshot=screenshot)
+    if screenshot is not None:
+        evidence["screenshot"] = str(screenshot)
     print(json.dumps(evidence, ensure_ascii=True, sort_keys=True))
     return 0
 

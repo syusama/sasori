@@ -11,7 +11,14 @@ import tomllib
 from pathlib import Path
 
 
-PACKAGES = ("sasori", "sasori_apps", "sasori_market", "sasori_plugins", "sasori_web")
+PACKAGES = (
+    "sasori",
+    "sasori_apps",
+    "sasori_context",
+    "sasori_market",
+    "sasori_plugins",
+    "sasori_web",
+)
 SCRIPTS = ("sasori", "sasori-server", "sasori-catalog")
 WEB_RESOURCES = (
     "index.html",
@@ -46,11 +53,31 @@ def main() -> int:
     prefix = Path(sys.prefix)
     _require_under_prefix(distribution.locate_file(""), prefix, "distribution")
 
+    modules = {}
     for package in PACKAGES:
         module = importlib.import_module(package)
         if module.__file__ is None:
             raise RuntimeError(f"installed package has no origin: {package}")
         _require_under_prefix(module.__file__, prefix, f"package {package}")
+        modules[package] = module
+    Message = getattr(modules["sasori"], "Message", None)
+    ContextBudget = getattr(modules["sasori_context"], "ContextBudget", None)
+    ContextProjector = getattr(modules["sasori_context"], "ContextProjector", None)
+    default_message_units = getattr(
+        modules["sasori_context"], "default_message_units", None
+    )
+    if not all(
+        callable(item)
+        for item in (Message, ContextBudget, ContextProjector, default_message_units)
+    ):
+        raise RuntimeError("installed sasori_context public exports are incomplete")
+    context_messages = (Message("system", "installed"), Message("user", "wheel"))
+    context_budget = sum(default_message_units(item) for item in context_messages)
+    context_projection = ContextProjector(ContextBudget(context_budget)).project(
+        context_messages
+    )
+    if context_projection.messages != context_messages or context_projection.compacted:
+        raise RuntimeError("installed sasori_context projection contract is invalid")
     resources = importlib.resources.files("sasori_web")
     if any(not (resources / name).is_file() or not (resources / name).read_bytes() for name in WEB_RESOURCES):
         raise RuntimeError("installed Workbench resources are missing or empty")

@@ -1,12 +1,79 @@
-# Sasori
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/readme-hero.svg" alt="Sasori — One kernel. Many puppets." width="100%">
+</p>
 
-[![CI](https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg)](https://github.com/syusama/sasori/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 to 3.13">
+  <img src="https://img.shields.io/badge/core%20dependencies-0-C69A52" alt="Zero core dependencies">
+  <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-B52A32" alt="MIT License"></a>
+</p>
 
-> A small, inspectable Python runtime for tool-using AI agents.
+<p align="center">
+  <a href="https://github.com/syusama/sasori/blob/main/README_zh.md">简体中文</a> ·
+  <a href="#thirty-second-start">Quick Start</a> ·
+  <a href="https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md">Architecture</a> ·
+  <a href="https://github.com/syusama/sasori/blob/main/docs/BENCHMARK-LEAGENT-TOFU.md">LeAgent / ToFu benchmark</a> ·
+  <a href="https://github.com/syusama/sasori/blob/main/docs/RELEASE.md">Release evidence</a>
+</p>
 
-Sasori ships one async `Harness` for a serial, single-agent tool loop. The core supports Python 3.11-3.13, uses only the standard library, projects versioned semantic events, and can durably pause or resume through `sqlite3`. Two stdlib-only provider adapters, Python/CLI/HTTP entry points, three fixed first-party application compositions, and the bundled Workbench use that same Harness path. The trusted-plugin loader and curated catalog are explicit support surfaces; no bundled application dynamically loads an external entry point. Provider adapters can opt into fail-closed upstream SSE aggregation; public token streaming, embeddings/vector retrieval, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain later gates rather than claimed features.
+## One kernel. Many puppets.
 
-## Runnable example
+**Sasori is a Python-first framework for tool-using AI agents: a tiny,
+inspectable kernel underneath durable runs, explicit effects, optional modules,
+and a distinctive local Workbench.**
+
+The name means *scorpion* (蠍). Its puppetcraft metaphor shapes the architecture:
+one mechanism controls many replaceable puppets; every thread has an owner;
+every dangerous motion stops at a human gate. The visual identity is original
+and uses no anime artwork or copied character assets.
+
+Sasori can be a sharp pocket knife—one `Harness`, one model, the tools you
+choose—or the kernel beneath applications, plugins, HTTP services, and a rich
+UI. Those forms do not fork the runtime. Python, CLI, HTTP, and Workbench all
+drive the same single-agent loop.
+
+> Sasori is intentionally honest about its current boundary. It is a strong
+> single-machine G1 foundation, not yet a public multi-tenant control plane,
+> distributed executor, untrusted-code sandbox, workflow engine, or central
+> marketplace. [Current and Next](#current-and-next) are kept visibly separate.
+
+## The ten-second map
+
+| If you care about… | Sasori's answer |
+|---|---|
+| A core you can read | `sasori` owns contracts, one loop, event projection, and the harness; the core uses only the Python standard library |
+| Tool safety | malformed or truncated calls never execute; tool exceptions become explicit results; cancellation is propagated |
+| Real side effects | every tool declares `read_only`, `idempotent`, or `side_effecting`; mutable effects require a revision and a human decision |
+| Crash ambiguity | dispatch intent is durable; unknown outcomes stop at `effect_unknown` for explicit operator recovery |
+| One runtime everywhere | Python, CLI, HTTP, first-party apps, and Workbench converge on `Harness.run()` / `resume()` |
+| Long conversations | optional `sasori_context` budgets model input without splitting tool calls/results or rewriting the transcript |
+| Small-to-large composition | providers, SQLite, RAG, MCP, Git, workspace tools, apps, catalog, server, and UI stay outside core |
+| Evidence, not slogans | deterministic fakes, provider conformance, process-crash tests, live/cold reducer tests, real-browser journeys, package and container gates |
+| China-friendly delivery | DaoCloud base image, Tsinghua PyPI default, digest/hash locking, and a real mainland-source container workflow |
+
+## Thirty-second start
+
+Run the deterministic Incident application—no provider key required:
+
+```bash
+git clone https://github.com/syusama/sasori.git
+cd sasori
+python -m pip install -e .
+sasori-server --host 127.0.0.1 --port 8080 \
+  --db ./sasori-runs.sqlite3 \
+  --app incident=sasori_apps.incident:create_harness \
+  --trusted-loopback-no-auth
+```
+
+Open **http://127.0.0.1:8080**. Submit an incident, inspect the exact pending
+`record_action`, approve it, then explicitly resume. Approval does not execute
+the side effect by itself.
+
+`--trusted-loopback-no-auth` is accepted only for an explicit loopback bind.
+Use a bearer-token file for normal or container use.
+
+## The smallest useful agent
 
 ```python
 import asyncio
@@ -14,22 +81,25 @@ import asyncio
 from sasori import Harness, Message, ModelReply, Tool, ToolCall
 
 
-def greet(name):
-    return f"hello, {name}"
+def lookup(topic: str) -> str:
+    return f"evidence for {topic}"
 
 
-class ExampleModel:
+class DemoModel:
     async def complete(self, messages, tools):
         if messages[-1].role == "user":
-            return ModelReply(tool_calls=(ToolCall("greet-1", "greet", {"name": "Sasori"}),))
-        return ModelReply(content=f"Tool said: {messages[-1].content}")
+            return ModelReply(
+                tool_calls=(ToolCall("lookup-1", "lookup", {"topic": "Sasori"}),)
+            )
+        return ModelReply(content=f"Grounded result: {messages[-1].content}")
 
 
 async def main():
     with Harness(
-        ExampleModel(), (Tool("greet", greet, effect="read_only"),)
-    ) as harness:
-        result = await harness.run((Message("user", "Say hello."),))
+        DemoModel(),
+        (Tool("lookup", lookup, effect="read_only"),),
+    ) as agent:
+        result = await agent.run((Message("user", "Research Sasori"),))
     print(result.final_message.content)
     print([event.type for event in result.events])
 
@@ -37,117 +107,189 @@ async def main():
 asyncio.run(main())
 ```
 
-Synchronous tools run through `asyncio.to_thread`, so they do not block the event loop. Cancellation and timeouts stop Sasori from waiting and request cancellation; they cannot forcibly stop a worker thread or async code that deliberately swallows `CancelledError`.
+Synchronous tools run through `asyncio.to_thread`; they do not block the event
+loop. A timeout stops Sasori from waiting, but Python cannot forcibly terminate
+an arbitrary worker thread or remote model request. Sasori never describes that
+as a hard kill.
 
-## Trust semantics decision record
+## Architecture: one line of control
 
-- Every `Tool` declares `effect="read_only"`, `"idempotent"`, or `"side_effecting"`; the safe default is `side_effecting`. Non-read-only tools require an explicit immutable `tool_revision`. An idempotent tool must also provide a deterministic `idempotency_key(arguments)`, and its handler must accept and externally enforce Sasori's reserved keyword-only `idempotency_key`; model arguments cannot override it.
-- Non-read-only calls durably emit `approval.requested` and pause. `resolve_approval()` binds the decision to a SHA-256 fingerprint of the run, accepted model step, call ordinal, tool name, canonical arguments, and tool revision. An approved call pauses as `tool_contract_changed` instead of invoking a different revision. A denial becomes a model-visible tool error.
-- `SQLiteStore(path)` atomically commits the run revision, recoverable checkpoint, accepted reply/tool ledger updates, and append-only events under `BEGIN IMMEDIATE`. The event sink runs only after commit and is best-effort; consumers recover gaps through `stored_events(run_id, after_seq)` and deduplicate by `(run_id, seq)`.
-- Dispatch intent is committed before invoking a tool. A committed result is reused. Ambiguous read-only work may retry; idempotent work may retry only with the same key; an ordinary side effect stops in `effect_unknown`. `resolve_effect()` requires the exact fingerprint and an audit reason for explicit `record_result`, `fail`, or `retry`. This is step-boundary recovery, **not exactly-once execution**.
-- Caller cancellation durably terminates the run as `cancelled`, emits `run.cancelled`, and propagates `CancelledError`; `resume()` cannot later turn that run into `completed`. An ambiguous effect remains auditable, but a cancelled run cannot retry it.
-- G1 supports one writer/process/connection and file stores request SQLite's exclusive locking mode. Revision CAS rejects stale drivers, but there is no lease, heartbeat, or multi-worker executor; WAL does not create one.
-- The Python plugin loader executes only explicitly enabled, installed `trusted_process` plugins when an application elects to use that loader. "Installed identity" currently means matching entry-point and distribution metadata; it does not bind imported package bytes to a reviewed wheel digest. Bundled first-party applications compose their registrations directly. Importing an entry point has the Sasori process and OS user's full privileges; manifest permissions are disclosure and upgrade-review metadata, not runtime enforcement. `container` and `supervised_process` are static manifest modes only.
-- The first-party workspace plugin rejects static path escapes supplied by the model, but it does not resist another local actor replacing a checked path with a symlink or junction before use. Its containment is bounded tool behavior inside a full-host trusted process, not a sandbox.
+```mermaid
+flowchart LR
+    P["Python API"] --> H["Harness"]
+    C["CLI"] --> H
+    S["HTTP / SSE"] --> H
+    W["Puppet Workbench"] --> S
+    A["First-party applications"] --> H
 
-The recovery suite includes real child-process termination after dispatch intent, after an external effect returns but before its result commit, and after final commit. It does not claim protection from disk corruption, power-loss behavior outside SQLite's guarantees, or external exactly-once execution.
+    H --> L["Single-agent loop"]
+    L --> M["Model contract"]
+    L --> T["Tool contract"]
+    L --> E["Versioned event projection"]
+    L --> R["Run store contract"]
 
-Pass the same file-backed `SQLiteStore` to a new `Harness` and call `await harness.resume(run_id)` after a process restart. The default in-memory store keeps the same durable state machine for short-lived runs but cannot survive process exit.
-
-Use `Harness` as a synchronous context manager or call `close()` after its last
-await. It closes only the default store it created; a supplied `SQLiteStore`
-remains caller-owned. Closing a Harness concurrently with an active
-`run()`/`resume()` is unsupported: await the operation before closing it.
-
-## Trusted web fetch plugin
-
-`com.sasori.web-fetch` provides one read-only `fetch_url` tool. Its trusted
-entry point reads only `SASORI_WEB_ALLOWED_HOSTS`, a comma-separated exact-host
-allowlist. A bare hostname permits only port 443; a non-default port must appear
-explicitly as `host:port`. Wildcards, implicit subdomains, IP literals, Unicode
-and punycode hostnames are not supported. Empty configuration denies every URL.
-
-The tool performs HTTPS GET only, resolves and validates every address, connects
-to one validated IP while retaining the original Host/TLS identity, and repeats
-the checks after every redirect. Returned text begins with
-`[UNTRUSTED EXTERNAL CONTENT]`; it is model input data, not system instructions.
-This remains bounded behavior inside a full-host `trusted_process`, not a
-sandbox. See [ADR-0002](https://github.com/syusama/sasori/blob/main/docs/ADR-0002-WEB-FETCH-BOUNDARY.md).
-
-## Trusted SQLite RAG plugin
-
-`com.sasori.rag-sqlite` owns a separate local SQLite/FTS5 database. Set
-`SASORI_RAG_DB` to an existing-parent file path; otherwise the trusted entry
-point uses `.sasori-rag.sqlite3` in the current directory. It never opens the
-Harness `SQLiteStore` or core run database.
-
-`index_text` is idempotent revision `1`: the Harness derives its key from
-normalized collection/source/text arguments, requires approval, and injects
-the reserved key only after approval. One `BEGIN IMMEDIATE` transaction
-atomically replaces a source's chunks and FTS rows, advances revisions, and
-stores the replay result. Replay succeeds only while that source generation is
-still current; a superseded request fails closed. `search_documents` is
-read-only and returns bounded JSON evidence with source/chunk IDs, hashes,
-offsets, revisions, scores, and text. It does not create an absent database,
-and it opens an existing database in SQLite read-only/query-only mode after
-validating the exact owned schema. The bundled `grounded-search` skill may call
-only search and requires those citations; it is data, not another loop or an
-answer model. See
-[ADR-0003](https://github.com/syusama/sasori/blob/main/docs/ADR-0003-RAG-SQLITE-BOUNDARY.md).
-
-## First-party applications and Workbench
-
-The distribution includes three inspectable application compositions; it does
-not create three runtime engines:
-
-| Application | Actual composition | Availability boundary |
-|---|---|---|
-| `incident` | deterministic model, `inspect_incident`, approved `record_action` | runnable demo when its action-log path is configured |
-| `research` | configured provider, allowlisted web fetch, SQLite/FTS5 indexing and citation-preserving retrieval | requires provider and plugin configuration |
-| `developer` | configured provider, bounded workspace tools, state-bound local Git, optional frozen MCP tools | requires a workspace and Git; MCP is opt-in |
-
-The local server freezes an `app_id → Harness` mapping at startup. Those
-Harnesses share one `SQLiteStore` and one mutation gate; every run still calls
-the same `Harness.run()` / `resume()` → `_drive()` path. Each run stores an
-immutable application binding. A legacy unbound run is accepted only when the
-server has exactly one configured application; a multi-application server
-returns `409 app_binding_missing` rather than guessing.
-
-`GET /v1/apps` reports fixed worker/skill metadata, actual Harness tools,
-availability, effects/revisions, and declared first-party permission intent. The bundled
-no-build Workbench consumes that endpoint plus the durable run/event APIs. It
-provides application selection, run history, task input, REST/SSE progress,
-approval/denial, explicit resume, effect recovery, timeline and capability
-views, responsive navigation, keyboard focus, and reduced-motion behavior.
-Untrusted model/tool content is rendered as text. Plugin metadata explicitly
-shows `FULL HOST PROCESS PRIVILEGES` and `enforced=false`; it is not a dynamic-loader
-attestation or sandbox.
-See [ADR-0006](https://github.com/syusama/sasori/blob/main/docs/ADR-0006-MULTI-APP-RUN-BINDING.md).
-
-## Providers
-
-`OpenAIResponsesModel` maps the OpenAI Responses API and `AnthropicMessagesModel` maps Anthropic Messages. Both use `urllib`, reject redirects and malformed/oversized JSON or SSE, expose typed transport/protocol errors, disable parallel tool calls, and preserve vendor continuation blocks through `provider_state`. Passing `stream=True` consumes upstream SSE but returns only after a complete, validated vendor terminal event; deltas are neither public events nor durable checkpoints. OpenAI reasoning items and Anthropic thinking/redacted-thinking blocks are persisted but never projected into public events.
-
-Provider tools require concrete Python annotations because one shared compiler produces the strict JSON schema and validates returned arguments locally:
-
-```python
-from sasori import Harness, Message, OpenAIResponsesModel, Tool
-
-
-def weather(city: str, units: str | None) -> str:
-    return f"clear in {city} ({units or 'metric'})"
-
-
-model = OpenAIResponsesModel("YOUR_CONFIGURED_MODEL")  # reads OPENAI_API_KEY
-with Harness(model, (Tool("weather", weather, effect="read_only"),)) as harness:
-    ...  # await harness.run(...)
+    M -. optional .-> P1["OpenAI / Anthropic adapters"]
+    M -. optional .-> CX["Bounded context adapter"]
+    T -. optional .-> X["Workspace / Web / RAG / Git / MCP"]
+    R -. optional .-> SQ["SQLite durability"]
 ```
 
-Use `AnthropicMessagesModel("YOUR_CONFIGURED_MODEL")` with `ANTHROPIC_API_KEY` for Anthropic. API keys are read from constructor arguments or environment variables, never written to events or exceptions. The deterministic local wire suite covers both adapters; a real-provider smoke is intentionally not claimed unless the corresponding credentials and model names are safely configured and the two-turn tool workflow actually passes.
+The core owns only the solid path. Dotted modules are replaceable and stay out
+of the loop. There is no second “product loop” hidden behind the UI.
 
-## CLI
+## Recovery is a protocol, not a checkbox
 
-An application is trusted installed Python code exposing `module:create_harness`, where the factory accepts the supplied `SQLiteStore` and returns a `Harness`. Automatic plugin discovery is deliberately absent from this boundary.
+```mermaid
+stateDiagram-v2
+    [*] --> running
+    running --> awaiting_approval: non-read-only tool
+    awaiting_approval --> awaiting_resume: approve or deny recorded
+    awaiting_resume --> running: explicit resume
+    running --> effect_unknown: side effect dispatched, result uncertain
+    effect_unknown --> awaiting_resume: operator records result / fails / authorizes retry
+    running --> completed
+    running --> failed
+    running --> cancelled
+```
+
+Sasori commits a step's revision, accepted model reply, tool ledger,
+recoverable checkpoint, and append-only events in one SQLite transaction.
+Event sinks run only after commit and are best-effort; consumers repair gaps
+with `(run_id, seq)`.
+
+Before a tool invocation, dispatch intent is committed. After restart:
+
+- a committed result is reused;
+- ambiguous read-only work may retry;
+- idempotent work may retry only with the same key;
+- an ordinary side effect pauses as `effect_unknown`;
+- an operator must supply the exact fingerprint and audit reason to record a
+  verified result, fail, or explicitly authorize a retry.
+
+This is **step-boundary recovery**, not exactly-once execution. Side-effecting
+systems still need an idempotency key or a manual-recovery policy. See
+[Foundation](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md) and the recovery tests for the full contract.
+
+## Bounded context without a second loop
+
+Long histories can opt into a standard-library-only model adapter:
+
+```python
+from sasori_context import BoundedContextModel, ContextBudget, ContextProjector
+
+model = BoundedContextModel(
+    provider,
+    ContextProjector(
+        ContextBudget(max_units=120_000, reserve_units=20_000, hot_turns=2)
+    ),
+)
+```
+
+The default unit is canonical UTF-8 JSON bytes, **not provider tokens**. The
+projector protects leading system messages and recent turns, treats an
+assistant tool call plus all matching results as one atom, and fails closed on
+orphan or mismatched tool history. A malformed/incomplete call already refused
+by the Harness becomes provider-safe text carrying its exact error code, so the
+model can correct it without replaying or executing the bad call. Removed
+history becomes a deterministic public-projection marker; vendor-private state
+is excluded from the wire-visible digest. This is not a semantic summary or
+Memory, and the complete durable transcript remains unchanged.
+
+Use a named provider tokenizer when exact token accounting matters. Details:
+[bounded context](https://github.com/syusama/sasori/blob/main/docs/CONTEXT.md) and
+[ADR-0009](https://github.com/syusama/sasori/blob/main/docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md).
+
+## Puppet Workbench
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/workbench.png" alt="Sasori Puppet Workbench showing a completed real Incident run and its 16-event durable timeline" width="100%">
+</p>
+
+This image is captured from the production Workbench after a real browser
+journey through `sasori.server`, the Incident Harness, SQLite, approval,
+explicit resume, one external effect, page reload, and cold-history reopen.
+It is not a static mockup.
+
+The no-build UI includes:
+
+- fixed first-party application selection and capability availability;
+- cursor-paginated durable run history;
+- task input, REST/SSE progress, approval/denial, explicit resume, and manual
+  effect recovery;
+- a live/cold/reconnect-safe timeline driven by one pure reducer;
+- capability, tool effect, plugin identity, and effective host-permission
+  disclosure;
+- responsive navigation, keyboard focus, reduced-motion behavior, and text-only
+  rendering for untrusted model/tool content.
+
+## What ships today
+
+| Surface | Delivered boundary |
+|---|---|
+| `sasori` | contracts, single-agent Harness/loop, event projection, in-memory store |
+| `SQLiteStore` | atomic revisions/checkpoints/events, CAS, restart recovery, one cross-process owner |
+| Providers | stdlib OpenAI Responses and Anthropic Messages adapters; strict schema and shared conformance |
+| `sasori_context` | optional deterministic budget projection; structural validation; custom estimator support |
+| CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
+| HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
+| Applications | deterministic Incident; configured Research; configured Developer |
+| Plugins | bounded workspace, allowlisted HTTPS fetch, SQLite/FTS5 RAG, local Git, frozen MCP stdio |
+| Catalog | strict local curated index and manifest checks; no central marketplace yet |
+| Delivery | source, wheel, rebuilt sdist, Compose candidate, SBOM binding, Windows/Linux matrices |
+
+The three applications are compositions, not three engines:
+
+- **Incident Chamber** — deterministic diagnosis and one operator-approved
+  local audit action.
+- **Research Atelier** — configured provider + allowlisted web evidence +
+  citation-preserving SQLite/FTS5 retrieval.
+- **Puppet Workshop** — configured provider + bounded workspace tools +
+  state-bound local Git + optional frozen MCP tools.
+
+Unavailable configuration is reported as unavailable; Sasori does not silently
+replace an app with the demo.
+
+## Providers and tool schemas
+
+`OpenAIResponsesModel` maps the OpenAI Responses API;
+`AnthropicMessagesModel` maps Anthropic Messages. Both adapters:
+
+- use only `urllib` and reject redirects, oversized/malformed JSON, and invalid
+  SSE sequences;
+- disable parallel tool calls and validate returned arguments locally;
+- preserve vendor continuation state without exposing reasoning blocks as
+  public events;
+- pass one shared deterministic conformance suite covering malformed output,
+  timeout, rate limit, interrupted stream, duplicate calls, and cancellation.
+
+`stream=True` validates and aggregates an upstream vendor stream; public token
+streaming is not yet shipped. Real-provider smoke is claimed only when locally
+configured credentials and model names complete a two-turn tool workflow.
+Repository CI does not currently claim that credentialed smoke.
+
+## Plugins are capabilities, not magic
+
+Python entry-point plugins are trusted installed code. Importing one gives it
+the Sasori process and OS user's full privileges. Manifest permissions are
+review/disclosure metadata, not runtime enforcement. The bundled Workbench says
+`FULL HOST PROCESS PRIVILEGES` and `enforced=false` for that reason.
+
+The local catalog checks identity, API version, digest, compatibility, execution
+mode, permission declarations, and upgrade differences. Bundled applications
+compose first-party registrations directly and do not dynamically load external
+entry points. `container` and `supervised_process` remain manifest-only modes;
+Sasori does not call them sandboxes.
+
+Read the trust records before enabling third-party code:
+
+- [ADR-0001: plugin trust](https://github.com/syusama/sasori/blob/main/docs/ADR-0001-PLUGIN-TRUST.md)
+- [ADR-0002: web fetch](https://github.com/syusama/sasori/blob/main/docs/ADR-0002-WEB-FETCH-BOUNDARY.md)
+- [ADR-0003: SQLite RAG](https://github.com/syusama/sasori/blob/main/docs/ADR-0003-RAG-SQLITE-BOUNDARY.md)
+- [ADR-0004: Git boundary](https://github.com/syusama/sasori/blob/main/docs/ADR-0004-GIT-PLUGIN-BOUNDARY.md)
+- [ADR-0005: MCP stdio](https://github.com/syusama/sasori/blob/main/docs/ADR-0005-MCP-STDIO-BOUNDARY.md)
+- [ADR-0007: external plugin host](https://github.com/syusama/sasori/blob/main/docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md)
+
+## CLI and local service
 
 ```powershell
 sasori --db .\runs.sqlite3 --app sasori_apps.incident:create_harness run "checkout latency is high" --run-id incident-1
@@ -157,128 +299,121 @@ sasori --db .\runs.sqlite3 --app sasori_apps.incident:create_harness approval in
 sasori --db .\runs.sqlite3 --app sasori_apps.incident:create_harness resume incident-1
 ```
 
-Add global `--json` for one JSON object per command; `events` emits one cursor-bearing object per line. Exit code `3` means the run durably paused for an explicit next action. Approval and effect resolution never resume implicitly.
+Exit code `3` means the run durably paused for an explicit next action. Approval
+and manual effect decisions never resume implicitly.
 
-## Local HTTP/SSE and Docker
+`sasori-server` allows one active mutation across all enabled applications; a
+second receives `503 runtime_busy` instead of disappearing into an in-memory
+queue. File-backed stores hold one cross-process owner lock. Network filesystems,
+replicas, failover, public TLS, and horizontal scheduling are not shipped.
 
-`sasori-server` is a single-process, single-owner local service. It serves the Workbench at `/`, application metadata, cursor-paginated run history, run/resume/status/approval/manual-effect operations, durable event JSON/SSE, `/healthz`, and `/readyz`. One active mutation is allowed across all enabled applications; a second receives `503 runtime_busy` instead of being silently queued. Approval and manual effect decisions persist `pause_reason=resume_required` and never resume implicitly. It is not a public multi-tenant server, scheduler, or horizontally scalable deployment.
+The HTTP surface is documented in [HTTP_API.md](https://github.com/syusama/sasori/blob/main/docs/HTTP_API.md).
 
-Multiple applications use repeated `--app id=module:factory` arguments:
+## Docker: mainland sources, locked integrity
 
-```powershell
-sasori-server --host 127.0.0.1 --port 8080 `
-  --db .\runs.sqlite3 `
-  --app incident=sasori_apps.incident:create_harness `
-  --app research=sasori_apps.research:create_harness `
-  --app developer=sasori_apps.developer:create_harness `
-  --trusted-loopback-no-auth
-```
+The Compose delivery uses:
 
-An application whose factory cannot load is reported as unavailable; it is not
-silently replaced by Incident. For normal use, prefer a bearer token even on
-loopback. The no-auth switch is restricted to an explicit loopback bind.
-
-The Compose delivery uses the digest-pinned DaoCloud Python base, hash-pinned build requirements from the Tsinghua PyPI mirror, a non-root user, read-only root filesystem, dropped capabilities, `no-new-privileges`, and bounded resources. Supply a local bearer-token file without adding it to Git:
+- a digest-pinned DaoCloud Python base;
+- hash-pinned build requirements from the Tsinghua PyPI mirror;
+- a non-root user, read-only root filesystem, dropped capabilities,
+  `no-new-privileges`, and bounded resources;
+- a local bearer-token file instead of a token in Git or an environment value.
 
 ```powershell
 $env:SASORI_TOKEN_FILE = "C:\secure-local-path\sasori-token"
 $env:SASORI_PORT = "18888"
-if ($IsLinux) {
-  chmod 0640 -- $env:SASORI_TOKEN_FILE
-  $env:SASORI_TOKEN_GID = (stat -c "%g" -- $env:SASORI_TOKEN_FILE).Trim()
-}
 docker compose up -d --build --wait
 ```
 
-On native Linux, Compose file secrets are bind mounts: their configured
-`uid`/`gid`/`mode` cannot remap the host file. Keep the token owned by the
-operator and a dedicated limited-membership group, use mode `0640`, and pass
-that file's numeric GID through `SASORI_TOKEN_GID` as above. The non-root
-container receives only that supplemental group; do not make the token
-world-readable or move it into an environment variable. Docker Desktop does
-not require this host-POSIX permission bridge.
+On native Linux, keep the token owned by the operator and a dedicated group at
+mode `0640`, then set `SASORI_TOKEN_GID` to that numeric group. Compose file
+secrets are bind mounts and cannot remap host ownership. See
+[Release and container gates](https://github.com/syusama/sasori/blob/main/docs/RELEASE.md) for the exact workflow.
 
-Exercise the same split-phase HTTP workflow used by the container CI gate from
-the repository root. `prepare` approves the deterministic Incident action but
-stops at the durable `resume_required` boundary; `complete` is the only phase
-that explicitly resumes it. The final phase is read-only:
+## Tests are the product contract
 
 ```powershell
-$baseUrl = "http://127.0.0.1:$env:SASORI_PORT"
-$runId = "container-acceptance-$([guid]::NewGuid().ToString('N'))"
-$evidence = Join-Path $env:TEMP "$runId.json"
-
-python scripts/container_acceptance.py prepare `
-  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
-  --evidence $evidence --run-id $runId
-python scripts/container_acceptance.py complete `
-  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
-  --evidence $evidence
-docker compose restart sasori
-docker compose up -d --wait --wait-timeout 120 sasori
-python scripts/container_acceptance.py after-restart `
-  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
-  --evidence $evidence
-Remove-Item -LiteralPath $evidence
-```
-
-The gate requires 11 durable events and zero completed `record_action` effects
-before resume, then exactly 16 events, one effect, and the exact SSE sequence
-11-16 tail after resume. Restart must preserve the projection, events, final,
-cursor, SSE tail, and effect count. The CI job additionally checks the external
-action log as `0 → 1 → 1`, proves a second owner receives
-`ConcurrentRunError`, scans generated evidence and raw logs for the bearer
-token, uploads the four audited acceptance JSON files, and separately uploads a
-checksum-locked Syft SPDX/native catalog plus Sasori's unsigned binding for the
-same tested image. Container health alone is not acceptance. File-backed stores
-hold a cross-process owner lock; network filesystems, replicas, failover, public
-TLS, and arbitrary untrusted tool sandboxing remain out of scope.
-
-This gate exercises the deterministic `incident` composition only. Its image
-SBOM binding is unsigned component-inventory evidence, not a signature or
-trusted provenance. It is not evidence for a live OpenAI/Anthropic call, the
-`research` or `developer` composition, a published registry image, or a public
-deployment. The workflow definition and image-SBOM path become public CI
-evidence for a revision only when the hosted run for that exact commit succeeds.
-
-Run the deterministic regression suite from the repository root:
-
-```powershell
+$env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
 node --test tests/workbench_event_reducer.test.cjs
 python tests/workbench_browser_acceptance.py --require-browser
 python tests/workbench_browser_journey.py --require-browser
 ```
 
-The browser gates use an installed Chrome, Chromium, or Edge binary. The first
-loads the production HTML and exact versioned assets, then holds and releases
-status, cold-event, SSE, create, and approval responses to prove that an older
-selection or same-run epoch cannot reclaim the visible view. The second keeps
-those production assets but connects them to a real local `sasori.server` and
-the real deterministic Incident application. It creates a run through the UI,
-shows the exact pending `record_action`, proves approval alone leaves the
-external action ledger empty at `resume_required`, explicitly resumes, observes
-one action and the 16-event completed timeline, reloads the page, reopens the
-durable history item, and rechecks the final plus the visible trusted-process
-permission disclosure. A test-only same-origin proxy injects the browser driver
-and exposes only an out-of-band action-count probe; it forwards every product
-API request to the real server and never replaces model, store, or HTTP
-behavior. The gates add no browser package or runtime dependency; CI requires
-the browser on one Ubuntu/Python 3.12 cell instead of multiplying product tests
-across the language matrix. A browser process that does not exit within the
-bounded deadline gets one retry with a fresh profile; a nonzero exit or missing
-product pass marker is never retried.
+The browser journey can also regenerate the README product evidence after a UI
+change:
 
-The accepted architecture, trust boundaries, and later gates live in [docs/FOUNDATION.md](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md).
+```powershell
+python tests/workbench_browser_journey.py --require-browser `
+  --screenshot docs/assets/workbench.png
+```
 
-## Release, security, and license
+The latest verified pre-benchmark baseline,
+[`6658332`](https://github.com/syusama/sasori/commit/6658332ade12aa2b558aa0db5de6218c2eafd8c8),
+passed [Hosted run 31271768241](https://github.com/syusama/sasori/actions/runs/31271768241):
 
-The local artifact verifier, credentialed provider smoke, Compose product gate,
-clean-tag requirements, fresh-environment matrix, and trusted
-SBOM/provenance boundaries are separate release gates documented in
-[docs/RELEASE.md](https://github.com/syusama/sasori/blob/main/docs/RELEASE.md). Report vulnerabilities through the private
-path in [SECURITY.md](https://github.com/syusama/sasori/blob/main/SECURITY.md).
+- Ubuntu + Windows × Python 3.11, 3.12, and 3.13 source matrix;
+- installed-wheel and rebuilt-sdist matrices;
+- package and release gates;
+- mainland-source image build and real Compose workflow/restart/owner lock;
+- SBOM generation, image binding, and audited evidence upload;
+- delayed-response UI race acceptance and a real 16-event Incident lifecycle in
+  Chrome on Ubuntu/Python 3.12.
 
+That branch run did **not** create a tag, signed attestation, or final release
+bundle. Exact-tag provenance remains a separate release gate.
+
+## Current and Next
+
+| Current — usable and tested | Next — not claimed yet |
+|---|---|
+| Tiny standard-library core | General immutable ArtifactRef + download/preview chain |
+| Single-agent loop and one runtime path | Semantic compaction and durable bounded Memory |
+| Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
+| Approval, effect fingerprints, crash ambiguity recovery | Typed Workflow on the same tool/effect contracts |
+| OpenAI + Anthropic conformance | More providers after the shared suite passes |
+| Deterministic bounded context projection | Project Charter/Board and multi-agent orchestration |
+| CLI, local HTTP/SSE, three app compositions, Workbench | Safe versioned GenUI and richer product surfaces |
+| Single-owner SQLite/Compose delivery | Leased durable executor and genuine isolation boundary |
+
+The complete source-grounded comparison, anti-patterns, P0/P1/P2 order, and
+acceptance gates are in
+[Sasori × LeAgent × ToFu](https://github.com/syusama/sasori/blob/main/docs/BENCHMARK-LEAGENT-TOFU.md).
+
+## Design laws
+
+1. **One loop.** Adapters and products may compose it; none may fork it.
+2. **Durable before visible.** Public progress never outruns committed truth.
+3. **Effects are explicit.** Read-only, idempotent, and side-effecting work have
+   different retry and recovery rights.
+4. **Invalid means inert.** A truncated or structurally invalid tool call never
+   executes.
+5. **Core stays small.** Provider SDKs, persistence, HTTP, RAG, orchestration,
+   UI, and marketplace logic remain outside it.
+6. **Trust is named.** Path containment is not a sandbox; entry points are
+   trusted code; cancellation is cooperative.
+7. **Evidence beats adjectives.** A feature is shipped when its real path and
+   failure path pass a runnable acceptance gate.
+
+## Contributing
+
+Sasori is building a small kernel and a large ecosystem in that order. Good
+contributions include:
+
+- a regression that makes a recovery invariant executable;
+- a provider adapter that passes the shared conformance suite;
+- an extension that stays outside core and declares its trust boundary;
+- a first-party app or curated plugin with deterministic acceptance;
+- accessibility, responsive, visual, or real-browser improvements to the
+  Puppet Workbench.
+
+Read [AGENTS.md](https://github.com/syusama/sasori/blob/main/AGENTS.md), the relevant ADRs, and
+[Foundation](https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md) before changing public events, recovery,
+golden traces, or plugin permissions.
+
+## Security and license
+
+Report vulnerabilities through the private path in [SECURITY.md](https://github.com/syusama/sasori/blob/main/SECURITY.md).
 Sasori code and first-party assets use the [MIT License](https://github.com/syusama/sasori/blob/main/LICENSE), subject to
-the material and license boundaries recorded in
+the origin and license boundaries in
 [THIRD_PARTY_NOTICES.md](https://github.com/syusama/sasori/blob/main/THIRD_PARTY_NOTICES.md).

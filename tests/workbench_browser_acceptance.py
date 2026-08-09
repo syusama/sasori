@@ -20,6 +20,10 @@ SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
 EXPECTED = "PASS:stale-status,same-run-epoch,cold-events,late-sse,create-run,approval"
 BROWSER_TIMEOUT_SECONDS = 35
 BROWSER_ATTEMPTS = 2
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+SCREENSHOT_WIDTH = 1600
+SCREENSHOT_HEIGHT = 1000
+MIN_SCREENSHOT_BYTES = 1024
 
 
 def browser_candidates() -> list[Path]:
@@ -152,11 +156,39 @@ def browser_version(binary: Path) -> str:
     return f"{binary.name} {version}"
 
 
+def validate_screenshot(path: Path) -> None:
+    if not path.is_file():
+        raise AssertionError("headless browser did not produce the requested screenshot")
+    if path.stat().st_size < MIN_SCREENSHOT_BYTES:
+        raise AssertionError("headless browser screenshot is unexpectedly small")
+    with path.open("rb") as stream:
+        header = stream.read(24)
+    if (
+        len(header) != 24
+        or header[:8] != PNG_SIGNATURE
+        or header[12:16] != b"IHDR"
+    ):
+        raise AssertionError("headless browser screenshot is not a canonical PNG")
+    width = int.from_bytes(header[16:20], "big")
+    height = int.from_bytes(header[20:24], "big")
+    if (width, height) != (SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT):
+        raise AssertionError(
+            "headless browser screenshot dimensions are "
+            f"{width}x{height}, expected {SCREENSHOT_WIDTH}x{SCREENSHOT_HEIGHT}"
+        )
+
+
 def run_browser_process(
-    binary: Path, port: int, *, virtual_time_budget: int = 10000
+    binary: Path,
+    port: int,
+    *,
+    virtual_time_budget: int = 10000,
+    screenshot: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     last_timeout: subprocess.TimeoutExpired | None = None
     for _ in range(BROWSER_ATTEMPTS):
+        if screenshot is not None:
+            screenshot.unlink(missing_ok=True)
         with tempfile.TemporaryDirectory(prefix="sasori-browser-") as profile:
             command = [
                 str(binary),
@@ -171,13 +203,16 @@ def run_browser_process(
                 "--no-first-run",
                 "--no-sandbox",
                 "--run-all-compositor-stages-before-draw",
+                "--window-size=1600,1000",
                 f"--user-data-dir={profile}",
                 f"--virtual-time-budget={virtual_time_budget}",
                 "--dump-dom",
-                f"http://127.0.0.1:{port}/",
             ]
+            if screenshot is not None:
+                command.append(f"--screenshot={screenshot}")
+            command.append(f"http://127.0.0.1:{port}/")
             try:
-                return subprocess.run(
+                completed = subprocess.run(
                     command,
                     capture_output=True,
                     text=True,
@@ -186,6 +221,9 @@ def run_browser_process(
                     timeout=BROWSER_TIMEOUT_SECONDS,
                     check=False,
                 )
+                if completed.returncode == 0 and screenshot is not None:
+                    validate_screenshot(screenshot)
+                return completed
             except subprocess.TimeoutExpired as exc:
                 last_timeout = exc
     raise RuntimeError(

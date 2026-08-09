@@ -176,7 +176,7 @@ class ReleaseBundleTests(unittest.TestCase):
                 "artifact_source_binding": "verified_to_current_working_tree",
                 "workflow_trigger_tag": EXPECTED_TAG,
                 "workflow_trigger_tag_matches_expected": True,
-                "included_source_tree_algorithm": "sasori-source-tree-v1",
+                "included_source_tree_algorithm": release_bundle.release_verify.SOURCE_TREE_ALGORITHM,
                 "included_source_tree_sha256": self.source_tree_sha256,
                 "included_source_file_count": self.source_file_count,
             },

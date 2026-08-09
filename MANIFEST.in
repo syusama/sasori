@@ -1,2 +1,4 @@
 include SECURITY.md
-recursive-include docs *.md
+include README_zh.md
+recursive-include docs *.md *.png *.svg
+prune tests

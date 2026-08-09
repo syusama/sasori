@@ -21,7 +21,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "3"
+VERIFIER_VERSION = "4"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v2"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -52,10 +53,26 @@ RELEASE_DOCS = (
     "docs/ADR-0006-MULTI-APP-RUN-BINDING.md",
     "docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md",
     "docs/ADR-0008-WORKBENCH-EVENT-REDUCER.md",
+    "docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md",
+    "docs/BENCHMARK-LEAGENT-TOFU.md",
+    "docs/CONTEXT.md",
     "docs/FOUNDATION.md",
     "docs/HTTP_API.md",
     "docs/PROVIDERS.md",
     "docs/RELEASE.md",
+)
+RELEASE_ASSETS = (
+    "README_zh.md",
+    "docs/assets/readme-hero.svg",
+    "docs/assets/workbench.png",
+)
+TOP_LEVEL_PACKAGES = (
+    "sasori",
+    "sasori_apps",
+    "sasori_context",
+    "sasori_market",
+    "sasori_plugins",
+    "sasori_web",
 )
 PROJECT_URLS = {
     "Documentation": "https://github.com/syusama/sasori/blob/main/docs/FOUNDATION.md",
@@ -259,9 +276,7 @@ def _source_payload(source_root: Path) -> dict[str, bytes]:
         and ".egg-info" not in path.parts
         and path.suffix.casefold() in {".py", ".html", ".css", ".js", ".svg"}
     }
-    required = {f"{package}/__init__.py" for package in (
-        "sasori", "sasori_apps", "sasori_market", "sasori_plugins", "sasori_web"
-    )}
+    required = {f"{package}/__init__.py" for package in TOP_LEVEL_PACKAGES}
     if not required.issubset(files):
         raise ReleaseVerificationError("source package inventory is incomplete", 3)
     return files
@@ -379,13 +394,7 @@ def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict
     ):
         raise ReleaseVerificationError("wheel is not exactly py3-none-any", 3)
     top_level = files[f"{expected_dist_info}/top_level.txt"]
-    if top_level.decode("utf-8").splitlines() != [
-        "sasori",
-        "sasori_apps",
-        "sasori_market",
-        "sasori_plugins",
-        "sasori_web",
-    ]:
+    if top_level.decode("utf-8").splitlines() != list(TOP_LEVEL_PACKAGES):
         raise ReleaseVerificationError("wheel top_level.txt is invalid", 3)
     entry_points = _parse_entry_points(files.get(f"{expected_dist_info}/entry_points.txt", b""))
     if entry_points != {"console_scripts": EXPECTED_SCRIPTS, "sasori.plugins": EXPECTED_PLUGINS}:
@@ -465,6 +474,7 @@ def verify_sdist(path: Path, source_root: Path, project: dict[str, str]) -> dict
         "README.md",
         *LICENSE_FILES,
         *RELEASE_DOCS,
+        *RELEASE_ASSETS,
     ):
         if files.get(f"{root}/{filename}") != (source_root / filename).read_bytes():
             raise ReleaseVerificationError(f"sdist {filename} does not match source", 3)
@@ -480,6 +490,7 @@ def verify_sdist(path: Path, source_root: Path, project: dict[str, str]) -> dict
         f"{root}/PKG-INFO",
         *(f"{root}/{name}" for name in LICENSE_FILES),
         *(f"{root}/{name}" for name in RELEASE_DOCS),
+        *(f"{root}/{name}" for name in RELEASE_ASSETS),
         *(f"{root}/src/{name}" for name in source_payload),
     }
     optional = {
@@ -667,6 +678,7 @@ def _source_tree(source_root: Path) -> tuple[str, int]:
             "README.md",
             *LICENSE_FILES,
             *RELEASE_DOCS,
+            *RELEASE_ASSETS,
             "requirements-build.txt",
             "Dockerfile",
         )
@@ -678,7 +690,7 @@ def _source_tree(source_root: Path) -> tuple[str, int]:
                 f"release source input must not be a symlink: {path.relative_to(source_root).as_posix()}",
                 3,
             )
-    digest = hashlib.sha256(b"sasori-source-tree-v1\0")
+    digest = hashlib.sha256((SOURCE_TREE_ALGORITHM + "\0").encode("ascii"))
     for path in sorted(paths, key=lambda item: item.relative_to(source_root).as_posix()):
         relative = path.relative_to(source_root).as_posix()
         digest.update(relative.encode("utf-8") + b"\0" + _sha256_file(path).encode("ascii") + b"\n")
@@ -830,7 +842,7 @@ def verify_release(
     source_hash, source_count = _source_tree(source_root)
     source.update({
         "artifact_source_binding": "verified_to_current_working_tree",
-        "included_source_tree_algorithm": "sasori-source-tree-v1",
+        "included_source_tree_algorithm": SOURCE_TREE_ALGORITHM,
         "included_source_tree_sha256": source_hash,
         "included_source_file_count": source_count,
         "workflow_trigger_tag": trigger_tag,

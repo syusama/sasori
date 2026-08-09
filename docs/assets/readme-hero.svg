@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title description">
+  <title id="title">Sasori — One kernel, many puppets</title>
+  <desc id="description">A dark lacquer and brass banner with an abstract mechanical scorpion and puppet threads.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090b0e"/>
+      <stop offset="0.58" stop-color="#15191e"/>
+      <stop offset="1" stop-color="#090b0e"/>
+    </linearGradient>
+    <radialGradient id="redGlow" cx="0.84" cy="0.25" r="0.52">
+      <stop offset="0" stop-color="#b52a32" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#b52a32" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1d39a"/>
+      <stop offset="0.48" stop-color="#c69a52"/>
+      <stop offset="1" stop-color="#7b5726"/>
+    </linearGradient>
+    <pattern id="grain" width="34" height="34" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="5" r="0.6" fill="#fff" opacity="0.08"/>
+      <circle cx="24" cy="17" r="0.45" fill="#fff" opacity="0.06"/>
+      <circle cx="12" cy="29" r="0.5" fill="#c69a52" opacity="0.08"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="500" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="500" rx="28" fill="url(#redGlow)"/>
+  <rect width="1200" height="500" rx="28" fill="url(#grain)"/>
+  <path d="M0 394C210 332 362 452 565 398s391-122 635-48v150H0Z" fill="#050608" opacity="0.72"/>
+
+  <g opacity="0.42" stroke="#c69a52" stroke-width="1">
+    <path d="M758 0v112l-38 34v78"/>
+    <path d="M846 0v82l46 41v70"/>
+    <path d="M958 0v92l-31 27v44"/>
+    <path d="M1060 0v126l-42 34v58"/>
+    <circle cx="720" cy="224" r="4" fill="#b52a32" stroke="none"/>
+    <circle cx="892" cy="193" r="4" fill="#b52a32" stroke="none"/>
+    <circle cx="927" cy="163" r="4" fill="#b52a32" stroke="none"/>
+    <circle cx="1018" cy="218" r="4" fill="#b52a32" stroke="none"/>
+  </g>
+
+  <g transform="translate(825 130) scale(3.25)" filter="url(#shadow)">
+    <rect width="64" height="64" rx="14" fill="#11151a" stroke="#2a3037" stroke-width="0.6"/>
+    <path d="M17 37c3-12 9-18 18-18 8 0 13 4 13 10 0 5-4 9-10 9h-9" fill="none" stroke="url(#brass)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M46 21c7-8 5-14-1-16 9 1 14 7 11 15-2 5-6 8-11 10" fill="none" stroke="#b52a32" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="28" cy="36" r="8" fill="#080a0c" stroke="#c69a52" stroke-width="2"/>
+    <circle cx="28" cy="36" r="2.5" fill="#b52a32"/>
+    <path d="M21 39 11 47m12-4-5 12m18-16 10 8m-12-4 5 12M20 32 9 29m27 3 12-5" stroke="#f2eee6" stroke-width="2" stroke-linecap="round"/>
+    <path d="m13 45-5-1 2 5m35-4 5-1-2 5" fill="none" stroke="#b52a32" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(86 92)">
+    <text x="0" y="0" fill="#c69a52" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16" font-weight="700" letter-spacing="5">PYTHON-FIRST AGENT FRAMEWORK</text>
+    <text x="0" y="104" fill="#f4f0e8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="102" font-weight="800" letter-spacing="12">SASORI</text>
+    <rect x="2" y="132" width="66" height="3" rx="1.5" fill="#b52a32"/>
+    <text x="0" y="193" fill="#f4f0e8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="650" letter-spacing="1.2">ONE KERNEL. MANY PUPPETS.</text>
+    <text x="0" y="238" fill="#9da5ae" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" letter-spacing="0.6">Tiny core  ·  Explicit effects  ·  Durable recovery</text>
+    <g transform="translate(0 288)" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="1.2">
+      <rect width="112" height="34" rx="17" fill="#211619" stroke="#7e252b"/>
+      <text x="56" y="22" text-anchor="middle" fill="#e5a7aa">一核牵万机</text>
+      <rect x="126" width="208" height="34" rx="17" fill="#181b1f" stroke="#4e4535"/>
+      <text x="230" y="22" text-anchor="middle" fill="#d8bd8f">STANDARD LIBRARY CORE</text>
+      <rect x="348" width="130" height="34" rx="17" fill="#181b1f" stroke="#353b42"/>
+      <text x="413" y="22" text-anchor="middle" fill="#b5bdc7">MIT LICENSE</text>
+    </g>
+  </g>
+
+  <path d="M28 28h1144v444H28Z" fill="none" stroke="#fff" stroke-opacity="0.08"/>
+</svg>

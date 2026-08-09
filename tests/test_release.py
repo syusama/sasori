@@ -49,6 +49,12 @@ def metadata(*, dependency=False, extra=""):
 
 
 class ReleaseVerificationTests(unittest.TestCase):
+    def test_release_contract_version_tracks_context_and_asset_inventory(self):
+        self.assertEqual(release_verify.VERIFIER_VERSION, "4")
+        self.assertEqual(
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v2"
+        )
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -59,6 +65,7 @@ class ReleaseVerificationTests(unittest.TestCase):
             "pyproject.toml",
             "MANIFEST.in",
             "README.md",
+            "README_zh.md",
             "LICENSE",
             "SECURITY.md",
             "THIRD_PARTY_NOTICES.md",
@@ -120,7 +127,7 @@ class ReleaseVerificationTests(unittest.TestCase):
                     "com.sasori.git = sasori_plugins.git:register\n"
                 ).encode(),
                 f"{dist_info}/top_level.txt": (
-                    "sasori\nsasori_apps\nsasori_market\nsasori_plugins\nsasori_web\n"
+                    "\n".join(release_verify.TOP_LEVEL_PACKAGES) + "\n"
                 ).encode(),
             }
         )
@@ -160,6 +167,7 @@ class ReleaseVerificationTests(unittest.TestCase):
                 "README.md",
                 *release_verify.LICENSE_FILES,
                 *release_verify.RELEASE_DOCS,
+                *release_verify.RELEASE_ASSETS,
             )
         }
         files[f"{root}/PKG-INFO"] = metadata()

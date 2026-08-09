@@ -167,6 +167,88 @@ class BrowserProcessTests(unittest.TestCase):
         self.assertIs(result, completed)
         run.assert_called_once()
 
+    @staticmethod
+    def _png(width=1600, height=1000):
+        header = (
+            browser_acceptance.PNG_SIGNATURE
+            + (13).to_bytes(4, "big")
+            + b"IHDR"
+            + width.to_bytes(4, "big")
+            + height.to_bytes(4, "big")
+        )
+        return header + b"x" * browser_acceptance.MIN_SCREENSHOT_BYTES
+
+    def test_screenshot_must_be_created_by_the_current_attempt(self):
+        completed = subprocess.CompletedProcess(
+            ["browser"], returncode=0, stdout="ok", stderr=""
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            screenshot = Path(directory) / "workbench.png"
+            screenshot.write_bytes(self._png())
+            with mock.patch.object(
+                browser_acceptance.subprocess,
+                "run",
+                return_value=completed,
+            ), self.assertRaisesRegex(
+                AssertionError, "did not produce the requested screenshot"
+            ):
+                browser_acceptance.run_browser_process(
+                    Path("browser"), 18080, screenshot=screenshot
+                )
+            self.assertFalse(screenshot.exists())
+
+    def test_retry_deletes_partial_screenshot_before_accepting_evidence(self):
+        completed = subprocess.CompletedProcess(
+            ["browser"], returncode=0, stdout="ok", stderr=""
+        )
+        timeout = subprocess.TimeoutExpired(
+            ["browser"], browser_acceptance.BROWSER_TIMEOUT_SECONDS
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            screenshot = Path(directory) / "workbench.png"
+            attempts = 0
+
+            def run(command, **options):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    screenshot.write_bytes(b"partial")
+                    raise timeout
+                return completed
+
+            with mock.patch.object(
+                browser_acceptance.subprocess, "run", side_effect=run
+            ), self.assertRaisesRegex(
+                AssertionError, "did not produce the requested screenshot"
+            ):
+                browser_acceptance.run_browser_process(
+                    Path("browser"), 18080, screenshot=screenshot
+                )
+            self.assertFalse(screenshot.exists())
+
+    def test_screenshot_png_signature_and_dimensions_are_verified(self):
+        completed = subprocess.CompletedProcess(
+            ["browser"], returncode=0, stdout="ok", stderr=""
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            screenshot = Path(directory) / "workbench.png"
+
+            def write_valid(command, **options):
+                screenshot.write_bytes(self._png())
+                return completed
+
+            with mock.patch.object(
+                browser_acceptance.subprocess, "run", side_effect=write_valid
+            ):
+                result = browser_acceptance.run_browser_process(
+                    Path("browser"), 18080, screenshot=screenshot
+                )
+            self.assertIs(result, completed)
+
+            screenshot.write_bytes(self._png(width=800))
+            with self.assertRaisesRegex(AssertionError, "dimensions are 800x1000"):
+                browser_acceptance.validate_screenshot(screenshot)
+
 
 if __name__ == "__main__":
     unittest.main()

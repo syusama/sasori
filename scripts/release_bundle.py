@@ -425,7 +425,7 @@ def verify_bundle(
         or current_source.get("matching_release_tag") != trigger_tag
         or any(source.get(key) != value for key, value in current_source.items())
         or source.get("included_source_tree_algorithm")
-        != "sasori-source-tree-v1"
+        != release_verify.SOURCE_TREE_ALGORITHM
         or source.get("included_source_tree_sha256") != source_tree_sha256
         or source.get("included_source_file_count") != source_file_count
     ):
