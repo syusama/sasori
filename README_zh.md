@@ -374,13 +374,14 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-最新已托管验证的 Artifact 基线
-[`94f4d0e`](https://github.com/syusama/sasori/commit/94f4d0e58823e88c868c10297a7844289e4fbd5d)
-通过了 [Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/31302552621)：
+最新已托管验证的 main 基线
+[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206)
+通过了 [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164)：
 
-- Ubuntu + Windows × Python 3.11 / 3.12 / 3.13 source matrix；
+- Ubuntu + Windows × Python 3.11 / 3.12 / 3.13 source matrix，包含 Semantic
+  Compaction 的取消、deadline、cache race 与显式失败合同；
 - installed wheel 与 rebuilt sdist matrix；
-- package/release gates；
+- package 验证；普通 `main` push 上 exact-tag release bundle 按设计跳过；
 - 国内源 image build、真实 Compose workflow/restart/owner lock，包括精确 run
   关联的 Artifact GET/HEAD/Range 与同尺寸篡改拒绝；
 - SBOM、image binding 与审计证据上传；
@@ -390,9 +391,9 @@ python tests/workbench_browser_journey.py --require-browser `
 该 main branch run **没有**创建 tag、签名 attestation 或最终 release bundle。
 Exact-tag provenance 仍是单独的发布门禁。
 
-本 source candidate 的 Semantic compaction 已通过确定性本地合同测试；在 exact
-implementation commit 的 Hosted run 全绿前，不把它描述为 Hosted-verified 或真实
-provider 摘要质量证据。
+该 run 验证的是 Semantic Compaction 的确定性协议和集成门禁，**不是**真实
+OpenAI/Anthropic 摘要质量、事实召回、unsupported claim / contradiction 指标、provider
+token 用量、账单或成本收益证据；这些凭据化评测仍然开放。
 
 ## Current / Next
 

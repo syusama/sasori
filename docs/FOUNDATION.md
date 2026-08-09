@@ -307,6 +307,17 @@ Gate G2:
 
 Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic Messages JSON/SSE wire tests cover full two-turn tool continuation, strict local schema validation, authoritative terminal aggregation, malformed/incomplete/refused/interrupted results, SSE framing/order, 429/retry-after, redirect rejection, total transport deadline, cancellation, duplicate IDs, oversized bodies, and secret-free exception chains. Upstream deltas never enter the public projection or durable provider state. CLI and HTTP use one public projection; HTTP/SSE approval/resume and cursor reconnect pass. A local manual, no-cache Compose acceptance built from `d384ab2` through the digest-pinned DaoCloud base and Tsinghua index (`sasori:local` image ID `sha256:196a3db71942fc0c20118e2029c81882ae678963ceaefccd9ce8e271a05b8fc3`) stopped at `resume_required` with 11 events and zero actions, then completed exactly 16 events and one exact approved action only after explicit resume. Its SSE reconnect returned sequences 11-16; restart preserved the projection/event/SSE hashes, final, cursor, and effect count; the external action log remained `0 → 1 → 1`; and a second database owner was rejected with `ConcurrentRunError` without disclosing the token. The current CI definition repeats that split-phase deterministic Incident workflow, uploads the audited acceptance JSON, generates checksum-locked Syft SPDX/native image inventories after product acceptance, and uses Sasori's verifier to bind a before/after-stable daemon inspection (ID, descriptor, repo digests, platform, and RootFS layers) plus the accepted Compose container's engine-specific `.Image` identity to the embedded config, Syft-normalized manifest, sole SPDX container root, exact package/file subjects, and Git revision. The binding remains unsigned and explicitly disclaims trusted provenance. A hosted run URL bound to the exact revision is still required before claiming public CI image-SBOM evidence. This is not live-provider, signing, trusted-provenance, registry-publication, or public-deployment evidence. G2 remains **open** because neither provider key/model is configured for the two required live smokes.
 
+Current Semantic Compaction evidence on 2026-08-09 is bound to
+[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206)
+and [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164).
+That run passed the six-platform source matrix, installed-wheel and rebuilt-sdist
+matrices, package verification, real Chrome paths, and the mainland-source
+container/restart/artifact/tamper gates. It verifies the deterministic summary
+protocol, cancellation/deadline/cache contracts, and first-party integration;
+it does not verify real-provider summary quality, factual recall, provider usage,
+billing, or cost savings. The exact-tag release bundle was correctly skipped on
+this ordinary `main` push, so signing and trusted provenance remain separate.
+
 ### Days 56-75: switching-value validation
 
 Deliver:

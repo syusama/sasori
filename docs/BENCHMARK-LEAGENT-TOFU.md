@@ -2,11 +2,11 @@
 
 > 研究日期：2026-08-09
 >
-> Sasori 最新已托管验证基线：[`94f4d0e`](https://github.com/syusama/sasori/commit/94f4d0e58823e88c868c10297a7844289e4fbd5d)，[Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/31302552621) 全绿
+> Sasori 最新已托管验证基线：[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206)，[Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164) 全绿
 >
 > 本文对 Sasori Current 能力的结论绑定上述 exact commit/run；后续 revision 必须重新取得自己的证据，不能继承该结论
 >
-> 当前 source candidate 新增了 opt-in Semantic compaction；在 exact implementation commit 的 Hosted run 完成前，本文只把它计为本地确定性合同证据，不继承 `94f4d0e` 的 Hosted 结论
+> 该 exact commit/run 已覆盖 opt-in Semantic compaction 的确定性合同和集成门禁；真实模型摘要质量、事实召回、unsupported/contradiction、provider token 与账单仍未验证
 >
 > LeAgent 基线：[`1f16badc`](https://github.com/vixues/LeAgent/tree/1f16badc834abbd829d3cb7e9f8fcb5b2d57f443)
 >
@@ -14,7 +14,7 @@
 
 这不是按 README 关键词计数的功能表。LeAgent/ToFu 结论来自上述固定 commit
 的入口、运行循环、事件、持久化、工具、上下文、插件、部署、测试和 UI 源码；
-Sasori 的 Hosted 结论只绑定 `94f4d0e` 与 run `31302552621`。上游随时会变化；
+Sasori 的 Hosted 结论只绑定 `8751b4e` 与 run `31306732164`。上游随时会变化；
 重新做产品决策前必须刷新 Sasori、LeAgent、ToFu 的 commit 与证据。
 
 ## 结论先行
@@ -60,7 +60,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 公共事件 | 版本化语义投影；SQLite commit 后 sink；live/cold/reconnect 共用纯 reducer | 结构化事件丰富，但热 event/approval/output registry 有进程内状态 | `EVENT_CONTRACT_VERSION=1`、durable-before-visible、committed-before-done、稳定 `_msgId` | Sasori/ToFu 各有长处 |
 | 工具协议 | malformed/truncated 不执行；异常显式 tool error；duplicate call 拒绝 | 统一 ToolExecutor，类型/审批面丰富 | ToolSpec/registry 与统一 dispatch 较完整 | Sasori 故障语义胜 |
 | 副作用恢复 | effect/revision/idempotency、dispatch intent、`effect_unknown`、人工恢复、真实 crash tests | 有审批/checkpoint，但未见等价的 side-effect ambiguity contract | 有事件、审批、写入 freshness/idempotency 元数据；崩溃后执行恢复边界不等价 | Sasori 明显胜 |
-| Context | `94f4d0e` 已托管验证结构安全投影；source candidate 又实现核心外、具名的整包 digest 回显/低信任未验证注记 adapter，严格 schema、最终复测、typed failure 与进程内 lineage/cache；真实模型质量、tool-truth ledger、durable archive、provider usage 尚未验证 | ContextSource、预算、压缩与 recall 更全面；固定快照的 `memory.compact.build_autocompact` 路径在 cache miss 时直接用 recent tail，key 对每条旧 message content 只取前 200 characters，summarizer transcript 按字符 `[:20_000]` 截断 | 三层 compaction、cache-aware 预算与 archive 产品面很强；固定快照的 L2 query-aware formatter 排除 tool message，L2 archive write 返回 `None` 后仍可继续 compact，cheap capability fallback 也没有 summary-provider affinity 保证 | Sasori 结构/失败边界更严格；ToFu 分层广度仍胜 |
+| Context | `8751b4e` 已托管验证结构安全投影及核心外、具名的整包 digest 回显/低信任未验证注记 adapter，包括严格 schema、最终复测、typed failure、summarizer cancellation、deadline 装配与进程内 lineage/cache；真实模型质量、tool-truth ledger、durable archive、provider usage 尚未验证 | ContextSource、预算、压缩与 recall 更全面；固定快照的 `memory.compact.build_autocompact` 路径在 cache miss 时直接用 recent tail，key 对每条旧 message content 只取前 200 characters，summarizer transcript 按字符 `[:20_000]` 截断 | 三层 compaction、cache-aware 预算与 archive 产品面很强；固定快照的 L2 query-aware formatter 排除 tool message，L2 archive write 返回 `None` 后仍可继续 compact，cheap capability fallback 也没有 summary-provider affinity 保证 | Sasori 结构/失败边界更严格；ToFu 分层广度仍胜 |
 | Memory | RAG/FTS5 是独立插件，不等于长期 Memory | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 落后 |
 | Artifact/FileRef | `94f4d0e` 已托管验证核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 的最小可靠闭环胜；竞品广度仍胜 |
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
@@ -72,7 +72,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 依赖与镜像完整性 | base digest、Python/build hash、国内镜像、SBOM/binding、wheel/sdist matrix | base/apt/pip 未等价锁定，Docker label 版本漂移 | 多 `>=` 无 hash、Docker 未用国内源/digest、Playwright 安装可吞错 | Sasori 明显胜 |
 | 默认沙箱表述 | 明示 full host process privilege；路径限制不冒充沙箱 | README 称 isolation，但当前 inproc/subprocess 实现与宿主同权 | Shell/桌面/浏览器执行主要是主机能力与可选防护，取消 best-effort | Sasori 诚实性胜 |
 | 水平扩展 | 明确单 owner/单 mutation，不声称多 worker | PG 不消除 process-local registry/queue 热状态 | 多用户/PG 功能广，但 task dict/进程执行与恢复边界复杂 | 三者均不能仅凭数据库宣称完整 HA |
-| 测试证据 | `94f4d0e` 的 Windows/Linux × Python 3.11–3.13、277 项源码、wheel/sdist、国内源容器、同尺寸篡改、Chrome 竞态与真实 17-event Artifact lifecycle 已由 Hosted run `31302552621` 全绿验证 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 当前证据链胜 |
+| 测试证据 | `8751b4e` 的 Windows/Linux × Python 3.11–3.13、304 项源码合同、wheel/sdist、国内源容器、同尺寸篡改、Chrome 竞态与真实 17-event Artifact lifecycle 已由 Hosted run `31306732164` 全绿验证 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 当前证据链胜 |
 
 ToFu 当前 HEAD 的 hosted jobs 没有获得 GitHub hosted runner，页面显示平台内部
 错误；这意味着“缺少当前绿色托管证据”，**不**意味着源码测试已被证明失败。
@@ -237,7 +237,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 
 | 增量 | 验收定义 |
 |---|---|
-| Semantic compaction | source candidate 已实现：冷区选择不拆工具组、`tools=()`、排除 `provider_state` 的整包 public-projection digest 回显、严格 schema、有损未验证 assistant note、最终预算复测、typed failure、summarizer-stage cancellation、有界进程 cache/诊断、原 transcript 不变；尚无 tool-truth ledger，待 exact Hosted run 与真实模型 recall/unsupported/contradiction/denied-effect/citation 评测 |
+| Semantic compaction | `8751b4e` / Hosted run `31306732164` 已验证：冷区选择不拆工具组、`tools=()`、排除 `provider_state` 的整包 public-projection digest 回显、严格 schema、有损未验证 assistant note、最终预算复测、typed failure、summarizer-stage cancellation、有界进程 cache/诊断、原 transcript 不变；尚无 tool-truth ledger，真实模型 recall/unsupported/contradiction/denied-effect/citation 评测仍开放 |
 | Durable Memory | bounded retrieval；source/score/version；同 session 多 turn；删除/重建；注入失败关闭 |
 | Artifact Workbench | `94f4d0e` 已交付并托管验证 text/JSON 安全预览、认证下载、冷加载、stale-run 隔离与真实浏览器链；图片/PDF 需独立内容校验后再开放 |
 | Skill selection | progressive disclosure；确定性 eligibility；预算；恶意 SKILL.md；不自动执行安装脚本 |

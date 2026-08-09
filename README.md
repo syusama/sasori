@@ -400,25 +400,28 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-The latest verified Artifact baseline,
-[`94f4d0e`](https://github.com/syusama/sasori/commit/94f4d0e58823e88c868c10297a7844289e4fbd5d),
-passed [Hosted run 31302552621](https://github.com/syusama/sasori/actions/runs/31302552621):
+The latest Hosted-verified main baseline,
+[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206),
+passed [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164):
 
-- Ubuntu + Windows × Python 3.11, 3.12, and 3.13 source matrix;
+- Ubuntu + Windows × Python 3.11, 3.12, and 3.13 source matrix, including
+  Semantic Compaction cancellation, deadline, cache-race, and failure contracts;
 - installed-wheel and rebuilt-sdist matrices;
-- package and release gates;
+- package verification, with the exact-tag release bundle correctly skipped on
+  this ordinary `main` push;
 - mainland-source image build and real Compose workflow/restart/owner lock,
   including run-scoped artifact GET/HEAD/Range and same-size tamper rejection;
 - SBOM generation, image binding, and audited evidence upload;
 - delayed-response UI race acceptance and a real 17-event Artifact-enabled
   Incident lifecycle in Chrome on Ubuntu/Python 3.12.
 
-That branch run did **not** create a tag, signed attestation, or final release
+That main-branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.
 
-Semantic compaction in this source candidate is covered by deterministic local
-contract tests. It is not described as Hosted-verified or real-provider quality
-evidence until the exact implementation commit passes its own Hosted run.
+The run verifies Semantic Compaction's deterministic protocol and integration
+gates. It is **not** evidence of real OpenAI/Anthropic summary quality, factual
+recall, unsupported-claim or contradiction rates, provider token usage, billing,
+or cost savings; those credentialed evaluations remain open.
 
 ## Current and Next
 
