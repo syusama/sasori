@@ -190,6 +190,9 @@
           },
         }));
       }
+      if (mode === "artifact-stale") {
+        return json(projection("run-old", "artifact stale source"));
+      }
       return json(projection("run-old", `${mode} source`, "running", {
         latest_seq: mode === "cold-events" ? 1 : 0,
         final_message: null,
@@ -204,6 +207,14 @@
         if (oldEventHistoryCount === 1) return defer("cold-events");
       }
       return eventBatch("run-old");
+    }
+    const artifactList = url.pathname.match(/^\/v1\/runs\/(run-old|run-new)\/artifacts$/);
+    if (method === "GET" && artifactList) {
+      const runId = artifactList[1];
+      if (mode === "artifact-stale" && runId === "run-old") {
+        return defer("artifact-stale");
+      }
+      return json({ run_id: runId, artifacts: [] });
     }
     if (method === "POST" && url.pathname === "/v1/runs/run-old/approval") {
       return defer("approval");
@@ -362,6 +373,32 @@
     record("late-sse");
   }
 
+  async function staleArtifactCase(fixture) {
+    fixture.reset("artifact-stale");
+    await open("run-old");
+    await waitFor(() => fixture.pendingCount("artifact-stale") === 1, "old artifact list was not delayed");
+    await open("run-new");
+    await waitForSelected("run-new", "fresh selected run");
+    fixture.resolveNext("artifact-stale", fixture.json({
+      run_id: "run-old",
+      artifacts: [{
+        version: 1,
+        artifact_id: "artifact-stale",
+        run_id: "run-old",
+        content_sha256: "a".repeat(64),
+        size_bytes: 5,
+        filename: "stale.txt",
+        media_type: "text/plain; charset=utf-8",
+        created_seq: 2,
+      }],
+    }));
+    await tick();
+    await tick();
+    assertFreshNewView("artifact-stale");
+    assert(!document.querySelector("#artifact-list").textContent.includes("stale.txt"), "stale artifact response reached the active view");
+    record("artifact-stale");
+  }
+
   async function acceptedCreateCase(fixture) {
     fixture.reset("create-run");
     const input = document.querySelector("#task-input");
@@ -412,6 +449,7 @@
     await sameRunEpochCase(fixture);
     await coldEventsCase(fixture);
     await lateSseCase(fixture);
+    await staleArtifactCase(fixture);
     await acceptedCreateCase(fixture);
     await approvalCase(fixture);
     result.dataset.result = "passed";

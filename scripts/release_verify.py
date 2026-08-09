@@ -21,8 +21,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "4"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v2"
+VERIFIER_VERSION = "5"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v3"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -54,6 +54,8 @@ RELEASE_DOCS = (
     "docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md",
     "docs/ADR-0008-WORKBENCH-EVENT-REDUCER.md",
     "docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md",
+    "docs/ADR-0010-ARTIFACT-REF-BOUNDARY.md",
+    "docs/ARTIFACTS.md",
     "docs/BENCHMARK-LEAGENT-TOFU.md",
     "docs/CONTEXT.md",
     "docs/FOUNDATION.md",
@@ -69,6 +71,7 @@ RELEASE_ASSETS = (
 TOP_LEVEL_PACKAGES = (
     "sasori",
     "sasori_apps",
+    "sasori_artifacts",
     "sasori_context",
     "sasori_market",
     "sasori_plugins",

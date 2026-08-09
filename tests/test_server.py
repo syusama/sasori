@@ -406,15 +406,19 @@ class ServerTests(unittest.TestCase):
         self.assertIn('id="settings-button" type="button" aria-label=', page)
         self.assertIn('id="connection-signal" data-state="idle" role="status"', page)
         self.assertIn('id="surface-tab" role="tab"', page)
+        self.assertIn('id="artifacts-tab" role="tab"', page)
+        self.assertIn('id="artifact-list" aria-live="polite"', page)
         self.assertIn('tabindex="-1"', page)
         self.assertIn('data-mobile-view="stage" class="active" aria-pressed="true"', page)
 
         assets = {}
         for path, content_type in (
             ("/assets/app.0.1.0.css", "text/css"),
+            ("/assets/artifacts.0.1.0.css", "text/css"),
             ("/assets/app.0.1.1.js", "text/javascript"),
             ("/assets/event-reducer.0.1.0.js", "text/javascript"),
             ("/assets/app.0.1.2.js", "text/javascript"),
+            ("/assets/app.0.1.3.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -427,6 +431,10 @@ class ServerTests(unittest.TestCase):
         self.assertLess(
             page.index("/assets/event-reducer.0.1.0.js"),
             page.index("/assets/app.0.1.2.js"),
+        )
+        self.assertLess(
+            page.index("/assets/app.0.1.2.js"),
+            page.index("/assets/app.0.1.3.js"),
         )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
@@ -442,10 +450,21 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn('$$("[data-mobile-view]")', script)
         stylesheet = assets["/assets/app.0.1.0.css"]
         self.assertNotIn(".signal b { display: none; }", stylesheet)
+        artifact_script = assets["/assets/app.0.1.3.js"]
+        self.assertIn("contextIsActive(context)", artifact_script)
+        self.assertIn("textContent = text", artifact_script)
+        self.assertIn("URL.createObjectURL(blob)", artifact_script)
+        self.assertIn("URL.revokeObjectURL(objectUrl)", artifact_script)
+        self.assertNotIn("token=", artifact_script)
+        self.assertNotIn("innerHTML", artifact_script)
+        artifact_styles = assets["/assets/artifacts.0.1.0.css"]
+        self.assertIn(".artifact-card", artifact_styles)
 
         status, error, _ = self.request(server, "GET", "/assets/../README.md")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.2.js?v=1")
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(server, "GET", "/assets/app.0.1.3.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))

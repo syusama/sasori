@@ -45,6 +45,7 @@ Runtime：Python、CLI、HTTP 与 Workbench 全部驱动同一条单 Agent Loop�
 | 崩溃后结果不确定怎么办 | 调用前先持久化 dispatch intent；歧义结果停在 `effect_unknown`，等待人工核验恢复 |
 | 多入口会不会各写一套逻辑 | Python、CLI、HTTP、应用与 Workbench 都汇入 `Harness.run()` / `resume()` |
 | 长对话怎么控预算 | 可选 `sasori_context` 在不拆散工具调用/结果、不改写原记录的前提下投影上下文 |
+| 交付物如何耐久化 | 可选 `sasori_artifacts` 把 immutable bytes、metadata 与公共事件绑定到精确 run，不扩张 Loop |
 | 如何从小框架长成大产品 | Provider、SQLite、RAG、MCP、Git、workspace、apps、catalog、server、UI 全在核心外装配 |
 | 如何证明不是 PPT | fake model、provider conformance、进程崩溃、reducer 竞态、真实浏览器、包与容器门禁 |
 | 国内网络如何交付 | DaoCloud 基础镜像、清华 PyPI 默认源、digest/hash 锁定、真实国内源容器工作流 |
@@ -59,7 +60,9 @@ cd sasori
 python -m pip install -e .
 sasori-server --host 127.0.0.1 --port 8080 \
   --db ./sasori-runs.sqlite3 \
+  --artifact-root ./sasori-artifacts \
   --app incident=sasori_apps.incident:create_harness \
+  --publish-final-artifact \
   --trusted-loopback-no-auth
 ```
 
@@ -190,15 +193,44 @@ model = BoundedContextModel(
 [Context](docs/CONTEXT.md) 与
 [ADR-0009](docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md)。
 
+## 不让产物拖大核心的 ArtifactRef
+
+可信 Python host 可以在真实 run 建立后显式注册有界交付物：
+
+```python
+from sasori_artifacts import ArtifactStore
+
+artifacts = ArtifactStore(run_store, "./artifacts")
+ref = artifacts.put(
+    run_id,
+    b'{"status":"ready"}',
+    declared_filename="report.json",
+    declared_media_type="application/json",
+)
+```
+
+Blob 按 SHA-256 无覆盖 finalize；immutable metadata row 与
+`artifact.available` 在 run 的真实 durable cursor 上同事务提交。重试幂等；读取在
+发送成功 headers 前，基于同一个已打开文件校验精确 size 与 digest。HTTP
+list/content/HEAD/单 Range 全部按 run association 查询，unknown 与 cross-run ID
+返回相同 404。
+
+当前 Bearer 只认证一个 Sasori instance，不是用户或租户身份。本阶段没有 upload、
+delete、retention/GC 保证、分享 grant 或 active-content preview。详见
+[Artifacts](docs/ARTIFACTS.md) 与
+[ADR-0010](docs/ADR-0010-ARTIFACT-REF-BOUNDARY.md)。
+
 ## Puppet Workbench / 蠍之机关室
 
 <p align="center">
-  <img src="docs/assets/workbench.png" alt="Sasori Puppet Workbench 中真实完成的 Incident run 与 16 个耐久事件" width="100%">
+  <img src="docs/assets/workbench.png" alt="Sasori Puppet Workbench 中真实完成的 Incident run、immutable artifact 卡片与安全文本预览" width="100%">
 </p>
 
 这张图来自真实浏览器链路：生产 Workbench → `sasori.server` → Incident Harness
 → SQLite → 人工批准 → 显式恢复 → 一次外部副作用 → 页面重载 → 冷历史重开。
-它不是静态 mockup。
+该 run 先产生 16 个 Loop events，再由显式 host policy 追加一个
+`artifact.available`；Chrome 验收会真实检查 artifact card、认证预览、下载 fetch
+与冷重开。它不是静态 mockup。
 
 当前 no-build UI 已包含：
 
@@ -206,6 +238,8 @@ model = BoundedContextModel(
 - cursor 分页的耐久 run history；
 - 任务输入、REST/SSE 进度、批准/拒绝、显式恢复、人工 effect recovery；
 - live/cold/reconnect 共用 pure reducer 的时间轴；
+- 精确 run-scoped artifact cards、认证 UTF-8 text/JSON preview、verified download
+  与 stale-response 隔离；
 - skill、tool effect、plugin identity 与宿主权限披露；
 - 响应式导航、键盘 focus、reduced motion，以及对不可信内容的 text-only 渲染。
 
@@ -217,6 +251,7 @@ model = BoundedContextModel(
 | `SQLiteStore` | 原子 revision/checkpoint/event、CAS、重启恢复、跨进程单 owner |
 | Providers | 标准库 OpenAI Responses 与 Anthropic Messages；strict schema 与共享 conformance |
 | `sasori_context` | 可选确定性预算投影、结构验证、自定义 estimator |
+| `sasori_artifacts` | immutable content-addressed blobs、run/event association、verified list/content/HEAD/Range |
 | CLI | run/status/events/approval/resume/effect；JSON/JSONL 模式 |
 | HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、readiness、Workbench |
 | Applications | 确定性 Incident；需配置的 Research 与 Developer |
@@ -325,9 +360,9 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-本次对标前的已验证基线
-[`6658332`](https://github.com/syusama/sasori/commit/6658332ade12aa2b558aa0db5de6218c2eafd8c8)
-通过了 [Hosted run 31271768241](https://github.com/syusama/sasori/actions/runs/31271768241)：
+最新已托管验证的 Artifact 前基线
+[`028d664`](https://github.com/syusama/sasori/commit/028d664bf6f7531937c21bf333a06f6ade887a14)
+通过了 [Hosted run 31298332150](https://github.com/syusama/sasori/actions/runs/31298332150)：
 
 - Ubuntu + Windows × Python 3.11 / 3.12 / 3.13 source matrix；
 - installed wheel 与 rebuilt sdist matrix；
@@ -343,7 +378,8 @@ Exact-tag provenance 仍是单独的发布门禁。
 
 | Current：可用且有测试 | Next：尚不宣称 |
 |---|---|
-| 标准库轻核 | 通用 immutable ArtifactRef + 下载/预览链 |
+| 标准库轻核 | Artifact access grant、版本链与 lifecycle/GC |
+| immutable run-scoped ArtifactRef + 安全文本/JSON 预览 | 通过专项内容校验门禁后的安全 PDF/image preview |
 | 单 Agent Loop 与一个 Runtime path | 语义 compaction 与 durable bounded Memory |
 | 版本化耐久事件与纯 UI reducer | 动态 skill selection 与受审市场 |
 | approval、effect fingerprint、崩溃歧义恢复 | 复用同一 tool/effect contract 的 typed Workflow |

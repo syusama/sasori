@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sasori import SQLiteStore  # noqa: E402
 from sasori.server import create_server  # noqa: E402
+from sasori_artifacts import ArtifactStore  # noqa: E402
 from workbench_browser_acceptance import (  # noqa: E402
     browser_candidates,
     browser_version,
@@ -28,9 +29,10 @@ from workbench_browser_acceptance import (  # noqa: E402
 
 JOURNEY = Path(__file__).with_name("workbench_real_journey.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
-EXPECTED = "PASS:real-incident-lifecycle"
+EXPECTED = "PASS:real-incident-lifecycle,artifact-preview-download"
 EXPECTED_INPUT = "browser lifecycle incident"
 EXPECTED_ACTION = f"Operator review: diagnostic captured for {EXPECTED_INPUT}"
+JOURNEY_BROWSER_TIMEOUT_SECONDS = 70
 _HOP_BY_HOP = {
     "connection",
     "content-length",
@@ -186,25 +188,37 @@ def strict_action(path: Path) -> dict[str, str]:
     return {"summary": EXPECTED_ACTION}
 
 
-def validate_store(database: Path, run_id: str) -> dict[str, object]:
+def validate_store(database: Path, artifact_root: Path, run_id: str) -> dict[str, object]:
     with SQLiteStore(database) as store:
         snapshot = store.load(run_id)
         events = store.stored_events(run_id)
+        artifacts = ArtifactStore(store, artifact_root)
+        try:
+            refs = artifacts.list(run_id)
+            payload = artifacts.get(run_id, refs[0].artifact_id) if refs else None
+        finally:
+            artifacts.close()
     if snapshot.status != "completed":
         raise AssertionError("real Workbench journey did not durably complete")
     if snapshot.app_id != "incident":
         raise AssertionError("real Workbench journey lost its immutable app binding")
     if snapshot.final_message is None or EXPECTED_ACTION not in snapshot.final_message.content:
         raise AssertionError("real Workbench journey persisted an unexpected final answer")
-    if len(events) != 16 or [event.seq for event in events] != list(range(1, 17)):
+    if len(events) != 17 or [event.seq for event in events] != list(range(1, 18)):
         raise AssertionError("real Workbench journey did not persist the exact event sequence")
     if [event.event.type for event in events].count("run.completed") != 1:
         raise AssertionError("real Workbench journey has an invalid terminal event count")
+    if events[-1].event.type != "artifact.available" or len(refs) != 1:
+        raise AssertionError("real Workbench journey did not bind one durable artifact")
+    if refs[0].created_seq != 17 or payload is None or EXPECTED_ACTION.encode("utf-8") not in payload.content:
+        raise AssertionError("real Workbench artifact is not the verified final result")
     return {
         "app_id": snapshot.app_id,
         "state": snapshot.status,
         "events": len(events),
         "latest_seq": events[-1].seq,
+        "artifacts": len(refs),
+        "artifact_sha256": refs[0].content_sha256,
     }
 
 
@@ -215,6 +229,7 @@ def run_acceptance(
         root = Path(directory)
         database = root / "runs.sqlite3"
         action_log = root / "actions.jsonl"
+        artifact_root = root / "artifacts"
         previous_action_log = os.environ.get("SASORI_ACTION_LOG")
         os.environ["SASORI_ACTION_LOG"] = str(action_log)
         backend = None
@@ -226,8 +241,10 @@ def run_acceptance(
                 "127.0.0.1",
                 0,
                 database=str(database),
+                artifact_root=artifact_root,
                 app="sasori_apps.incident:create_harness",
                 trusted_loopback_no_auth=True,
+                publish_final_artifact=True,
             )
             backend_thread = threading.Thread(
                 target=backend.serve_forever,
@@ -247,6 +264,8 @@ def run_acceptance(
                 proxy.server_address[1],
                 virtual_time_budget=20000,
                 screenshot=screenshot,
+                attempts=1,
+                timeout_seconds=JOURNEY_BROWSER_TIMEOUT_SECONDS,
             )
         finally:
             try:
@@ -287,16 +306,21 @@ def run_acceptance(
             raise AssertionError("real Workbench journey did not report its run ID")
         run_id = match.group(1)
         action = strict_action(action_log)
-        durable = validate_store(database, run_id)
+        durable = validate_store(database, artifact_root, run_id)
         return {
             "browser": browser_version(binary),
             "case": "real-incident-lifecycle",
             "run_id": run_id,
-            "production_assets": ["event-reducer.0.1.0.js", "app.0.1.2.js"],
+            "production_assets": [
+                "event-reducer.0.1.0.js",
+                "app.0.1.2.js",
+                "app.0.1.3.js",
+            ],
             "durable": durable,
             "effect": {"count": 1, "summary": action["summary"]},
             "cold_history_reopen": True,
             "permission_disclosure_visible": True,
+            "artifact_preview_download": True,
         }
 
 

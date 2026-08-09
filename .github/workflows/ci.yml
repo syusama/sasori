@@ -117,6 +117,7 @@ jobs:
           paths = {
               "SASORI_TOKEN_FILE": root / f"sasori-token-{suffix}",
               "CONTAINER_EVIDENCE_FILE": root / f"sasori-container-evidence-{suffix}.json",
+              "ARTIFACT_TAMPER_FILE": root / f"sasori-artifact-tamper-{suffix}.json",
               "ACTION_PAUSED_FILE": root / f"sasori-action-paused-{suffix}.json",
               "ACTION_COMPLETE_FILE": root / f"sasori-action-complete-{suffix}.json",
               "ACTION_RESTARTED_FILE": root / f"sasori-action-restarted-{suffix}.json",
@@ -342,6 +343,63 @@ jobs:
             echo "::error::second database owner did not prove ConcurrentRunError"
             exit 1
           fi
+
+          artifact_digest="$(python - "$CONTAINER_EVIDENCE_FILE" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          artifact = value.get("artifact") if isinstance(value, dict) else None
+          digest = artifact.get("content_sha256") if isinstance(artifact, dict) else None
+          size = artifact.get("size_bytes") if isinstance(artifact, dict) else None
+          if (
+              not isinstance(digest, str)
+              or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+              or type(size) is not int
+              or size < 1
+          ):
+              raise SystemExit("artifact evidence is unsafe for tamper check")
+          print(digest)
+          PY
+          )"
+          docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
+            python - "$artifact_digest" <<'PY'
+          import hashlib
+          import os
+          import re
+          import stat
+          import sys
+          from pathlib import Path
+
+          digest = sys.argv[1]
+          if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+              raise SystemExit("artifact digest is invalid")
+          root = Path("/data/artifacts/blobs/sha256")
+          path = root / digest[:2] / digest
+          metadata = path.lstat()
+          if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
+              raise SystemExit("artifact blob is not a regular file")
+          content = path.read_bytes()
+          if not content or hashlib.sha256(content).hexdigest() != digest:
+              raise SystemExit("artifact blob did not match healthy evidence")
+          tampered = bytes([content[0] ^ 1]) + content[1:]
+          path.chmod(0o600)
+          with path.open("r+b") as stream:
+              stream.write(tampered)
+              stream.flush()
+              os.fsync(stream.fileno())
+          if path.stat().st_size != len(content):
+              raise SystemExit("artifact tamper changed blob size")
+          if hashlib.sha256(path.read_bytes()).hexdigest() == digest:
+              raise SystemExit("artifact tamper did not change the digest")
+          PY
+          python scripts/container_acceptance.py tamper-check \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$CONTAINER_EVIDENCE_FILE" \
+            > "$ARTIFACT_TAMPER_FILE"
           git diff --exit-code HEAD --
 
       - name: Generate and bind the final image SBOM
@@ -413,6 +471,7 @@ jobs:
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           token_file="${SASORI_TOKEN_FILE:-$RUNNER_TEMP/sasori-token-$suffix}"
           evidence_file="${CONTAINER_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-container-evidence-$suffix.json}"
+          tamper_file="${ARTIFACT_TAMPER_FILE:-$RUNNER_TEMP/sasori-artifact-tamper-$suffix.json}"
           paused_file="${ACTION_PAUSED_FILE:-$RUNNER_TEMP/sasori-action-paused-$suffix.json}"
           complete_file="${ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-action-complete-$suffix.json}"
           restarted_file="${ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-action-restarted-$suffix.json}"
@@ -444,6 +503,7 @@ jobs:
                 "runtime log:$runtime_log" \
                 "second-owner log:$owner_log" \
                 "acceptance evidence:$evidence_file" \
+                "artifact tamper evidence:$tamper_file" \
                 "paused action evidence:$paused_file" \
                 "completed action evidence:$complete_file" \
                 "restarted action evidence:$restarted_file" \
@@ -468,6 +528,7 @@ jobs:
             echo "### Container product gate evidence"
             for item in \
               "acceptance:$evidence_file" \
+              "artifact-tamper:$tamper_file" \
               "paused-action:$paused_file" \
               "completed-action:$complete_file" \
               "restarted-action:$restarted_file" \
@@ -523,6 +584,7 @@ jobs:
           name: sasori-container-${{ github.sha }}
           path: |
             ${{ runner.temp }}/sasori-container-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-artifact-tamper-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json

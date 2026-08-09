@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import concurrent.futures
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -17,6 +18,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
+
+from sasori_artifacts import (
+    ArtifactConflict,
+    ArtifactCorrupted,
+    ArtifactError,
+    ArtifactInvalid,
+    ArtifactNotFound,
+    ArtifactPayload,
+    ArtifactStore,
+    artifact_projection,
+    validate_artifact_id,
+)
 
 from .app import AppLoadError, load_harness
 from .contracts import Message
@@ -49,13 +62,18 @@ from .sqlite_store import (
 _MAX_BODY = 1024 * 1024
 _TERMINAL_EVENTS = {"run.completed", "run.failed", "run.cancelled"}
 _RUN_PATH = re.compile(r"/v1/runs/([^/]+)(?:/(resume|approval|effect|events))?\Z")
+_ARTIFACT_PATH = re.compile(
+    r"/v1/runs/([^/]+)/artifacts(?:/([^/]+)/content)?\Z"
+)
 _APP_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 _WORKBENCH_ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8", "no-cache"),
     "/assets/app.0.1.0.css": ("app.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/artifacts.0.1.0.css": ("artifacts.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/app.0.1.1.js": ("app.0.1.1.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/event-reducer.0.1.0.js": ("event-reducer.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/app.0.1.2.js": ("app.0.1.2.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/app.0.1.3.js": ("app.0.1.3.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/mark.0.1.0.svg": ("mark.0.1.0.svg", "image/svg+xml", "public, max-age=31536000, immutable"),
 }
 _WORKBENCH_SECURITY_HEADERS = {
@@ -92,6 +110,12 @@ class InvalidTransition(Exception):
 
 class InvalidRequest(Exception):
     pass
+
+
+class InvalidArtifactRange(Exception):
+    def __init__(self, size: int) -> None:
+        self.size = size
+        super().__init__("artifact byte range is invalid or unsatisfiable")
 
 
 class AppNotFound(Exception):
@@ -156,8 +180,22 @@ def _valid_origin(origin: object) -> bool:
 
 
 class _Owner:
-    def __init__(self, database: str, app: str | Mapping[str, str]) -> None:
+    def __init__(
+        self,
+        database: str,
+        app: str | Mapping[str, str],
+        artifact_root: str | Path | None = None,
+        publish_final_artifact: bool = False,
+    ) -> None:
         self.database = database
+        if artifact_root is None:
+            if database == ":memory:":
+                raise ServerConfigurationError(
+                    "artifact_root is required with an in-memory run database"
+                )
+            artifact_root = Path(database).resolve().with_suffix(".artifacts")
+        self.artifact_root = Path(artifact_root)
+        self.publish_final_artifact = publish_final_artifact
         if isinstance(app, str):
             from sasori_apps.registry import app_id_for_spec
 
@@ -178,6 +216,7 @@ class _Owner:
         self._thread = threading.Thread(target=self._thread_main, daemon=True)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._store: SQLiteStore | None = None
+        self._artifacts: ArtifactStore | None = None
         self._harnesses: dict[str, Harness] = {}
         self._unavailable: dict[str, str] = {}
         self._gate: asyncio.Lock | None = None
@@ -226,6 +265,7 @@ class _Owner:
         try:
             try:
                 self._store = SQLiteStore(self.database)
+                self._artifacts = ArtifactStore(self._store, self.artifact_root)
                 first_error: BaseException | None = None
                 for app_id, spec in self.apps.items():
                     try:
@@ -237,6 +277,8 @@ class _Owner:
                     if len(self.apps) == 1 and first_error is not None:
                         raise first_error
                     raise ServerConfigurationError("no configured application could start")
+                if self.publish_final_artifact:
+                    self._reconcile_artifacts()
                 self._gate = asyncio.Lock()
             except BaseException as exc:
                 self._error = exc
@@ -260,14 +302,18 @@ class _Owner:
                     )
             finally:
                 try:
-                    if self._store is not None:
-                        self._store.close()
+                    if self._artifacts is not None:
+                        self._artifacts.close()
                 finally:
-                    loop.close()
-                    with self._state_lock:
-                        self._state = "CLOSED"
-                    self._ready.set()
-                    self._closed.set()
+                    try:
+                        if self._store is not None:
+                            self._store.close()
+                    finally:
+                        loop.close()
+                        with self._state_lock:
+                            self._state = "CLOSED"
+                        self._ready.set()
+                        self._closed.set()
 
     def call(self, operation: Coroutine[Any, Any, Any], timeout: float | None = None):
         with self._state_lock:
@@ -341,6 +387,56 @@ class _Owner:
             app_id = next(iter(self.apps))
         return self._selected(app_id)
 
+    def _materialize_final_artifact(self, run_id: str) -> None:
+        assert self._store is not None and self._artifacts is not None
+        if not self.publish_final_artifact:
+            return
+        snapshot = self._store.load(run_id)
+        if snapshot.status != "completed" or snapshot.final_message is None:
+            return
+        stored = self._store.stored_events(run_id)
+        terminal_seq = next(
+            (
+                item.seq
+                for item in reversed(stored)
+                if item.event.type == "run.completed"
+            ),
+            0,
+        )
+        if terminal_seq == 0:
+            raise StoreError("completed run has no durable run.completed event")
+        app_id = snapshot.app_id or "unbound"
+        content = (
+            "# Sasori run result\n\n"
+            f"- Run: `{run_id}`\n"
+            f"- Application: `{app_id}`\n"
+            f"- Loop terminal event cursor: `{terminal_seq}`\n\n"
+            "## Final message\n\n"
+            f"{snapshot.final_message.content}\n"
+        ).encode("utf-8")
+        artifact_id = "result-" + hashlib.sha256(
+            f"sasori-final-result-v1\0{run_id}".encode("utf-8")
+        ).hexdigest()[:32]
+        self._artifacts.put(
+            run_id,
+            content,
+            artifact_id=artifact_id,
+            declared_filename=f"{run_id}-result.md",
+            declared_media_type="text/markdown",
+        )
+
+    def _reconcile_artifacts(self) -> None:
+        assert self._store is not None and self._artifacts is not None
+        before = None
+        while True:
+            rows = self._store.list_runs(limit=100, before=before)
+            for _, snapshot in rows:
+                if snapshot.status == "completed":
+                    self._materialize_final_artifact(snapshot.run_id)
+            if len(rows) < 100:
+                return
+            before = rows[-1][0]
+
     async def run(
         self, prompt: str, run_id: str | None, app_id: str | None = None
     ) -> tuple[int, dict[str, object]]:
@@ -352,6 +448,7 @@ class _Owner:
                 result = await harness.run(
                     (Message("user", prompt),), run_id=run_id, app_id=selected_id
                 )
+                self._materialize_final_artifact(result.run_id)
                 return 200, run_projection(self._store, result.run_id)
             except RunPaused as paused:
                 return 202, run_projection(self._store, paused.run_id)
@@ -368,6 +465,7 @@ class _Owner:
                 raise InvalidTransition(f"run is {state} and cannot resume")
             try:
                 await harness.resume(run_id)
+                self._materialize_final_artifact(run_id)
                 return 200, run_projection(self._store, run_id)
             except RunPaused:
                 return 202, run_projection(self._store, run_id)
@@ -435,6 +533,46 @@ class _Owner:
         return run_list_projection(
             self._store, limit=limit, before=before, app_id=app_id
         )
+
+    async def artifacts(self, run_id: str) -> dict[str, object]:
+        assert self._store is not None and self._artifacts is not None
+        self._store.load(run_id)
+        return {
+            "run_id": run_id,
+            "artifacts": [
+                artifact_projection(ref) for ref in self._artifacts.list(run_id)
+            ],
+        }
+
+    async def artifact(self, run_id: str, artifact_id: str) -> ArtifactPayload:
+        assert self._store is not None and self._artifacts is not None
+        self._store.load(run_id)
+        return self._artifacts.get(run_id, artifact_id)
+
+    async def publish_artifact(
+        self,
+        run_id: str,
+        content: bytes,
+        *,
+        filename: str,
+        declared_media_type: str | None = None,
+        artifact_id: str | None = None,
+    ) -> dict[str, object]:
+        """Trusted host hook; HTTP clients cannot publish arbitrary bytes."""
+        assert self._store is not None and self._artifacts is not None
+
+        async def mutate():
+            self._store.load(run_id)
+            ref = self._artifacts.put(
+                run_id,
+                content,
+                declared_filename=filename,
+                declared_media_type=declared_media_type,
+                artifact_id=artifact_id,
+            )
+            return artifact_projection(ref)
+
+        return await self._exclusive(mutate)
 
     async def _settle(self, grace: float) -> None:
         current = asyncio.current_task()
@@ -909,6 +1047,25 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             raise InvalidRequest(str(exc)) from None
         return run_id, match.group(2)
 
+    def _artifact_path(self) -> tuple[str, str | None] | None:
+        try:
+            parsed = urllib.parse.urlsplit(self.path)
+        except ValueError as exc:
+            raise InvalidRequest("request path is invalid") from exc
+        match = _ARTIFACT_PATH.fullmatch(parsed.path)
+        if match is None:
+            return None
+        try:
+            run_id = validate_run_id(urllib.parse.unquote(match.group(1)))
+            artifact_id = (
+                validate_artifact_id(urllib.parse.unquote(match.group(2)))
+                if match.group(2) is not None
+                else None
+            )
+        except (ValueError, ArtifactInvalid) as exc:
+            raise InvalidRequest(str(exc)) from None
+        return run_id, artifact_id
+
     def _handle_exception(self, exc: Exception, run_id: str | None = None) -> None:
         if isinstance(exc, ServerShuttingDown):
             self._close_error(
@@ -929,6 +1086,29 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             )
         elif isinstance(exc, RunNotFound):
             self._error(404, "run_not_found", "run was not found", run_id=run_id)
+        elif isinstance(exc, ArtifactNotFound):
+            self._error(
+                404, "artifact_not_found", "artifact was not found", run_id=run_id
+            )
+        elif isinstance(exc, ArtifactCorrupted):
+            self._error(
+                503,
+                "artifact_integrity_failed",
+                "artifact bytes failed durable integrity verification",
+                run_id=run_id,
+            )
+        elif isinstance(exc, ArtifactConflict):
+            self._error(409, "artifact_conflict", str(exc), run_id=run_id)
+        elif isinstance(exc, ArtifactInvalid):
+            self._error(422, "invalid_artifact", str(exc), run_id=run_id)
+        elif isinstance(exc, InvalidArtifactRange):
+            self._error(
+                416,
+                "range_not_satisfiable",
+                str(exc),
+                run_id=run_id,
+                extra={"Content-Range": f"bytes */{exc.size}"},
+            )
         elif isinstance(exc, AppNotFound):
             self._error(404, "app_not_found", "application was not found")
         elif isinstance(exc, AppUnavailable):
@@ -958,6 +1138,14 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             self._error(422, exc.code, str(exc), run_id=run_id)
         elif isinstance(exc, StoreError):
             self._error(503, "store_unavailable", str(exc), run_id=run_id, retryable=True)
+        elif isinstance(exc, ArtifactError):
+            self._error(
+                503,
+                "artifact_store_unavailable",
+                "artifact store is unavailable",
+                run_id=run_id,
+                retryable=True,
+            )
         elif isinstance(exc, SasoriError):
             self._error(502, exc.code, str(exc), run_id=run_id)
         else:
@@ -987,8 +1175,8 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             "text/plain; charset=utf-8",
             0,
             {
-                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Authorization, Content-Type, Last-Event-ID",
+                "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type, Last-Event-ID, Range",
                 "Access-Control-Max-Age": "600",
             },
         )
@@ -1035,6 +1223,21 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._json(200, value)
                 return
+            artifact_path = self._artifact_path()
+            if artifact_path is not None:
+                run_id, artifact_id = artifact_path
+                if artifact_id is None:
+                    if parsed.query:
+                        raise InvalidRequest(
+                            "artifact collection does not accept query parameters"
+                        )
+                    value = self.sasori.owner.call(
+                        self.sasori.owner.artifacts(run_id), 5
+                    )
+                    self._json(200, value)
+                    return
+                self._get_artifact(run_id, artifact_id, parsed.query)
+                return
             path = self._path()
             if path is None:
                 self._error(404, "not_found", "endpoint was not found")
@@ -1048,6 +1251,93 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 self._error(405, "method_not_allowed", "GET is not allowed")
                 return
             self._get_events(run_id)
+        except Exception as exc:
+            if self._response_started:
+                self.close_connection = True
+                return
+            self._handle_exception(exc, run_id)
+
+    def _artifact_range(self, size: int) -> tuple[int, int] | None:
+        values = self.headers.get_all("Range", [])
+        if not values:
+            return None
+        if len(values) != 1:
+            raise InvalidArtifactRange(size)
+        match = re.fullmatch(r"bytes=([0-9]*)-([0-9]*)", values[0])
+        if match is None or size == 0:
+            raise InvalidArtifactRange(size)
+        first, last = match.groups()
+        if not first and not last:
+            raise InvalidArtifactRange(size)
+        if first:
+            start = int(first)
+            end = int(last) if last else size - 1
+            if start >= size or end < start:
+                raise InvalidArtifactRange(size)
+            return start, min(end, size - 1)
+        suffix = int(last)
+        if suffix <= 0:
+            raise InvalidArtifactRange(size)
+        return max(0, size - suffix), size - 1
+
+    def _get_artifact(
+        self, run_id: str, artifact_id: str, query: str, *, head: bool = False
+    ) -> None:
+        if query:
+            raise InvalidRequest("artifact content does not accept query parameters")
+        payload = self.sasori.owner.call(
+            self.sasori.owner.artifact(run_id, artifact_id), 10
+        )
+        if not isinstance(payload, ArtifactPayload):
+            raise ArtifactCorrupted("artifact adapter returned an invalid payload")
+        ref = payload.ref
+        byte_range = self._artifact_range(ref.size_bytes)
+        if byte_range is None:
+            status = 200
+            content = payload.content
+            range_header = None
+        else:
+            start, end = byte_range
+            status = 206
+            content = payload.content[start : end + 1]
+            range_header = f"bytes {start}-{end}/{ref.size_bytes}"
+        encoded_filename = urllib.parse.quote(ref.filename, safe="")
+        content_type = (
+            ref.media_type if ref.can_preview_text else "application/octet-stream"
+        )
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": (
+                "attachment; filename=\"artifact\"; "
+                f"filename*=UTF-8''{encoded_filename}"
+            ),
+            "Cache-Control": "private, no-store",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "ETag": f'"sha256-{ref.content_sha256}"',
+            "X-Sasori-Content-SHA256": ref.content_sha256,
+        }
+        if range_header is not None:
+            headers["Content-Range"] = range_header
+        self._send_headers(status, content_type, len(content), headers)
+        if not head:
+            self.wfile.write(content)
+
+    def do_HEAD(self) -> None:
+        self._response_started = False
+        if self._server_closing():
+            return
+        if not self._authorized():
+            return
+        run_id: str | None = None
+        try:
+            parsed = urllib.parse.urlsplit(self.path)
+            artifact_path = self._artifact_path()
+            if artifact_path is None or artifact_path[1] is None:
+                self._error(405, "method_not_allowed", "HEAD is not allowed")
+                return
+            run_id, artifact_id = artifact_path
+            self._get_artifact(run_id, artifact_id, parsed.query, head=True)
         except Exception as exc:
             if self._response_started:
                 self.close_connection = True
@@ -1294,6 +1584,7 @@ def create_server(
     port: int,
     *,
     database: str,
+    artifact_root: str | Path | None = None,
     app: str | None = None,
     apps: Mapping[str, str] | None = None,
     token: str | None = None,
@@ -1301,6 +1592,7 @@ def create_server(
     cors_origins: Sequence[str] = (),
     sse_max_seconds: float = 300.0,
     sse_keepalive_seconds: float = 15.0,
+    publish_final_artifact: bool = False,
 ) -> SasoriHTTPServer:
     if not isinstance(port, int) or isinstance(port, bool) or not 0 <= port <= 65535:
         raise ServerConfigurationError("port must be between 0 and 65535")
@@ -1320,6 +1612,8 @@ def create_server(
         )
     if any(not _valid_origin(origin) for origin in cors_origins):
         raise ServerConfigurationError("CORS origins must be exact http(s) origins")
+    if not isinstance(publish_final_artifact, bool):
+        raise ServerConfigurationError("publish_final_artifact must be a boolean")
     if (
         isinstance(sse_max_seconds, bool)
         or not isinstance(sse_max_seconds, (int, float))
@@ -1333,7 +1627,12 @@ def create_server(
         raise ServerConfigurationError("SSE timing values must be positive")
     if (app is None) == (apps is None):
         raise ServerConfigurationError("configure either app or apps")
-    owner = _Owner(database, app if app is not None else apps or {})
+    owner = _Owner(
+        database,
+        app if app is not None else apps or {},
+        artifact_root,
+        publish_final_artifact,
+    )
     owner.start()
     try:
         return SasoriHTTPServer(
@@ -1354,15 +1653,29 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--db", default=os.environ.get("SASORI_DB", "sasori.sqlite3"))
+    parser.add_argument(
+        "--artifact-root", default=os.environ.get("SASORI_ARTIFACT_ROOT")
+    )
     parser.add_argument("--app", action="append", default=[])
     parser.add_argument("--token-file")
     parser.add_argument("--trusted-loopback-no-auth", action="store_true")
     parser.add_argument("--cors-origin", action="append", default=[])
+    parser.add_argument("--publish-final-artifact", action="store_true")
     return parser
 
 
 def main() -> int:
     args = _parser().parse_args()
+    publish_environment = os.environ.get("SASORI_PUBLISH_FINAL_ARTIFACT")
+    if publish_environment not in (None, "0", "1"):
+        print(
+            "sasori-server: SASORI_PUBLISH_FINAL_ARTIFACT must be 0 or 1",
+            file=os.sys.stderr,
+        )
+        return 2
+    publish_final_artifact = (
+        args.publish_final_artifact or publish_environment == "1"
+    )
     configured = list(args.app)
     if not configured and os.environ.get("SASORI_APP"):
         configured.append(os.environ["SASORI_APP"])
@@ -1390,10 +1703,12 @@ def main() -> int:
             args.host,
             args.port,
             database=args.db,
+            artifact_root=args.artifact_root,
             apps=apps,
             token=token,
             trusted_loopback_no_auth=args.trusted_loopback_no_auth,
             cors_origins=args.cors_origin,
+            publish_final_artifact=publish_final_artifact,
         )
     except (ServerConfigurationError, AppLoadError, StoreError) as exc:
         print(f"sasori-server: {exc}", file=os.sys.stderr)

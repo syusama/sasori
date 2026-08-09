@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from pathlib import Path
 PACKAGES = (
     "sasori",
     "sasori_apps",
+    "sasori_artifacts",
     "sasori_context",
     "sasori_market",
     "sasori_plugins",
@@ -23,9 +25,11 @@ SCRIPTS = ("sasori", "sasori-server", "sasori-catalog")
 WEB_RESOURCES = (
     "index.html",
     "app.0.1.0.css",
+    "artifacts.0.1.0.css",
     "app.0.1.1.js",
     "event-reducer.0.1.0.js",
     "app.0.1.2.js",
+    "app.0.1.3.js",
     "mark.0.1.0.svg",
 )
 
@@ -78,6 +82,40 @@ def main() -> int:
     )
     if context_projection.messages != context_messages or context_projection.compacted:
         raise RuntimeError("installed sasori_context projection contract is invalid")
+    Event = getattr(modules["sasori"], "Event", None)
+    SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
+    ArtifactStore = getattr(modules["sasori_artifacts"], "ArtifactStore", None)
+    if not all(callable(item) for item in (Event, SQLiteStore, ArtifactStore)):
+        raise RuntimeError("installed artifact public exports are incomplete")
+    with tempfile.TemporaryDirectory(prefix="sasori-installed-artifact-") as directory:
+        root = Path(directory)
+        store = SQLiteStore(root / "runs.sqlite3")
+        artifacts = None
+        try:
+            store.start(
+                "installed-artifact",
+                (Message("user", "wheel artifact"),),
+                Event("run.started", "installed-artifact", 0),
+            )
+            artifacts = ArtifactStore(store, root / "artifacts")
+            ref = artifacts.put(
+                "installed-artifact",
+                b'{"wheel":true}',
+                declared_filename="wheel.json",
+                declared_media_type="application/json",
+            )
+            if (
+                artifacts.list("installed-artifact") != (ref,)
+                or artifacts.get("installed-artifact", ref.artifact_id).content
+                != b'{"wheel":true}'
+                or store.stored_events("installed-artifact")[-1].event.type
+                != "artifact.available"
+            ):
+                raise RuntimeError("installed artifact publish/read contract is invalid")
+        finally:
+            if artifacts is not None:
+                artifacts.close()
+            store.close()
     resources = importlib.resources.files("sasori_web")
     if any(not (resources / name).is_file() or not (resources / name).read_bytes() for name in WEB_RESOURCES):
         raise RuntimeError("installed Workbench resources are missing or empty")

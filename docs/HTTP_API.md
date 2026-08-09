@@ -7,6 +7,7 @@ Status: experimental single-node adapter. It is designed for local Workbench and
 ```powershell
 sasori-server --host 127.0.0.1 --port 8080 `
   --db .\runs.sqlite3 `
+  --artifact-root .\artifacts `
   --app incident=sasori_apps.incident:create_harness `
   --app research=sasori_apps.research:create_harness `
   --app developer=sasori_apps.developer:create_harness `
@@ -16,6 +17,14 @@ sasori-server --host 127.0.0.1 --port 8080 `
 For any non-loopback bind, and normally for loopback too, use `SASORI_SERVER_TOKEN` or `--token-file`. All `/v1/*` requests then require `Authorization: Bearer ...`. Tokens in query strings are not supported. Exact same-origin browser requests are accepted. Cross-origin access is absent by default; each `--cors-origin` is an exact origin, never `*`, and cookies are not used.
 
 The process owns one file-backed `SQLiteStore` and freezes one `app_id → Harness` mapping at startup. Every loaded Harness uses that store and the same Harness implementation. All store access runs on one asyncio owner thread, and one mutation gate covers all applications. Another run/resume/approval/effect request receives `503 runtime_busy` with `Retry-After: 1`; it is not described as queued. GET catalog/history/status/events can run while a model or threaded tool is awaiting.
+
+The process also owns one immutable artifact root. `SASORI_ARTIFACT_ROOT` is
+equivalent to `--artifact-root`; a file-backed database defaults to a sibling
+path with the `.artifacts` suffix. `--publish-final-artifact` explicitly enables
+the bundled host policy that creates one idempotent Markdown copy of a
+completed final message. It is disabled by default and does not change the
+Loop or imply that tools automatically publish files. The strict environment
+equivalent is `SASORI_PUBLISH_FINAL_ARTIFACT=1`.
 
 ## Run projection
 
@@ -162,6 +171,46 @@ data: {"seq":43,"event":{"type":"tool.started",...}}
 
 Reconnect with either `Last-Event-ID` or `after_seq`; if both are present they must match. Events are read from `stored_events()`, not the best-effort observer. Consumers deduplicate by `(run_id, seq)`. Keepalive comments are not durable events. The stream closes after a caught-up terminal event or its bounded connection lifetime; no synthetic completion event is invented.
 
+### `GET /v1/runs/{run_id}/artifacts`
+
+Returns immutable references registered against the exact run:
+
+```json
+{
+  "run_id": "run-123",
+  "artifacts": [{
+    "version": 1,
+    "artifact_id": "artifact-8cbb...",
+    "run_id": "run-123",
+    "content_sha256": "64 lowercase hexadecimal characters",
+    "size_bytes": 19427,
+    "filename": "report.txt",
+    "media_type": "text/plain; charset=utf-8",
+    "created_seq": 17
+  }]
+}
+```
+
+The response excludes storage keys, absolute paths, temporary or signed URLs,
+caller-declared MIME, provider state, and mutable preview policy. The current
+Bearer authenticates the Sasori instance; exact run association is enforced,
+but this is not user or tenant isolation.
+
+### `GET|HEAD /v1/runs/{run_id}/artifacts/{artifact_id}/content`
+
+The server verifies the complete opened file against the reference's exact
+size and SHA-256 before sending success headers. Unknown and cross-run artifact
+IDs have the same `404 artifact_not_found`; missing or modified bytes return
+`503 artifact_integrity_failed` without partial content.
+
+Content is always `attachment` with RFC 5987 filename metadata,
+`Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`, a digest
+ETag, and `X-Sasori-Content-SHA256`. One byte range is supported. Repeated or
+multi-range headers, invalid units, zero-byte ranges, and unsatisfiable ranges
+return `416` plus `Content-Range: bytes */<size>`. Query parameters and global
+artifact/digest routes are not supported. See [ARTIFACTS.md](ARTIFACTS.md) and
+[ADR-0010](ADR-0010-ARTIFACT-REF-BOUNDARY.md).
+
 ## Workbench static resources
 
 `GET /` serves the bundled Workbench. Only an exact allowlist of versioned
@@ -182,8 +231,11 @@ view cancels local waiting only; it is not a claim that an already accepted
 server operation stopped. See [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 
 Tool/provider text is untrusted and rendered as text, never executable HTML.
-The Workbench does not invent plan, artifact, cancel, multi-agent, sandbox, or
-marketplace-install behavior that the runtime lacks.
+Artifact cards come only from the run-scoped artifact endpoint. UTF-8 text/JSON
+preview uses authenticated fetch and `textContent`; downloads use a short-lived
+Blob URL, never a bearer token in a link. The Workbench does not invent plan,
+cancel, multi-agent, sandbox, or marketplace-install behavior that the runtime
+lacks.
 
 ### Health
 
@@ -197,5 +249,5 @@ Runtime busy does not make readiness fail. Health/readiness are not proof that a
 - JSON POST bodies require `Content-Length`, UTF-8 `application/json`, unique object keys, finite numbers, and at most 1 MiB. Chunked and unsupported bodies fail closed.
 - Access logging is suppressed so bearer tokens, prompts, tool arguments, and manual results do not enter ordinary logs.
 - A request disconnect does not mean user cancellation; there is no public cancel endpoint in this slice.
-- The server does not implement TLS, accounts, tenants, cookies, uploads, rate-limit policy, background recovery scans, multiple workers, replicas, leases, failover, or network-filesystem guarantees.
+- The server does not implement TLS, accounts, tenants, cookies, uploads, rate-limit policy, general background jobs, multiple workers, replicas, leases, failover, artifact deletion/GC, or network-filesystem guarantees. The opt-in final-artifact host policy performs only deterministic idempotent startup reconciliation for its own output.
 - Use one process and one local database. CLI operations against a running server's database correctly fail the owner lock; operational clients should use HTTP.

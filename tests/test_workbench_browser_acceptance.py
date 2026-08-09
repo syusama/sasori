@@ -153,6 +153,26 @@ class BrowserProcessTests(unittest.TestCase):
         self.assertEqual(run.call_count, browser_acceptance.BROWSER_ATTEMPTS)
         self.assertIsInstance(raised.exception.__cause__, subprocess.TimeoutExpired)
 
+    def test_stateful_journey_can_disable_timeout_replay(self):
+        timeout = subprocess.TimeoutExpired(["browser"], 70)
+        with mock.patch.object(
+            browser_acceptance.subprocess,
+            "run",
+            side_effect=timeout,
+        ) as run, self.assertRaisesRegex(
+            RuntimeError,
+            "timed out after 1 attempts of 70 seconds",
+        ):
+            browser_acceptance.run_browser_process(
+                Path("browser"),
+                18180,
+                attempts=1,
+                timeout_seconds=70,
+            )
+
+        run.assert_called_once()
+        self.assertEqual(run.call_args.kwargs["timeout"], 70)
+
     def test_nonzero_browser_exit_is_not_retried(self):
         completed = subprocess.CompletedProcess(
             ["browser"], returncode=17, stdout="", stderr="failed"

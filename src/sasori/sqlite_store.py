@@ -42,6 +42,14 @@ class SchemaVersionError(StoreError):
     pass
 
 
+class ArtifactRegistrationConflict(StoreError):
+    pass
+
+
+class ArtifactLimitExceeded(StoreError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class Snapshot:
     run_id: str
@@ -77,6 +85,18 @@ class CallRecord:
 class StoredEvent:
     seq: int
     event: Event
+
+
+@dataclass(frozen=True, slots=True)
+class StoredArtifact:
+    artifact_id: str
+    run_id: str
+    content_sha256: str
+    size: int
+    declared_filename: str
+    declared_media_type: str | None
+    detected_media_type: str
+    created_seq: int
 
 
 def _acquire_process_lock(path: str):
@@ -231,6 +251,23 @@ def _snapshot_data(snapshot: Snapshot) -> dict[str, object]:
     }
 
 
+def _stored_artifact(row: sqlite3.Row) -> StoredArtifact:
+    return StoredArtifact(
+        artifact_id=str(row["artifact_id"]),
+        run_id=str(row["run_id"]),
+        content_sha256=str(row["content_sha256"]),
+        size=int(row["size"]),
+        declared_filename=str(row["declared_filename"]),
+        declared_media_type=(
+            str(row["declared_media_type"])
+            if row["declared_media_type"] is not None
+            else None
+        ),
+        detected_media_type=str(row["detected_media_type"]),
+        created_seq=int(row["created_seq"]),
+    )
+
+
 class SQLiteStore:
     """Single-writer SQLite state store; it does not provide a process lease."""
 
@@ -246,7 +283,7 @@ class SQLiteStore:
             self._db.execute("PRAGMA foreign_keys = ON")
             self._db.execute("PRAGMA synchronous = FULL")
             version = int(self._db.execute("PRAGMA user_version").fetchone()[0])
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise SchemaVersionError(
                     f"unsupported SQLiteStore schema version: {version}"
                 )
@@ -259,9 +296,12 @@ class SQLiteStore:
             if version == 2:
                 self._migrate_v2()
                 version = 3
+            if version == 3:
+                self._migrate_v3()
+                version = 4
             self._create_schema()
             if version == 0:
-                self._db.execute("PRAGMA user_version = 3")
+                self._db.execute("PRAGMA user_version = 4")
         except BaseException as error:
             try:
                 self.close()
@@ -359,6 +399,23 @@ class SQLiteStore:
                 ordinal INTEGER NOT NULL,
                 decision INTEGER
             );
+            CREATE TABLE IF NOT EXISTS artifacts (
+                artifact_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(run_id),
+                content_sha256 TEXT NOT NULL CHECK (
+                    length(content_sha256) = 64
+                    AND content_sha256 NOT GLOB '*[^0-9a-f]*'
+                ),
+                size INTEGER NOT NULL CHECK (size >= 0 AND size <= 16777216),
+                declared_filename TEXT NOT NULL,
+                declared_media_type TEXT,
+                detected_media_type TEXT NOT NULL,
+                created_seq INTEGER NOT NULL,
+                UNIQUE (run_id, created_seq),
+                FOREIGN KEY (run_id, created_seq) REFERENCES events(run_id, seq)
+            );
+            CREATE INDEX IF NOT EXISTS artifacts_run
+                ON artifacts(run_id, created_seq);
             CREATE TRIGGER IF NOT EXISTS events_no_update
                 BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'events are append-only'); END;
             CREATE TRIGGER IF NOT EXISTS events_no_delete
@@ -371,6 +428,10 @@ class SQLiteStore:
                 BEFORE UPDATE ON accepted_replies BEGIN SELECT RAISE(ABORT, 'accepted replies are append-only'); END;
             CREATE TRIGGER IF NOT EXISTS replies_no_delete
                 BEFORE DELETE ON accepted_replies BEGIN SELECT RAISE(ABORT, 'accepted replies are append-only'); END;
+            CREATE TRIGGER IF NOT EXISTS artifacts_no_update
+                BEFORE UPDATE ON artifacts BEGIN SELECT RAISE(ABORT, 'artifacts are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS artifacts_no_delete
+                BEFORE DELETE ON artifacts BEGIN SELECT RAISE(ABORT, 'artifacts are immutable'); END;
             """
         )
 
@@ -405,6 +466,53 @@ class SQLiteStore:
             self._db.rollback()
             raise
 
+    def _migrate_v3(self) -> None:
+        self._begin()
+        try:
+            self._db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL REFERENCES runs(run_id),
+                    content_sha256 TEXT NOT NULL CHECK (
+                        length(content_sha256) = 64
+                        AND content_sha256 NOT GLOB '*[^0-9a-f]*'
+                    ),
+                    size INTEGER NOT NULL CHECK (size >= 0 AND size <= 16777216),
+                    declared_filename TEXT NOT NULL,
+                    declared_media_type TEXT,
+                    detected_media_type TEXT NOT NULL,
+                    created_seq INTEGER NOT NULL,
+                    UNIQUE (run_id, created_seq),
+                    FOREIGN KEY (run_id, created_seq) REFERENCES events(run_id, seq)
+                )
+                """
+            )
+            self._db.execute(
+                "CREATE INDEX IF NOT EXISTS artifacts_run ON artifacts(run_id, created_seq)"
+            )
+            self._db.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS artifacts_no_update
+                BEFORE UPDATE ON artifacts BEGIN
+                    SELECT RAISE(ABORT, 'artifacts are immutable');
+                END
+                """
+            )
+            self._db.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS artifacts_no_delete
+                BEFORE DELETE ON artifacts BEGIN
+                    SELECT RAISE(ABORT, 'artifacts are immutable');
+                END
+                """
+            )
+            self._db.execute("PRAGMA user_version = 4")
+            self._db.commit()
+        except BaseException:
+            self._db.rollback()
+            raise
+
     def _begin(self) -> None:
         self._ensure_open()
         try:
@@ -412,7 +520,7 @@ class SQLiteStore:
         except sqlite3.OperationalError as error:
             raise ConcurrentRunError("SQLiteStore is single-writer; database is busy") from error
 
-    def _insert_events(self, run_id: str, events: Sequence[Event]) -> None:
+    def _insert_events(self, run_id: str, events: Sequence[Event]) -> int:
         row = self._db.execute(
             "SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE run_id = ?", (run_id,)
         ).fetchone()
@@ -437,6 +545,7 @@ class SQLiteStore:
                     ),
                 ),
             )
+        return seq
 
     def _commit(
         self,
@@ -740,6 +849,132 @@ class SQLiteStore:
             )
 
         return self._commit(current, updated, (event,), mutate), True
+
+    def register_artifact(
+        self,
+        run_id: str,
+        *,
+        artifact_id: str,
+        content_sha256: str,
+        size: int,
+        declared_filename: str,
+        declared_media_type: str | None,
+        detected_media_type: str,
+    ) -> StoredArtifact:
+        current = self.load(run_id)
+        supplied = (
+            run_id,
+            content_sha256,
+            size,
+            declared_filename,
+            declared_media_type,
+            detected_media_type,
+        )
+        self._begin()
+        try:
+            existing = self._db.execute(
+                "SELECT * FROM artifacts WHERE artifact_id = ?", (artifact_id,)
+            ).fetchone()
+            if existing is not None:
+                stored = _stored_artifact(existing)
+                actual = (
+                    stored.run_id,
+                    stored.content_sha256,
+                    stored.size,
+                    stored.declared_filename,
+                    stored.declared_media_type,
+                    stored.detected_media_type,
+                )
+                if actual != supplied:
+                    raise ArtifactRegistrationConflict(
+                        "artifact_id already names different immutable content"
+                    )
+                self._db.commit()
+                return stored
+            count = int(
+                self._db.execute(
+                    "SELECT COUNT(*) FROM artifacts WHERE run_id = ?", (run_id,)
+                ).fetchone()[0]
+            )
+            if count >= 128:
+                raise ArtifactLimitExceeded(
+                    "a run cannot register more than 128 artifacts"
+                )
+            row = self._db.execute(
+                "SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            created_seq = int(row["seq"]) + 1
+            public_ref = {
+                "version": 1,
+                "artifact_id": artifact_id,
+                "run_id": run_id,
+                "content_sha256": content_sha256,
+                "size_bytes": size,
+                "filename": declared_filename,
+                "media_type": detected_media_type,
+                "created_seq": created_seq,
+            }
+            event = Event(
+                "artifact.available",
+                run_id,
+                current.step,
+                data={"artifact": public_ref},
+            )
+            inserted_seq = self._insert_events(run_id, (event,))
+            if inserted_seq != created_seq:
+                raise ConcurrentRunError("artifact event sequence changed concurrently")
+            self._db.execute(
+                """
+                INSERT INTO artifacts(
+                    artifact_id, run_id, content_sha256, size,
+                    declared_filename, declared_media_type, detected_media_type,
+                    created_seq
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    artifact_id,
+                    run_id,
+                    content_sha256,
+                    size,
+                    declared_filename,
+                    declared_media_type,
+                    detected_media_type,
+                    created_seq,
+                ),
+            )
+            self._db.commit()
+        except BaseException:
+            self._db.rollback()
+            raise
+        return StoredArtifact(
+            artifact_id=artifact_id,
+            run_id=run_id,
+            content_sha256=content_sha256,
+            size=size,
+            declared_filename=declared_filename,
+            declared_media_type=declared_media_type,
+            detected_media_type=detected_media_type,
+            created_seq=created_seq,
+        )
+
+    def stored_artifacts(self, run_id: str) -> tuple[StoredArtifact, ...]:
+        self.load(run_id)
+        rows = self._db.execute(
+            "SELECT * FROM artifacts WHERE run_id = ? ORDER BY created_seq",
+            (run_id,),
+        ).fetchall()
+        return tuple(_stored_artifact(row) for row in rows)
+
+    def stored_artifact(
+        self, run_id: str, artifact_id: str
+    ) -> StoredArtifact | None:
+        self.load(run_id)
+        row = self._db.execute(
+            "SELECT * FROM artifacts WHERE run_id = ? AND artifact_id = ?",
+            (run_id, artifact_id),
+        ).fetchone()
+        return _stored_artifact(row) if row is not None else None
 
     def stored_events(
         self, run_id: str, after_seq: int = 0

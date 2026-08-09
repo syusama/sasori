@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
-EXPECTED = "PASS:stale-status,same-run-epoch,cold-events,late-sse,create-run,approval"
+EXPECTED = "PASS:stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
 BROWSER_TIMEOUT_SECONDS = 35
 BROWSER_ATTEMPTS = 2
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -78,7 +78,9 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
             name = self.path.removeprefix("/assets/")
             if "/" in name or "\\" in name or name not in {
                 "app.0.1.0.css",
+                "artifacts.0.1.0.css",
                 "app.0.1.2.js",
+                "app.0.1.3.js",
                 "event-reducer.0.1.0.js",
                 "mark.0.1.0.svg",
             }:
@@ -184,9 +186,11 @@ def run_browser_process(
     *,
     virtual_time_budget: int = 10000,
     screenshot: Path | None = None,
+    attempts: int = BROWSER_ATTEMPTS,
+    timeout_seconds: int = BROWSER_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
     last_timeout: subprocess.TimeoutExpired | None = None
-    for _ in range(BROWSER_ATTEMPTS):
+    for _ in range(attempts):
         if screenshot is not None:
             screenshot.unlink(missing_ok=True)
         with tempfile.TemporaryDirectory(prefix="sasori-browser-") as profile:
@@ -218,7 +222,7 @@ def run_browser_process(
                     text=True,
                     encoding="utf-8",
                     errors="replace",
-                    timeout=BROWSER_TIMEOUT_SECONDS,
+                    timeout=timeout_seconds,
                     check=False,
                 )
                 if completed.returncode == 0 and screenshot is not None:
@@ -228,7 +232,7 @@ def run_browser_process(
                 last_timeout = exc
     raise RuntimeError(
         "headless browser process timed out after "
-        f"{BROWSER_ATTEMPTS} attempts of {BROWSER_TIMEOUT_SECONDS} seconds"
+        f"{attempts} attempts of {timeout_seconds} seconds"
     ) from last_timeout
 
 
@@ -258,7 +262,11 @@ def run_acceptance(binary: Path) -> dict[str, object]:
     return {
         "browser": browser_version(binary),
         "cases": EXPECTED.removeprefix("PASS:").split(","),
-        "production_assets": ["event-reducer.0.1.0.js", "app.0.1.2.js"],
+        "production_assets": [
+            "event-reducer.0.1.0.js",
+            "app.0.1.2.js",
+            "app.0.1.3.js",
+        ],
     }
 
 

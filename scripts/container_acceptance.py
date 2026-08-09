@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit
 
 
 EVIDENCE_KIND = "sasori.container-acceptance"
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 2
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_EVIDENCE_BYTES = 128 * 1024
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
@@ -36,6 +36,7 @@ EXPECTED_EVENT_TYPES = (
     "model.started",
     "model.completed",
     "run.completed",
+    "artifact.available",
 )
 INCIDENT_INPUT = "container acceptance incident"
 EXPECTED_DIAGNOSTIC = f"diagnostic captured for {INCIDENT_INPUT}"
@@ -146,7 +147,7 @@ class HTTPClient:
         self.token = token
         self.timeout = timeout
 
-    def _request(
+    def _request_with_headers(
         self,
         method: str,
         path: str,
@@ -155,7 +156,7 @@ class HTTPClient:
         headers: dict[str, str] | None = None,
         expected_status: int,
         expected_content_type: str,
-    ) -> bytes:
+    ) -> tuple[bytes, dict[str, str]]:
         encoded = None if body is None else _canonical(body)
         request_headers = {
             "Accept": expected_content_type,
@@ -173,6 +174,9 @@ class HTTPClient:
             payload = response.read(MAX_RESPONSE_BYTES + 1)
             content_type = response.getheader("Content-Type", "")
             status = response.status
+            response_headers = {
+                name.casefold(): value for name, value in response.getheaders()
+            }
         except (OSError, TimeoutError, http.client.HTTPException, ValueError):
             raise AcceptanceError("HTTP acceptance request failed") from None
         finally:
@@ -185,7 +189,43 @@ class HTTPClient:
             raise AcceptanceError("HTTP acceptance response had an unexpected status")
         if not content_type.casefold().startswith(expected_content_type.casefold()):
             raise AcceptanceError("HTTP acceptance response had an unexpected content type")
-        return payload
+        return payload, response_headers
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: object | None = None,
+        headers: dict[str, str] | None = None,
+        expected_status: int,
+        expected_content_type: str,
+    ) -> bytes:
+        return self._request_with_headers(
+            method,
+            path,
+            body=body,
+            headers=headers,
+            expected_status=expected_status,
+            expected_content_type=expected_content_type,
+        )[0]
+
+    def content(
+        self,
+        method: str,
+        path: str,
+        *,
+        range_header: str | None = None,
+        expected_status: int = 200,
+    ) -> tuple[bytes, dict[str, str]]:
+        headers = {"Range": range_header} if range_header is not None else None
+        return self._request_with_headers(
+            method,
+            path,
+            headers=headers,
+            expected_status=expected_status,
+            expected_content_type="text/plain",
+        )
 
     def json(
         self,
@@ -362,6 +402,83 @@ def _events(client: HTTPClient, run_id: str) -> tuple[list[dict[str, object]], i
     return _event_list(value, run_id)
 
 
+def _artifact_evidence(client: HTTPClient, run_id: str) -> dict[str, object]:
+    encoded_run_id = quote(run_id, safe="")
+    listed = _mapping(
+        client.json("GET", f"/v1/runs/{encoded_run_id}/artifacts"),
+        "artifact list",
+    )
+    if set(listed) != {"run_id", "artifacts"} or listed.get("run_id") != run_id:
+        raise AcceptanceError("artifact list identity is invalid")
+    values = listed.get("artifacts")
+    if not isinstance(values, list) or len(values) != 1:
+        raise AcceptanceError("completed container run must expose one artifact")
+    ref = _mapping(values[0], "artifact reference")
+    expected_keys = {
+        "version",
+        "artifact_id",
+        "run_id",
+        "content_sha256",
+        "size_bytes",
+        "filename",
+        "media_type",
+        "created_seq",
+    }
+    artifact_id = ref.get("artifact_id")
+    digest = ref.get("content_sha256")
+    size = _integer(ref.get("size_bytes"), "artifact size")
+    created_seq = _integer(ref.get("created_seq"), "artifact event sequence", minimum=1)
+    if (
+        set(ref) != expected_keys
+        or ref.get("version") != 1
+        or ref.get("run_id") != run_id
+        or not isinstance(artifact_id, str)
+        or not artifact_id
+        or not isinstance(digest, str)
+        or SHA256.fullmatch(digest) is None
+        or not isinstance(ref.get("filename"), str)
+        or not ref["filename"].endswith("-result.md")
+        or ref.get("media_type") != "text/plain; charset=utf-8"
+    ):
+        raise AcceptanceError("artifact reference is invalid")
+    encoded_artifact_id = quote(artifact_id, safe="")
+    path = (
+        f"/v1/runs/{encoded_run_id}/artifacts/{encoded_artifact_id}/content"
+    )
+    content, headers = client.content("GET", path)
+    if (
+        len(content) != size
+        or hashlib.sha256(content).hexdigest() != digest
+        or EXPECTED_FINAL_CONTENT.encode("utf-8") not in content
+        or headers.get("etag") != f'"sha256-{digest}"'
+        or headers.get("x-sasori-content-sha256") != digest
+        or headers.get("cache-control") != "private, no-store"
+        or not headers.get("content-disposition", "").startswith("attachment;")
+        or headers.get("content-length") != str(size)
+    ):
+        raise AcceptanceError("artifact full download contract is invalid")
+    head, head_headers = client.content("HEAD", path)
+    if head or head_headers.get("content-length") != str(size):
+        raise AcceptanceError("artifact HEAD contract is invalid")
+    end = min(size - 1, 31)
+    ranged, range_headers = client.content(
+        "GET", path, range_header=f"bytes=0-{end}", expected_status=206
+    )
+    if (
+        ranged != content[: end + 1]
+        or range_headers.get("content-range") != f"bytes 0-{end}/{size}"
+    ):
+        raise AcceptanceError("artifact range contract is invalid")
+    return {
+        "artifact_id": artifact_id,
+        "content_sha256": digest,
+        "size_bytes": size,
+        "filename": ref["filename"],
+        "media_type": ref["media_type"],
+        "created_seq": created_seq,
+    }
+
+
 def run_prepare(client: HTTPClient, run_id: str) -> dict[str, object]:
     encoded_run_id = quote(run_id, safe="")
     paused = _projection(
@@ -490,6 +607,9 @@ def run_complete(
         raise AcceptanceError("Incident did not complete exactly one approved effect")
     if latest != durable.get("latest_seq"):
         raise AcceptanceError("projection and JSON event cursors disagree")
+    artifact = _artifact_evidence(client, run_id)
+    if artifact["created_seq"] != latest:
+        raise AcceptanceError("artifact sequence is not the latest durable event")
     streamed = client.sse(
         f"/v1/runs/{encoded_run_id}/events", prepared["reconnect_after_seq"]
     )
@@ -516,6 +636,7 @@ def run_complete(
         "projection_sha256": _sha256(durable),
         "final_message": final_message,
         "effect": {"tool_name": "record_action", "completed_count": effect_count},
+        "artifact": artifact,
         "reconnect": {
             "after_seq": prepared["reconnect_after_seq"],
             "event_count": len(streamed),
@@ -605,6 +726,7 @@ def _validated_completed_evidence(value: object) -> dict[str, object]:
         "projection_sha256",
         "final_message",
         "effect",
+        "artifact",
         "reconnect",
     }
     if set(evidence) != expected_keys:
@@ -636,9 +758,32 @@ def _validated_completed_evidence(value: object) -> dict[str, object]:
         raise AcceptanceError("evidence workflow is invalid")
     _final_message(evidence.get("final_message"), "evidence final message")
     effect = _mapping(evidence.get("effect"), "evidence effect")
+    artifact = _mapping(evidence.get("artifact"), "evidence artifact")
     reconnect = _mapping(evidence.get("reconnect"), "evidence reconnect")
     if effect != {"tool_name": "record_action", "completed_count": 1}:
         raise AcceptanceError("evidence effect summary is invalid")
+    if (
+        set(artifact)
+        != {
+            "artifact_id",
+            "content_sha256",
+            "size_bytes",
+            "filename",
+            "media_type",
+            "created_seq",
+        }
+        or not isinstance(artifact.get("artifact_id"), str)
+        or not isinstance(artifact.get("content_sha256"), str)
+        or SHA256.fullmatch(str(artifact["content_sha256"])) is None
+        or _integer(artifact.get("size_bytes"), "evidence artifact size") < 1
+        or not isinstance(artifact.get("filename"), str)
+        or artifact.get("media_type") != "text/plain; charset=utf-8"
+        or _integer(
+            artifact.get("created_seq"), "evidence artifact sequence", minimum=1
+        )
+        != latest
+    ):
+        raise AcceptanceError("evidence artifact summary is invalid")
     for field in ("after_seq", "event_count", "first_seq", "last_seq"):
         _integer(reconnect.get(field), f"evidence reconnect {field}", minimum=1)
     if (
@@ -674,6 +819,7 @@ def run_after_restart(
         projection.get("final_message"), "after-restart final"
     )
     effect_count = _effect_count(events)
+    artifact = _artifact_evidence(client, run_id)
     reconnect = evidence["reconnect"]
     streamed = client.sse(
         f"/v1/runs/{encoded_run_id}/events", reconnect["after_seq"]
@@ -694,6 +840,7 @@ def run_after_restart(
         streamed[0]["seq"] == reconnect["first_seq"],
         streamed[-1]["seq"] == reconnect["last_seq"],
         _sha256(streamed) == reconnect["events_sha256"],
+        artifact == evidence["artifact"],
     )
     if not all(checks):
         raise AcceptanceError("after-restart durable evidence changed")
@@ -706,6 +853,48 @@ def run_after_restart(
         "latest_seq": latest,
         "event_count": len(events),
         "effect_count": effect_count,
+        "artifact": artifact,
+    }
+
+
+def run_tamper_check(
+    client: HTTPClient, evidence: dict[str, object]
+) -> dict[str, object]:
+    evidence = _validated_completed_evidence(evidence)
+    run_id = str(evidence["run_id"])
+    artifact = _mapping(evidence["artifact"], "evidence artifact")
+    artifact_id = str(artifact["artifact_id"])
+    path = (
+        f"/v1/runs/{quote(run_id, safe='')}/artifacts/"
+        f"{quote(artifact_id, safe='')}/content"
+    )
+    response = _mapping(
+        client.json("GET", path, expected_status=503),
+        "artifact tamper response",
+    )
+    error = _mapping(response.get("error"), "artifact tamper error")
+    if (
+        set(response) != {"ok", "error"}
+        or response.get("ok") is not False
+        or set(error) != {"code", "message", "retryable", "run_id"}
+        or error.get("code") != "artifact_integrity_failed"
+        or error.get("message")
+        != "artifact bytes failed durable integrity verification"
+        or error.get("retryable") is not False
+        or error.get("run_id") != run_id
+    ):
+        raise AcceptanceError("tampered artifact did not fail closed")
+    return {
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "kind": EVIDENCE_KIND,
+        "phase": "tamper-check",
+        "run_id": run_id,
+        "verified": True,
+        "artifact_id": artifact_id,
+        "content_sha256": artifact["content_sha256"],
+        "size_bytes": artifact["size_bytes"],
+        "status": 503,
+        "error_code": "artifact_integrity_failed",
     }
 
 
@@ -776,7 +965,9 @@ def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Verify the containerized Sasori Incident HTTP workflow."
     )
-    parser.add_argument("phase", choices=("prepare", "complete", "after-restart"))
+    parser.add_argument(
+        "phase", choices=("prepare", "complete", "after-restart", "tamper-check")
+    )
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--token-file", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
@@ -805,11 +996,16 @@ def main(arguments: list[str] | None = None) -> int:
             completed = run_complete(client, prepared)
             _write_evidence(options.evidence, completed, token, replace=True)
             _print_json(completed, token)
-        else:
+        elif options.phase == "after-restart":
             if options.run_id is not None:
                 raise AcceptanceError("run ID is read from completed evidence")
             completed = _read_evidence(options.evidence, token)
             _print_json(run_after_restart(client, completed), token)
+        else:
+            if options.run_id is not None:
+                raise AcceptanceError("run ID is read from completed evidence")
+            completed = _read_evidence(options.evidence, token)
+            _print_json(run_tamper_check(client, completed), token)
         return 0
     except AcceptanceError as error:
         print(f"container acceptance failed: {error}", file=sys.stderr)

@@ -48,6 +48,7 @@ drive the same single-agent loop.
 | Crash ambiguity | dispatch intent is durable; unknown outcomes stop at `effect_unknown` for explicit operator recovery |
 | One runtime everywhere | Python, CLI, HTTP, first-party apps, and Workbench converge on `Harness.run()` / `resume()` |
 | Long conversations | optional `sasori_context` budgets model input without splitting tool calls/results or rewriting the transcript |
+| Durable deliverables | optional `sasori_artifacts` binds immutable bytes, metadata, and a public event to the exact run without enlarging the Loop |
 | Small-to-large composition | providers, SQLite, RAG, MCP, Git, workspace tools, apps, catalog, server, and UI stay outside core |
 | Evidence, not slogans | deterministic fakes, provider conformance, process-crash tests, live/cold reducer tests, real-browser journeys, package and container gates |
 | China-friendly delivery | DaoCloud base image, Tsinghua PyPI default, digest/hash locking, and a real mainland-source container workflow |
@@ -62,7 +63,9 @@ cd sasori
 python -m pip install -e .
 sasori-server --host 127.0.0.1 --port 8080 \
   --db ./sasori-runs.sqlite3 \
+  --artifact-root ./sasori-artifacts \
   --app incident=sasori_apps.incident:create_harness \
+  --publish-final-artifact \
   --trusted-loopback-no-auth
 ```
 
@@ -199,16 +202,45 @@ Use a named provider tokenizer when exact token accounting matters. Details:
 [bounded context](https://github.com/syusama/sasori/blob/main/docs/CONTEXT.md) and
 [ADR-0009](https://github.com/syusama/sasori/blob/main/docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md).
 
+## Immutable artifacts without core bloat
+
+Trusted Python hosts can publish a bounded deliverable after a run exists:
+
+```python
+from sasori_artifacts import ArtifactStore
+
+artifacts = ArtifactStore(run_store, "./artifacts")
+ref = artifacts.put(
+    run_id,
+    b'{"status":"ready"}',
+    declared_filename="report.json",
+    declared_media_type="application/json",
+)
+```
+
+Blob bytes are finalized by SHA-256 without overwrite. The immutable metadata
+row and `artifact.available` event commit together on the run's real durable
+cursor. Retries are idempotent; reads verify the opened file's exact size and
+digest before success headers. HTTP list/content/HEAD/single-Range routes are
+run-scoped, and unknown versus cross-run IDs share the same 404.
+
+The current bearer authenticates one Sasori instance, not a user or tenant.
+There is no upload, delete, retention/GC promise, signed sharing grant, or
+active-content preview in this slice. See [Artifacts](https://github.com/syusama/sasori/blob/main/docs/ARTIFACTS.md)
+and [ADR-0010](https://github.com/syusama/sasori/blob/main/docs/ADR-0010-ARTIFACT-REF-BOUNDARY.md).
+
 ## Puppet Workbench
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/workbench.png" alt="Sasori Puppet Workbench showing a completed real Incident run and its 16-event durable timeline" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/workbench.png" alt="Sasori Puppet Workbench showing a completed real Incident run, immutable artifact card, and safe text preview" width="100%">
 </p>
 
 This image is captured from the production Workbench after a real browser
 journey through `sasori.server`, the Incident Harness, SQLite, approval,
 explicit resume, one external effect, page reload, and cold-history reopen.
-It is not a static mockup.
+The run has 16 Loop events followed by one host-policy `artifact.available`
+event; the artifact card, authenticated preview, download fetch, and cold
+reopen are verified in Chrome. It is not a static mockup.
 
 The no-build UI includes:
 
@@ -217,6 +249,8 @@ The no-build UI includes:
 - task input, REST/SSE progress, approval/denial, explicit resume, and manual
   effect recovery;
 - a live/cold/reconnect-safe timeline driven by one pure reducer;
+- run-scoped immutable artifact cards, authenticated UTF-8 text/JSON preview,
+  verified download, and stale-response isolation;
 - capability, tool effect, plugin identity, and effective host-permission
   disclosure;
 - responsive navigation, keyboard focus, reduced-motion behavior, and text-only
@@ -230,6 +264,7 @@ The no-build UI includes:
 | `SQLiteStore` | atomic revisions/checkpoints/events, CAS, restart recovery, one cross-process owner |
 | Providers | stdlib OpenAI Responses and Anthropic Messages adapters; strict schema and shared conformance |
 | `sasori_context` | optional deterministic budget projection; structural validation; custom estimator support |
+| `sasori_artifacts` | immutable content-addressed blobs; run/event association; verified list/content/HEAD/Range |
 | CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
 | HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
 | Applications | deterministic Incident; configured Research; configured Developer |
@@ -348,9 +383,9 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-The latest verified pre-benchmark baseline,
-[`6658332`](https://github.com/syusama/sasori/commit/6658332ade12aa2b558aa0db5de6218c2eafd8c8),
-passed [Hosted run 31271768241](https://github.com/syusama/sasori/actions/runs/31271768241):
+The latest verified pre-artifact baseline,
+[`028d664`](https://github.com/syusama/sasori/commit/028d664bf6f7531937c21bf333a06f6ade887a14),
+passed [Hosted run 31298332150](https://github.com/syusama/sasori/actions/runs/31298332150):
 
 - Ubuntu + Windows × Python 3.11, 3.12, and 3.13 source matrix;
 - installed-wheel and rebuilt-sdist matrices;
@@ -367,7 +402,8 @@ bundle. Exact-tag provenance remains a separate release gate.
 
 | Current — usable and tested | Next — not claimed yet |
 |---|---|
-| Tiny standard-library core | General immutable ArtifactRef + download/preview chain |
+| Tiny standard-library core | Artifact access grants, version lineage, and lifecycle/GC |
+| Immutable run-scoped ArtifactRef + safe text/JSON preview | Safe PDF/image preview after dedicated content-validation gates |
 | Single-agent loop and one runtime path | Semantic compaction and durable bounded Memory |
 | Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
 | Approval, effect fingerprints, crash ambiguity recovery | Typed Workflow on the same tool/effect contracts |

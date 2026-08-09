@@ -8,6 +8,7 @@
   <title>Sasori · Puppet Workbench</title>
   <link rel="icon" href="/assets/mark.0.1.0.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/app.0.1.0.css">
+  <link rel="stylesheet" href="/assets/artifacts.0.1.0.css">
 </head>
 <body>
   <a class="skip-link" href="#workbench-main">跳到工作区</a>
@@ -94,6 +95,7 @@
     <aside class="right-rail" id="right-rail" aria-label="运行检查器">
       <div class="inspector-tabs" role="tablist" aria-label="检查器视图">
         <button id="timeline-tab" role="tab" aria-controls="timeline-panel" aria-selected="true" tabindex="0" type="button">时间轴</button>
+        <button id="artifacts-tab" role="tab" aria-controls="artifacts-panel" aria-selected="false" tabindex="-1" type="button">产物</button>
         <button id="surface-tab" role="tab" aria-controls="surface-panel" aria-selected="false" tabindex="-1" type="button">能力面</button>
       </div>
 
@@ -103,6 +105,21 @@
         <ol class="timeline" id="timeline-list">
           <li class="timeline-empty"><i></i><p>启动任务后，耐久事件会在这里逐格咬合。</p></li>
         </ol>
+      </section>
+
+      <section class="inspector-panel artifacts-panel" id="artifacts-panel" role="tabpanel" aria-labelledby="artifacts-tab" hidden>
+        <div class="inspector-heading artifact-heading">
+          <span><small>ARTIFACTS / IMMUTABLE</small><h2>永恒档案匣</h2></span>
+          <button class="text-button" id="reload-artifacts" type="button">校验</button>
+        </div>
+        <p class="artifact-boundary">实例认证 · 精确运行关联 · SHA-256 完整性</p>
+        <div class="artifact-list" id="artifact-list" aria-live="polite">
+          <p class="empty-copy">装入运行后，已注册产物会在这里显现。</p>
+        </div>
+        <section class="artifact-preview" id="artifact-preview" hidden aria-live="polite">
+          <header><span><small>SAFE TEXT PREVIEW</small><strong id="artifact-preview-title">产物预览</strong></span><button class="icon-button" id="close-artifact-preview" type="button" aria-label="关闭产物预览">×</button></header>
+          <pre id="artifact-preview-content"></pre>
+        </section>
       </section>
 
       <section class="inspector-panel surface-panel" id="surface-panel" role="tabpanel" aria-labelledby="surface-tab" hidden>
@@ -147,5 +164,6 @@
 
   <script src="/assets/event-reducer.0.1.0.js" defer></script>
   <script src="/assets/app.0.1.2.js" defer></script>
+  <script src="/assets/app.0.1.3.js" defer></script>
 </body>
 </html>

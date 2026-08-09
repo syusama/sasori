@@ -2,6 +2,8 @@
   const INPUT = "browser lifecycle incident";
   const PHASE_KEY = "sasori.real-journey.phase";
   const RUN_KEY = "sasori.real-journey.run-id";
+  const nativeAnchorClick = global.HTMLAnchorElement.prototype.click;
+  let capturedDownload = null;
   const result = document.createElement("pre");
   result.id = "sasori-real-journey-result";
   result.hidden = true;
@@ -14,6 +16,14 @@
   function assert(condition, message) {
     if (!condition) fail(message);
   }
+
+  global.HTMLAnchorElement.prototype.click = function click() {
+    if (this.download && this.href.startsWith("blob:")) {
+      capturedDownload = { filename: this.download, href: this.href };
+      return;
+    }
+    return nativeAnchorClick.call(this);
+  };
 
   function tick() {
     return new Promise((resolve) => setTimeout(resolve, 25));
@@ -87,7 +97,31 @@
       "explicit resume did not complete the real Incident run",
     );
     assert(await actionCount() === 1, "completed journey did not execute exactly one side effect");
-    assert(document.querySelector("#event-count").textContent === "16", "visible durable timeline is not the exact 16-event lifecycle");
+    assert(document.querySelector("#event-count").textContent === "17", "visible durable timeline is not the exact 17-event artifact lifecycle");
+    document.querySelector("#artifacts-tab").click();
+    await waitFor(
+      () => document.querySelector(".artifact-card") &&
+        document.querySelector("#artifact-list").textContent.includes(`${runId}-result.md`),
+      "completed run did not expose its durable artifact card",
+    );
+    assert(document.querySelector("#artifact-list").textContent.includes("SHA-256 BOUND"), "artifact digest binding is not visible");
+    document.querySelector(".artifact-preview-button").click();
+    await waitFor(
+      () => !document.querySelector("#artifact-preview").hidden &&
+        document.querySelector("#artifact-preview-content").textContent.includes("Incident action recorded"),
+      "verified text artifact preview did not render",
+    );
+    document.querySelector(".artifact-download-button").click();
+    await waitFor(
+      () => document.querySelector("#toast-region").textContent.includes("产物已校验"),
+      "authenticated artifact download did not finish",
+    );
+    assert(
+      capturedDownload && capturedDownload.filename === `${runId}-result.md` &&
+        capturedDownload.href.startsWith("blob:"),
+      "verified artifact download did not construct the expected browser payload",
+    );
+    document.querySelector("#timeline-tab").click();
     await waitFor(
       () => document.querySelector(`.history-card[data-run-id="${runId}"]`),
       "completed run did not appear in history",
@@ -108,20 +142,32 @@
     await waitFor(
       () => document.querySelector("#active-run-label").textContent === runId &&
         document.querySelector("#run-state").dataset.state === "completed" &&
-        document.querySelector("#event-count").textContent === "16" &&
+        document.querySelector("#event-count").textContent === "17" &&
         document.querySelector("#message-stack").textContent.includes("Incident action recorded"),
       "cold history reopen did not reconstruct final output and timeline",
     );
     assert(await actionCount() === 1, "history reopen repeated the side effect");
     assertCapabilitySurface();
+    document.querySelector("#artifacts-tab").click();
+    await waitFor(
+      () => document.querySelector(".artifact-card") &&
+        document.querySelector("#artifact-list").textContent.includes(`${runId}-result.md`),
+      "cold history reopen did not restore the durable artifact",
+    );
+    document.querySelector(".artifact-preview-button").click();
+    await waitFor(
+      () => !document.querySelector("#artifact-preview").hidden &&
+        document.querySelector("#artifact-preview-content").textContent.includes("Incident action recorded"),
+      "cold history artifact preview did not survive reload",
+    );
 
     sessionStorage.removeItem(PHASE_KEY);
     sessionStorage.removeItem(RUN_KEY);
     result.dataset.result = "passed";
     result.dataset.runId = runId;
-    result.dataset.events = "16";
+    result.dataset.events = "17";
     result.dataset.effects = "1";
-    result.textContent = "PASS:real-incident-lifecycle";
+    result.textContent = "PASS:real-incident-lifecycle,artifact-preview-download";
     document.title = "Sasori real journey passed";
   }
 

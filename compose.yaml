@@ -5,6 +5,9 @@ services:
       args:
         PYTHON_INDEX_URL: ${PYTHON_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     image: sasori:local
+    environment:
+      SASORI_ARTIFACT_ROOT: /data/artifacts
+      SASORI_PUBLISH_FINAL_ARTIFACT: "1"
     init: true
     read_only: true
     tmpfs:

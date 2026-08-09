@@ -603,7 +603,7 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(sqlite3.DatabaseError):
             database.execute("DELETE FROM checkpoints")
         database.rollback()
-        database.execute("PRAGMA user_version = 4")
+        database.execute("PRAGMA user_version = 5")
         database.close()
 
         with self.assertRaises(SchemaVersionError):
@@ -700,7 +700,7 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(effects, [])
         store.close()
         database = sqlite3.connect(self.db_path)
-        self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 3)
+        self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 4)
         database.close()
 
     async def test_approved_call_cannot_run_after_tool_revision_changes(self):

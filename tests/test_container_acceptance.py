@@ -37,6 +37,8 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertIn(
             'group_add:\n      - "${SASORI_TOKEN_GID:-10001}"', compose
         )
+        self.assertIn("SASORI_ARTIFACT_ROOT: /data/artifacts", compose)
+        self.assertIn('SASORI_PUBLISH_FINAL_ARTIFACT: "1"', compose)
         self.assertIn("os.O_WRONLY | os.O_CREAT | os.O_EXCL", workflow)
         self.assertIn(
             "os.O_WRONLY | os.O_CREAT | os.O_EXCL,\n              0o600,",
@@ -52,12 +54,16 @@ class ContainerAcceptanceTests(unittest.TestCase):
             "container could not read the group-scoped bearer-token secret",
             workflow,
         )
+        self.assertIn('Path("/data/artifacts/blobs/sha256")', workflow)
+        self.assertIn("tampered = bytes([content[0] ^ 1]) + content[1:]", workflow)
+        self.assertIn("scripts/container_acceptance.py tamper-check", workflow)
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.database = self.root / "sasori.sqlite3"
         self.action_log = self.root / "incident-actions.jsonl"
+        self.artifact_root = self.root / "artifacts"
         self.token_file = self.root / "token"
         self.token_file.write_text(self.TOKEN + "\n", encoding="ascii")
         self.evidence = self.root / "evidence.json"
@@ -86,8 +92,10 @@ class ContainerAcceptanceTests(unittest.TestCase):
             "127.0.0.1",
             0,
             database=self.database,
+            artifact_root=self.artifact_root,
             apps={"incident": "sasori_apps.incident:create_harness"},
             token=self.TOKEN,
+            publish_final_artifact=True,
             sse_max_seconds=2,
             sse_keepalive_seconds=0.05,
         )
@@ -170,17 +178,18 @@ class ContainerAcceptanceTests(unittest.TestCase):
         stored = json.loads(self.evidence.read_text(encoding="utf-8"))
         self.assertEqual(output, stored)
         self.assertEqual(stored["phase"], "complete")
-        self.assertEqual(stored["event_count"], 16)
-        self.assertEqual(stored["latest_seq"], 16)
+        self.assertEqual(stored["event_count"], 17)
+        self.assertEqual(stored["latest_seq"], 17)
+        self.assertEqual(stored["artifact"]["created_seq"], 17)
         self.assertEqual(stored["effect"]["completed_count"], 1)
         self.assertEqual(
             stored["reconnect"],
             {
                 "after_seq": 10,
-                "event_count": 6,
+                "event_count": 7,
                 "events_sha256": stored["reconnect"]["events_sha256"],
                 "first_seq": 11,
-                "last_seq": 16,
+                "last_seq": 17,
             },
         )
         actions = [
@@ -211,14 +220,15 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertEqual(
             verified,
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "kind": "sasori.container-acceptance",
                 "phase": "after-restart",
                 "run_id": "container-acceptance-1",
                 "verified": True,
-                "latest_seq": 16,
-                "event_count": 16,
+                "latest_seq": 17,
+                "event_count": 17,
                 "effect_count": 1,
+                "artifact": stored["artifact"],
             },
         )
         actions = [
@@ -228,6 +238,41 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertEqual(
             actions,
             [{"summary": container_acceptance.EXPECTED_ACTION_SUMMARY}],
+        )
+        self.assertNotIn(self.TOKEN, stdout + stderr)
+
+        artifact = stored["artifact"]
+        digest = artifact["content_sha256"]
+        blob = self.artifact_root / "blobs" / "sha256" / digest[:2] / digest
+        content = blob.read_bytes()
+        self.assertGreater(len(content), 0)
+        blob.chmod(0o600)
+        blob.write_bytes(bytes([content[0] ^ 1]) + content[1:])
+        tamper = [
+            "tamper-check",
+            "--base-url",
+            restarted_url,
+            "--token-file",
+            str(self.token_file),
+            "--evidence",
+            str(self.evidence),
+        ]
+        code, stdout, stderr = self._main(tamper)
+        self.assertEqual((code, stderr), (0, ""))
+        self.assertEqual(
+            json.loads(stdout),
+            {
+                "schema_version": 2,
+                "kind": "sasori.container-acceptance",
+                "phase": "tamper-check",
+                "run_id": "container-acceptance-1",
+                "verified": True,
+                "artifact_id": artifact["artifact_id"],
+                "content_sha256": digest,
+                "size_bytes": artifact["size_bytes"],
+                "status": 503,
+                "error_code": "artifact_integrity_failed",
+            },
         )
         self.assertNotIn(self.TOKEN, stdout + stderr)
 
@@ -343,7 +388,7 @@ class ContainerAcceptanceTests(unittest.TestCase):
                 container_acceptance._parse_sse(raw)
 
         evidence = {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "sasori.container-acceptance",
             "phase": "complete",
             "run_id": "valid-run",
@@ -353,8 +398,8 @@ class ContainerAcceptanceTests(unittest.TestCase):
                 "decision_pause_reason": "resume_required",
                 "explicit_resume": True,
             },
-            "latest_seq": 16,
-            "event_count": 16,
+            "latest_seq": 17,
+            "event_count": 17,
             "event_types": list(container_acceptance.EXPECTED_EVENT_TYPES),
             "events_sha256": "0" * 64,
             "projection_sha256": "1" * 64,
@@ -363,11 +408,19 @@ class ContainerAcceptanceTests(unittest.TestCase):
                 "content": container_acceptance.EXPECTED_FINAL_CONTENT,
             },
             "effect": {"tool_name": "record_action", "completed_count": 2},
+            "artifact": {
+                "artifact_id": "artifact-valid",
+                "content_sha256": "3" * 64,
+                "size_bytes": 42,
+                "filename": "valid-run-result.md",
+                "media_type": "text/plain; charset=utf-8",
+                "created_seq": 17,
+            },
             "reconnect": {
                 "after_seq": 10,
-                "event_count": 6,
+                "event_count": 7,
                 "first_seq": 11,
-                "last_seq": 16,
+                "last_seq": 17,
                 "events_sha256": "2" * 64,
             },
         }
@@ -384,7 +437,7 @@ class ContainerAcceptanceTests(unittest.TestCase):
             container_acceptance._validated_completed_evidence(evidence)
 
         prepared = {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "sasori.container-acceptance",
             "phase": "prepare",
             "run_id": "valid-run",
