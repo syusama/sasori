@@ -483,27 +483,31 @@ python tests/workbench_browser_journey.py --require-browser `
 ```
 
 The latest Hosted-verified main baseline,
-[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206),
-passed [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164):
+[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72),
+passed [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961):
 
-- Ubuntu + Windows × Python 3.11, 3.12, and 3.13 source matrix, including
-  Semantic Compaction cancellation, deadline, cache-race, and failure contracts;
+- all 347 deterministic cases across the Ubuntu + Windows × Python 3.11, 3.12,
+  and 3.13 source matrix, including Memory, Semantic Compaction, cancellation,
+  deadline, cache-race, replay-tamper, and app-alias contracts;
 - installed-wheel and rebuilt-sdist matrices;
 - package verification, with the exact-tag release bundle correctly skipped on
   this ordinary `main` push;
 - mainland-source image build and real Compose workflow/restart/owner lock,
-  including run-scoped artifact GET/HEAD/Range and same-size tamper rejection;
+  including installed-container Memory write/search/restart, run-scoped artifact
+  GET/HEAD/Range, and same-size tamper rejection;
 - SBOM generation, image binding, and audited evidence upload;
 - delayed-response UI race acceptance and a real 17-event Artifact-enabled
-  Incident lifecycle in Chrome on Ubuntu/Python 3.12.
+  Incident lifecycle in Chrome on Ubuntu/Python 3.12, including the Memory Skill
+  surface.
 
 That main-branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.
 
-The run verifies Semantic Compaction's deterministic protocol and integration
-gates. It is **not** evidence of real OpenAI/Anthropic summary quality, factual
-recall, unsupported-claim or contradiction rates, provider token usage, billing,
-or cost savings; those credentialed evaluations remain open.
+The run verifies Memory and Semantic Compaction's deterministic protocols and
+integration gates for the documented local-single-owner boundary. It is **not**
+evidence of per-user/tenant isolation, prompt-injection neutralization, real
+OpenAI/Anthropic quality, factual recall, unsupported-claim or contradiction
+rates, provider token usage, billing, or cost savings; those gates remain open.
 
 ## Current and Next
 

@@ -17,8 +17,8 @@ embedding database, or a background LLM extractor.
 
 This page describes the accepted local single-owner slice. It does not promote
 the open identity, extraction, retrieval-quality, or multi-tenant work listed
-below; exact-revision Hosted CI evidence is tracked separately from the local
-acceptance decision.
+below. Exact-revision Hosted CI evidence is recorded separately from the local
+acceptance decision and does not widen that decision.
 
 ## Records and authority
 
@@ -106,6 +106,31 @@ The current HTTP bearer token is an instance secret, not a user principal. Until
 Sasori has a trusted external identity/session mapping, first-party Memory may be
 described only as local single-owner, application-scoped Memory. A shared server
 must not market that namespace as private per-user Memory.
+
+## Verification boundary
+
+The implementation is bound to exact revision
+[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72)
+and [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961).
+The run passed all 347 deterministic cases on Ubuntu and Windows with Python
+3.11, 3.12, and 3.13; installed-wheel and offline rebuilt-sdist matrices; real
+Chrome fixtures; and the mainland-source [Package job](https://github.com/syusama/sasori/actions/runs/31323818961/job/93270874816)
+and [Container job](https://github.com/syusama/sasori/actions/runs/31323818961/job/93271113779).
+The container job wrote and searched Memory through the installed image,
+restarted the same named volume, reloaded the same record and run binding,
+rejected a second SQLite owner, audited secrets, and uploaded strict evidence.
+
+A separate pre-push package candidate built from the same implementation tree
+passed the release verifier, fresh-wheel install, and offline sdist rebuild:
+
+- wheel: 202,418 bytes, SHA-256
+  `0845af39ef0a979794f99e1069f3208968b0e589cf9f833f5e6d2c6f20c60827`;
+- sdist: 732,582 bytes, SHA-256
+  `9c595efb112f87161a57b413f1fc0618bb859c633e4c7f6e4c7140d657e30e39`.
+
+Those local hashes are not presented as hashes of GitHub's separately built
+artifacts. The branch run created no tag, signed provenance, release bundle,
+real-provider quality result, or multi-tenant security evidence.
 
 ## Still open
 

@@ -3,7 +3,7 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Memory is accepted only for a deployment-owned local-single-owner namespace after its deterministic, package, and mainland-source container gates passed; exact-revision Hosted evidence remains pending. Real-provider semantic/Memory quality evaluation, per-request user/tenant identity, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
+Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Memory is accepted only for a deployment-owned local-single-owner namespace after its deterministic, package, mainland-source container, and [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961) gates passed. Real-provider semantic/Memory quality evaluation, per-request user/tenant identity, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
 
 ## 1. Decision
 
@@ -110,7 +110,7 @@ These are boundaries, not directories to scaffold before use:
 | OpenAI-compatible provider | `sasori.OpenAIResponsesModel` backed by `sasori.provider_openai`; split only after an external package consumer exists | deterministic JSON/SSE conformance implemented; live smoke open |
 | Anthropic provider | `sasori.AnthropicMessagesModel` backed by `sasori.provider_anthropic`; split only after an external package consumer exists | deterministic JSON/SSE conformance implemented; live smoke open |
 | Context projection and semantic compaction | `sasori_context` model adapters | structural/tool-atom contracts and opt-in whole-request digest echo/unverified-note protocol implemented; real-model quality evaluation open |
-| Durable bounded Memory | `sasori_memory` separate SQLite authority + model/tool adapters | fixed local owner/app/scope/session, immutable revisions/CAS, verified idempotent replay, bounded lexical recall/final-budget merge, suppression and atomic rebuild accepted; exact-revision Hosted evidence and real-model quality remain open |
+| Durable bounded Memory | `sasori_memory` separate SQLite authority + model/tool adapters | fixed local owner/app/scope/session, immutable revisions/CAS, verified idempotent replay, bounded lexical recall/final-budget merge, suppression and atomic rebuild accepted and Hosted-verified at `bc049ec`; real-model quality remains open |
 | SQLite checkpoint/trace | currently `sasori.sqlite_store`; split only after an external package consumer exists | recovery state machine accepted |
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
@@ -316,16 +316,24 @@ Gate G2:
 
 Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic Messages JSON/SSE wire tests cover full two-turn tool continuation, strict local schema validation, authoritative terminal aggregation, malformed/incomplete/refused/interrupted results, SSE framing/order, 429/retry-after, redirect rejection, total transport deadline, cancellation, duplicate IDs, oversized bodies, and secret-free exception chains. Upstream deltas never enter the public projection or durable provider state. CLI and HTTP use one public projection; HTTP/SSE approval/resume and cursor reconnect pass. A local manual, no-cache Compose acceptance built from `d384ab2` through the digest-pinned DaoCloud base and Tsinghua index (`sasori:local` image ID `sha256:196a3db71942fc0c20118e2029c81882ae678963ceaefccd9ce8e271a05b8fc3`) stopped at `resume_required` with 11 events and zero actions, then completed exactly 16 events and one exact approved action only after explicit resume. Its SSE reconnect returned sequences 11-16; restart preserved the projection/event/SSE hashes, final, cursor, and effect count; the external action log remained `0 → 1 → 1`; and a second database owner was rejected with `ConcurrentRunError` without disclosing the token. The current CI definition repeats that split-phase deterministic Incident workflow, uploads the audited acceptance JSON, generates checksum-locked Syft SPDX/native image inventories after product acceptance, and uses Sasori's verifier to bind a before/after-stable daemon inspection (ID, descriptor, repo digests, platform, and RootFS layers) plus the accepted Compose container's engine-specific `.Image` identity to the embedded config, Syft-normalized manifest, sole SPDX container root, exact package/file subjects, and Git revision. The binding remains unsigned and explicitly disclaims trusted provenance. A hosted run URL bound to the exact revision is still required before claiming public CI image-SBOM evidence. This is not live-provider, signing, trusted-provenance, registry-publication, or public-deployment evidence. G2 remains **open** because neither provider key/model is configured for the two required live smokes.
 
-Current Semantic Compaction evidence on 2026-08-09 is bound to
-[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206)
-and [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164).
-That run passed the six-platform source matrix, installed-wheel and rebuilt-sdist
-matrices, package verification, real Chrome paths, and the mainland-source
-container/restart/artifact/tamper gates. It verifies the deterministic summary
-protocol, cancellation/deadline/cache contracts, and first-party integration;
-it does not verify real-provider summary quality, factual recall, provider usage,
-billing, or cost savings. The exact-tag release bundle was correctly skipped on
-this ordinary `main` push, so signing and trusted provenance remain separate.
+For current `main`, that exact-revision public CI requirement is satisfied by
+[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72)
+and [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961).
+The older paragraph remains a dated record of the narrower 2026-08-08 local
+evidence; it is not the current Hosted baseline.
+
+Current deterministic Context and Memory evidence on 2026-08-10 is bound to
+[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72)
+and [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961).
+That run passed all 347 deterministic cases in the six-platform source matrix,
+installed-wheel and rebuilt-sdist matrices, package verification, real Chrome
+paths, and the mainland-source container/restart/Memory/artifact/tamper gates.
+It verifies deterministic compaction and fixed-scope Memory protocols,
+cancellation/deadline/cache/replay contracts, and first-party integration; it
+does not verify trusted user identity, real-provider quality, factual recall,
+prompt-injection neutralization, provider usage, billing, or cost savings. The
+exact-tag release bundle was correctly skipped on this ordinary `main` push, so
+signing and trusted provenance remain separate.
 
 ### Days 56-75: switching-value validation
 

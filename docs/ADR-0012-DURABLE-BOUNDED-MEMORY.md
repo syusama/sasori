@@ -328,6 +328,10 @@ token, latency, billing, or cost-savings numbers for Memory.
 
 This ADR is accepted for the deliberately narrow local single-owner slice after
 the implementation, disabled-path regression, packaging, and mainland-source
-container gates above passed on 2026-08-09. Exact-revision Hosted CI evidence is
-still pending and must be promoted separately; acceptance does not expand the
-identity, retrieval, quality, or deployment boundaries stated above.
+container gates above passed. Exact implementation revision
+[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72)
+then passed [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961)
+on 2026-08-10, including all 347 deterministic cases, installed-wheel and
+rebuilt-sdist matrices, real Chrome acceptance, and the installed-container
+Memory restart/owner/audit gates. This evidence does not expand the identity,
+retrieval, quality, or deployment boundaries stated above.
