@@ -36,8 +36,9 @@ drive the same single-agent loop.
 
 > Sasori is intentionally honest about its current boundary. It is a strong
 > single-machine G1 foundation, not yet a public multi-tenant control plane,
-> distributed executor, untrusted-code sandbox, workflow engine, or central
-> marketplace. [Current and Next](#current-and-next) are kept visibly separate.
+> distributed executor, untrusted-code sandbox, general DAG workflow engine,
+> or central marketplace. [Current and Next](#current-and-next) are kept
+> visibly separate.
 
 ## The ten-second map
 
@@ -48,6 +49,7 @@ drive the same single-agent loop.
 | Real side effects | every tool declares `read_only`, `idempotent`, or `side_effecting`; mutable effects require a revision and a human decision |
 | Crash ambiguity | dispatch intent is durable; unknown outcomes stop at `effect_unknown` for explicit operator recovery |
 | One runtime everywhere | Python, CLI, HTTP, first-party apps, and Workbench converge on `Harness.run()` / `resume()` |
+| Static workflows without a second engine | strict data/JSON and a small Python builder produce the same immutable serial `WorkflowSpec`; Python, CLI, HTTP, and Workbench consume one core-owned public run projection |
 | Context under pressure | deterministic structural projection is the default; an opt-in named compactor selects cold history without splitting tool-call/result atoms, while the durable transcript stays unchanged |
 | Memory without mythology | opt-in `sasori_memory` keeps immutable revisions in a separate SQLite authority, filters the complete fixed namespace before ranking, and routes every mutation through Harness approval/idempotency |
 | Durable deliverables | optional `sasori_artifacts` binds immutable bytes, metadata, and a public event to the exact run without enlarging the Loop |
@@ -346,6 +348,8 @@ The no-build UI includes:
 - task input, REST/SSE progress, approval/denial, explicit resume, and manual
   effect recovery;
 - a live/cold/reconnect-safe timeline driven by one pure reducer;
+- a durable serial Workflow rail consumed from the versioned server projection,
+  while the reducer remains responsible only for event timeline/cursor state;
 - run-scoped immutable artifact cards, authenticated UTF-8 text/JSON preview,
   verified download, and stale-response isolation;
 - capability, tool effect, plugin identity, and effective host-permission
@@ -357,12 +361,13 @@ The no-build UI includes:
 
 | Surface | Delivered boundary |
 |---|---|
-| `sasori` | contracts, single-agent Harness/loop, event projection, in-memory store |
+| `sasori` | contracts, single-agent Harness/loop, versioned event/run projection, in-memory store |
 | `SQLiteStore` | atomic revisions/checkpoints/events, CAS, restart recovery, one cross-process owner |
 | Providers | stdlib OpenAI Responses and Anthropic Messages adapters; strict schema and shared conformance |
 | `sasori_context` | deterministic structural projection; opt-in named semantic compactor; source lineage, bounded output/cache/diagnostics, explicit failure |
 | `sasori_memory` | opt-in fixed-scope SQLite authority; immutable revisions/CAS, source lineage, bounded lexical recall, suppression, atomic rebuild, Harness-gated tools |
 | `sasori_artifacts` | immutable content-addressed blobs; run/event association; verified list/content/HEAD/Range |
+| `sasori_flow` | definition-bound serial W0 execution; strict data/JSON/builder authoring; versioned redacted Workflow projection; no DAG/parallel/Agent nodes |
 | CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
 | HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
 | Applications | deterministic Incident; configured Research; configured Developer; definition-bound Incident Mechanism Workflow |
@@ -379,7 +384,8 @@ The four applications are compositions, not four engines:
 - **Puppet Workshop** — configured provider + bounded workspace tools +
   state-bound local Git + optional frozen MCP tools and fixed-scope Memory.
 - **Incident Mechanism** — a definition-bound, serial `inspect → record` Tool
-  Workflow that reuses the same approval, effect, recovery, and event path.
+  Workflow that reuses the same approval, effect, recovery, and event path and
+  exposes a bounded public step projection.
 
 Unavailable configuration is reported as unavailable; Sasori does not silently
 replace an app with the demo.
@@ -424,6 +430,8 @@ Read the trust records before enabling third-party code:
 - [ADR-0005: MCP stdio](https://github.com/syusama/sasori/blob/main/docs/ADR-0005-MCP-STDIO-BOUNDARY.md)
 - [ADR-0007: external plugin host](https://github.com/syusama/sasori/blob/main/docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md)
 - [ADR-0012: Durable bounded Memory](https://github.com/syusama/sasori/blob/main/docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md)
+- [ADR-0013: typed Workflow boundary](https://github.com/syusama/sasori/blob/main/docs/ADR-0013-TYPED-WORKFLOW-BOUNDARY.md)
+- [ADR-0014: static serial authoring and public projection](https://github.com/syusama/sasori/blob/main/docs/ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md)
 
 ## CLI and local service
 
@@ -485,15 +493,16 @@ python tests/workbench_browser_journey.py --require-browser `
 ```
 
 The latest Hosted-verified implementation baseline,
-[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2),
+[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840),
 completed successfully in
-[Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157).
-All five executed job families passed; the exact-tag-only release-bundle job was
-correctly skipped. The executed gates covered:
+[Hosted run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628).
+All 20 non-tag jobs across five job families passed; the exact-tag-only
+release-bundle job was correctly skipped. The executed gates covered:
 
-- the 377-case deterministic source suite across Ubuntu + Windows × Python
-  3.11, 3.12, and 3.13, including the Workflow definition, transcript,
-  approval, effect, cancellation, crash, and no-replay contracts;
+- the 396-case deterministic source suite across Ubuntu + Windows × Python
+  3.11, 3.12, and 3.13, including strict static authoring, exact public
+  projection semantics, Workflow transcript, approval, effect, cancellation,
+  crash, and no-replay contracts;
 - installed-wheel and rebuilt-sdist matrices;
 - package verification, with the exact-tag release bundle correctly skipped on
   this ordinary `main` push;
@@ -502,16 +511,18 @@ correctly skipped. The executed gates covered:
   and same-size tamper gates;
 - SBOM generation, image binding, and audited evidence upload;
 - delayed-response UI race acceptance and real Incident + Typed Workflow
-  browser journeys on Ubuntu/Python 3.12, including serial step inspection.
+  browser journeys on Ubuntu/Python 3.12, including the server-projected serial
+  step rail and terminal cancelled-effect recovery policy.
 
 That main-branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.
 
-The run verifies W0 as a core-external, definition-bound, serial ordered Tool
-Workflow on the documented local-single-owner Harness path. It is **not** a DAG
-engine, parallel/branch executor, Agent-node graph, distributed scheduler,
-exactly-once runtime, sandbox, or evidence of real-provider quality. Those gates
-remain open.
+The run promotes W1: strict static data/JSON/builder authoring and a core-owned,
+versioned, redacted public Workflow projection around the existing
+core-external, definition-bound serial W0 runtime. It is **not** a DAG engine,
+parallel/branch executor, Agent-node graph, distributed scheduler, exactly-once
+runtime, visual authoring surface, sandbox, or evidence of real-provider
+quality. Those gates remain open.
 
 ## Current and Next
 
@@ -522,7 +533,7 @@ remain open.
 | Single-agent loop and one runtime path | Trusted per-request user/tenant identity for multi-user Memory |
 | Local single-owner durable bounded Memory | Automatic low-trust extraction, conflict policy, embeddings/rerank, TTL/export/restore |
 | Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
-| Approval, effect fingerprints, crash ambiguity recovery + definition-bound serial Typed Workflow W0 | DAG/branches/parallel ready sets/Agent nodes/visual authoring |
+| Approval, effect fingerprints, crash ambiguity recovery + strict static serial Workflow authoring and public step projection | DAG/branches/parallel ready sets/Agent nodes/visual authoring |
 | OpenAI + Anthropic conformance | More providers after the shared suite passes |
 | Structural projection + opt-in whole-request-bound unverified compaction note | Project Charter/Board and multi-agent orchestration |
 | CLI, local HTTP/SSE, four app compositions, Workbench | Safe versioned GenUI and richer product surfaces |

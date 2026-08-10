@@ -1,6 +1,6 @@
 # ADR-0014: Static serial authoring and public Workflow projection
 
-- Status: Accepted for W1 implementation
+- Status: Accepted and Hosted-verified for W1
 - Date: 2026-08-10
 - Depends on: [ADR-0013](ADR-0013-TYPED-WORKFLOW-BOUNDARY.md)
 
@@ -313,3 +313,19 @@ Before W1 is promoted as shipped:
 
 Passing these gates does not establish live-provider quality, publisher
 provenance, multi-tenant security, public deployment, or production readiness.
+
+## Promotion evidence
+
+W1 was promoted after its exact implementation commit
+[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
+completed [Hosted run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628).
+All 20 non-tag jobs across the source, package, installed-wheel,
+rebuilt-sdist, and container families passed; the exact-tag-only release bundle
+was correctly skipped. The six-platform source matrix ran 396 deterministic
+tests, and the Hosted browser/container paths exercised the public Workflow
+projection, approval/resume/restart/no-replay, cancelled recovery policy,
+second-owner rejection, artifact tamper, token audit, and image binding.
+
+This evidence promotes only the W1 boundary decided above. It does not satisfy
+the exact-tag, signed-provenance, live-provider, general Workflow engine,
+multi-tenant, or production-readiness gates.

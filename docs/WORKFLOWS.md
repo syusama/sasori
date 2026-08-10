@@ -431,8 +431,12 @@ W4  branches, agent nodes, subflows, visual authoring
 W5  queue, lease, fencing, scheduler, distributed execution
 ```
 
-ADR-0013 decides the W0 runtime boundary. The current W1 candidate implements
-the bounded W2 inspection slice for exact static serial definitions through the
-public projection; it is not visual authoring, a DAG editor, or a new runtime.
-Richer authoring and all W3-W5 phases require their own contracts, negative
-architecture controls, recovery decisions, and acceptance evidence.
+ADR-0013 decides the W0 runtime boundary. The current W1 implementation,
+Hosted-verified at
+[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
+in [run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628),
+also implements the bounded W2 inspection slice for exact static serial
+definitions through the public projection. It is not visual authoring, a DAG
+editor, or a new runtime. Richer authoring and all W3-W5 phases require their
+own contracts, negative architecture controls, recovery decisions, and
+acceptance evidence.

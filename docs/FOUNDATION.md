@@ -3,7 +3,29 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, four first-party application compositions, curated catalog metadata, and a bundled Workbench exist. The fourth composition is a core-external W0 ordered Tool Workflow whose bounded Workbench inspector derives progress from the existing event reducer; DAG scheduling, branches, parallelism, agent nodes, and visual authoring remain later work. Memory is accepted only for a deployment-owned local-single-owner namespace after its deterministic, package, mainland-source container, and [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961) gates passed. The Workflow W0 is accepted at [`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2) after its source, package, real-browser, mainland-source container, and [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31355739157) gates passed. Real-provider semantic/Memory quality evaluation, per-request user/tenant identity, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
+Current implementation state: the repository foundation, single Loop/Harness,
+G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE
+aggregation, deterministic bounded-context projection, opt-in low-trust semantic
+compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP
+entry points, local multi-application HTTP/SSE, domestic-source Docker delivery,
+trusted local plugins, four first-party application compositions, curated
+catalog metadata, and a bundled Workbench exist. The fourth composition is a
+core-external W1 static serial Tool Workflow: strict data/JSON and a small
+Python builder produce the existing immutable W0 definition, while a
+core-owned versioned public run projection supplies the bounded Workbench step
+rail. The event reducer remains responsible for timeline/cursor state; DAG
+scheduling, branches, parallelism, agent nodes, and visual authoring remain
+later work. Memory is accepted only for a deployment-owned local-single-owner
+namespace after its deterministic, package, mainland-source container, and
+[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961)
+gates passed. Workflow W1 is accepted at
+[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
+after its source, package, real-browser, mainland-source container, and
+[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31366385628)
+gates passed. Real-provider semantic/Memory quality evaluation, per-request
+user/tenant identity, public token streaming, multi-agent orchestration,
+untrusted-plugin isolation, and a central marketplace remain incomplete;
+planned behavior is not described as shipped behavior.
 
 ## 1. Decision
 
@@ -51,7 +73,7 @@ flowchart TB
     A["Adapters: Python / CLI / HTTP / UI (NOW)"]
     X["Extensions: providers / context / Memory / stores / Web / RAG / Git / MCP / ordered Workflow (NOW); DAG and multi-agent (LATER)"]
     H["Harness: budgets / approvals / trace / checkpoint boundary (NOW)"]
-    K["Kernel: contracts / single-agent loop / tool dispatch / event projection (NOW)"]
+    K["Kernel: contracts / single-agent loop / tool dispatch / event and run projection (NOW)"]
     P --> A
     A --> H
     X --> H
@@ -115,14 +137,23 @@ These are boundaries, not directories to scaffold before use:
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
 | MCP adapter | current frozen host adapter; split only after an external package consumer exists | bounded stdio boundary accepted |
-| Ordered typed Workflow | `sasori_flow` outside core | bounded serial W0 and one-Harness recovery path Hosted-verified at `af3ecb4`; DAG/parallel/Agent-node gates remain open |
+| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring around bounded serial W0, plus one-Harness recovery and public projection, Hosted-verified at `b410ceb`; DAG/parallel/Agent-node gates remain open |
 | DAG/graph/multi-agent | later extensions | requires parallel/branch/ownership/recovery ADRs; not current W0 behavior |
-| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product includes definition-bound serial step inspection on the existing reducer |
+| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product consumes the versioned Workflow run projection for serial step state; the existing reducer remains the event timeline/cursor authority |
 | Marketplace | metadata service, not binary host | market gate in section 8 |
 
-### 3.4 Public events are a projection
+### 3.4 Public events and run views are projections
 
 Internal mutable state, persisted checkpoints, UI streams, and telemetry are not the same record. Sasori exposes a small versioned event projection that adapters may persist or stream. Internal changes do not automatically become public ABI changes.
+
+Python, CLI, HTTP, and Workbench also share one core-owned public run
+projection. A trusted Harness may contribute only the fixed `workflow`
+namespace. The composer validates exact outer/inner app, cursor, call, status,
+step, and terminal semantics before returning it; malformed, private, oversized,
+or contradictory extensions fail closed as the stable redacted
+`projection_integrity_failed` error. This is a read-only view, not another
+checkpoint authority or a `workflow.*` event family. See
+[ADR-0014](ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md).
 
 Initial semantic event families:
 
@@ -240,7 +271,7 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; Memory-enabled Research/Developer still use that path; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus real-server Incident and typed Workflow create/approve/explicit-resume/final/artifact/history-reload journeys pass in Chrome; Workflow inspection uses the existing reducer; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
+| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus real-server Incident and typed Workflow create/approve/explicit-resume/final/artifact/history-reload journeys pass in Chrome; the Workflow rail consumes the core-owned run projection while the existing reducer remains the timeline/cursor authority; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
 | Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
 
@@ -319,8 +350,8 @@ Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic 
 
 For the current implementation baseline, that exact-revision public CI
 requirement is satisfied by
-[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2)
-and [Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157).
+[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
+and [Hosted run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628).
 The older paragraph remains a dated record of the narrower 2026-08-08 local
 evidence; it is not the current Hosted baseline.
 
@@ -337,18 +368,21 @@ prompt-injection neutralization, provider usage, billing, or cost savings. The
 exact-tag release bundle was correctly skipped on this ordinary `main` push, so
 signing and trusted provenance remain separate.
 
-Current deterministic Workflow W0 evidence on 2026-08-10 is bound to
-[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2)
-and [Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157).
-The Hosted workflow completed successfully: all five executed job families
-passed, while the exact-tag-only release-bundle job was correctly skipped. The
-executed gates covered the 377-case source matrix, installed-wheel and rebuilt-sdist
-consumers, package verification, real Chrome Incident/Workflow journeys, and the
-mainland-source container approval/resume/restart/no-replay, Memory, Artifact,
-second-owner, tamper, token-audit, and image-SBOM gates. This accepts only the
-definition-bound serial ordered-Tool W0; it does not establish DAGs, branches,
-parallel ready sets, Agent nodes, distributed execution, exactly-once effects,
-live-provider quality, signing, or trusted provenance.
+Current deterministic Workflow W1 evidence on 2026-08-10 is bound to
+[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
+and [Hosted run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628).
+The Hosted workflow completed successfully: all 20 non-tag jobs across five
+job families passed, while the exact-tag-only release-bundle job was correctly
+skipped. The executed gates covered the 396-case source matrix, installed-wheel
+and rebuilt-sdist consumers, package verification, real Chrome
+Incident/Workflow journeys, and the mainland-source container
+approval/resume/restart/no-replay, Memory, Artifact, second-owner, tamper,
+token-audit, and image-SBOM gates. This accepts strict static data/JSON/builder
+authoring and a core-owned versioned Workflow projection around only the
+definition-bound serial ordered-Tool W0 runtime; it does not establish DAGs,
+branches, parallel ready sets, Agent nodes, distributed execution, exactly-once
+effects, visual authoring, live-provider quality, signing, or trusted
+provenance.
 
 ### Days 56-75: switching-value validation
 
@@ -415,7 +449,8 @@ The Workbench is a task-control surface, not another chat skin. It currently:
    and honest trusted-process permission disclosure.
 7. Shows a definition-bound serial Workflow as an ordered logical-Tool to
    wrapper-Tool mechanism, including current durable step and approval/recovery
-   state derived from the existing run projection and event reducer.
+   state consumed from the core-owned versioned run projection. The event
+   reducer supplies only the timeline and durable cursor.
 
 Desktop information architecture: worker/history navigation on the left, task
 conversation and composer in the center, and timeline/approval/evidence/
@@ -443,10 +478,14 @@ live, cold, and reconnect events enter one pure, Node-tested reducer scoped by
 `run_id`. The reducer advances only a contiguous durable cursor, distinguishes
 an identical duplicate from a conflict, validates SSE metadata and event
 version, and pairs with a selection epoch so a late older response cannot take
-over the current view. A dependency-free headless-browser fixture now executes
-the production HTML/assets and deterministically releases late status, cold
-history, SSE, create, and approval responses after a newer view is selected;
-the wider product/browser matrix remains partial. See
+over the current view. Workflow rail state comes from the core-owned run
+projection and is protected by equal inner/outer cursors, single-flight status
+refresh, and run/epoch stale-response isolation; it is not reverse-engineered
+from the timeline. A dependency-free headless-browser fixture executes the
+production HTML/assets and deterministically releases late status, cold history,
+SSE, create, approval, Workflow refresh, and cancelled-effect recovery responses
+after a newer view is selected; the wider product/browser matrix remains
+partial. See
 [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 
 An independent same-origin test proxy now injects a real-browser journey while
