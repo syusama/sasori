@@ -18,7 +18,10 @@ WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
 EXPECTED = (
-    "PASS:unavailable-workflow,memory-skill-surface,workflow-surface,"
+    "PASS:unavailable-workflow,workflow-studio-preflight,workflow-studio-stale-edit,workflow-studio-contract,"
+    "workflow-studio-malformed-rejection,workflow-studio-rejected,workflow-studio-transport,"
+    "workflow-studio-invalid-unicode,"
+    "memory-skill-surface,workflow-surface,"
     "workflow-projection-contract,cancelled-recovery,workflow-refresh-burst,workflow-refresh-switch,"
     "stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
 )
@@ -90,6 +93,8 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
                 "workflow.0.1.0.js",
                 "workflow.0.2.0.js",
                 "workflow-manifest.0.1.0.js",
+                "workflow-studio.0.1.0.css",
+                "workflow-studio.0.1.0.js",
                 "event-reducer.0.1.0.js",
                 "mark.0.1.0.svg",
             }:
@@ -167,7 +172,10 @@ def browser_version(binary: Path) -> str:
     return f"{binary.name} {version}"
 
 
-def validate_screenshot(path: Path) -> None:
+def validate_screenshot(
+    path: Path,
+    expected_size: tuple[int, int] = (SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT),
+) -> None:
     if not path.is_file():
         raise AssertionError("headless browser did not produce the requested screenshot")
     if path.stat().st_size < MIN_SCREENSHOT_BYTES:
@@ -182,10 +190,10 @@ def validate_screenshot(path: Path) -> None:
         raise AssertionError("headless browser screenshot is not a canonical PNG")
     width = int.from_bytes(header[16:20], "big")
     height = int.from_bytes(header[20:24], "big")
-    if (width, height) != (SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT):
+    if (width, height) != expected_size:
         raise AssertionError(
             "headless browser screenshot dimensions are "
-            f"{width}x{height}, expected {SCREENSHOT_WIDTH}x{SCREENSHOT_HEIGHT}"
+            f"{width}x{height}, expected {expected_size[0]}x{expected_size[1]}"
         )
 
 
@@ -197,6 +205,9 @@ def run_browser_process(
     screenshot: Path | None = None,
     attempts: int = BROWSER_ATTEMPTS,
     timeout_seconds: int = BROWSER_TIMEOUT_SECONDS,
+    window_size: tuple[int, int] = (SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT),
+    extra_arguments: tuple[str, ...] = (),
+    browser_path: str = "/",
 ) -> subprocess.CompletedProcess[str]:
     last_timeout: subprocess.TimeoutExpired | None = None
     for _ in range(attempts):
@@ -216,14 +227,15 @@ def run_browser_process(
                 "--no-first-run",
                 "--no-sandbox",
                 "--run-all-compositor-stages-before-draw",
-                "--window-size=1600,1000",
+                f"--window-size={window_size[0]},{window_size[1]}",
                 f"--user-data-dir={profile}",
                 f"--virtual-time-budget={virtual_time_budget}",
                 "--dump-dom",
             ]
+            command.extend(extra_arguments)
             if screenshot is not None:
                 command.append(f"--screenshot={screenshot}")
-            command.append(f"http://127.0.0.1:{port}/")
+            command.append(f"http://127.0.0.1:{port}{browser_path}")
             try:
                 completed = subprocess.run(
                     command,
@@ -235,7 +247,7 @@ def run_browser_process(
                     check=False,
                 )
                 if completed.returncode == 0 and screenshot is not None:
-                    validate_screenshot(screenshot)
+                    validate_screenshot(screenshot, window_size)
                 return completed
             except subprocess.TimeoutExpired as exc:
                 last_timeout = exc
@@ -250,34 +262,53 @@ def run_acceptance(binary: Path) -> dict[str, object]:
     thread = threading.Thread(target=server.serve_forever, name="sasori-browser-fixture", daemon=True)
     thread.start()
     try:
-        completed = run_browser_process(binary, server.server_address[1])
+        profiles = [
+            (
+                "desktop",
+                run_browser_process(binary, server.server_address[1]),
+            ),
+            (
+                "narrow-reduced",
+                run_browser_process(
+                    binary,
+                    server.server_address[1],
+                    window_size=(390, 844),
+                    extra_arguments=("--force-prefers-reduced-motion",),
+                    browser_path="/#profile=narrow-reduced",
+                ),
+            ),
+        ]
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
 
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"headless browser exited {completed.returncode}\n"
-            f"stdout tail:\n{completed.stdout[-4000:]}\n"
-            f"stderr tail:\n{completed.stderr[-4000:]}"
-        )
-    if EXPECTED not in completed.stdout or 'data-result="passed"' not in completed.stdout:
-        raise AssertionError(
-            "Workbench browser acceptance did not reach the pass marker\n"
-            f"stdout tail:\n{completed.stdout[-6000:]}\n"
-            f"stderr tail:\n{completed.stderr[-4000:]}"
-        )
+    for profile, completed in profiles:
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"headless browser profile {profile} exited {completed.returncode}\n"
+                f"stdout tail:\n{completed.stdout[-4000:]}\n"
+                f"stderr tail:\n{completed.stderr[-4000:]}"
+            )
+        if EXPECTED not in completed.stdout or 'data-result="passed"' not in completed.stdout:
+            raise AssertionError(
+                f"Workbench browser profile {profile} did not reach the pass marker\n"
+                f"stdout tail:\n{completed.stdout[-6000:]}\n"
+                f"stderr tail:\n{completed.stderr[-4000:]}"
+            )
     return {
         "browser": browser_version(binary),
+        "browser_profiles": ["desktop-1600x1000", "narrow-390x844-reduced-motion"],
         "cases": EXPECTED.removeprefix("PASS:").split(","),
-        "production_assets": [
+        "bundled_assets": [
             "event-reducer.0.1.0.js",
             "app.0.1.2.js",
             "app.0.1.3.js",
             "app.0.1.4.js",
             "workflow.0.2.0.js",
             "workflow-manifest.0.1.0.js",
+            "workflow-studio.0.1.0.css",
+            "workflow-studio.0.1.0.js",
         ],
     }
 

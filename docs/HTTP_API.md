@@ -148,6 +148,114 @@ environment values, system prompts, MCP snapshots, or internal paths.
 also states `effective_access: "FULL HOST PROCESS PRIVILEGES"` and
 `enforced: false`; the server does not claim a plugin sandbox.
 
+### `POST /v1/workflows/preflight` (W1.2 implementation candidate)
+
+This read-only endpoint accepts the complete strict Workflow definition as the
+request body. There is no outer `{definition: ...}` envelope and no Tool/app
+selector supplied by the client:
+
+```json
+{
+  "schema_version": 1,
+  "workflow_id": "studio-inspect-incident",
+  "version": "1",
+  "execution": "single-harness-ordered-tools-v1",
+  "inputs": [
+    {"key":"summary","type":"string","required":true,"max_bytes":65536}
+  ],
+  "steps": [
+    {
+      "step_id": "inspect",
+      "kind": "tool",
+      "tool_name": "inspect_incident",
+      "effect": "read_only",
+      "tool_revision": null,
+      "schema_sha256": "5aea8fcade49abc2d6e5addfc31eb8734b32266f70241943356f7e0b6cade7be",
+      "arguments": {"summary":{"kind":"input","key":"summary"}},
+      "result": {"type":"string","max_bytes":65536}
+    }
+  ],
+  "output_step": "inspect"
+}
+```
+
+The normal `/v1/*` security and transport boundary applies before Workflow
+parsing: one bearer credential when authentication is enabled, exact
+same-origin or an explicitly configured CORS origin, one `Content-Length`, no
+chunked transfer, UTF-8 `application/json`, no query parameters, and a 1 MiB
+raw-body ceiling. Duplicate keys, a byte-order mark, non-finite numbers,
+malformed/deep JSON, unknown fields, dynamic entry points, expressions, and
+other schema drift fail closed.
+
+On success, the exact top-level response keys are:
+
+```json
+{"ok":true,"schema_version":1,"manifest":{}}
+```
+
+`manifest` is the complete detached W1.1 manifest documented in
+[WORKFLOWS.md](WORKFLOWS.md#static-compiled-manifest-preflight-w11), not an
+abbreviated runtime view. Its exact fields cover definition identity, derived
+application identity, serial-only capability flags, trust/no-sandbox,
+redacted inputs, ordered dependencies, logical and dispatch Tool contracts,
+approval, recovery policy, and result bounds. Literal values are replaced by
+type, canonical byte count, and SHA-256. A caller may mutate its received JSON
+without changing a later response or any server-owned object.
+
+The server freezes the preflight Tool registry once at successful startup from
+Tools belonging to explicitly configured, successfully loaded ordinary
+`Harness` applications. Compiled `WorkflowHarness` wrappers and unavailable
+applications contribute nothing. If a Tool name appears in more than one
+ordinary Harness, every occurrence is excluded as ambiguous. Registry order is
+deterministic. `/v1/apps` metadata may help the editor suggest a draft, but it
+never decides preflight acceptance; the frozen server-owned `Tool` objects do.
+A Workflow-only deployment therefore has an empty Studio registry and rejects
+all Tool steps. It does not introspect compiled wrapper internals to recover
+source Tools.
+
+Controlled definition/compiler failures return `422`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "workflow_preflight_rejected",
+    "message": "bounded Sasori-controlled validation text",
+    "retryable": false,
+    "reason_code": "invalid_definition"
+  }
+}
+```
+
+`reason_code` is exactly one of:
+
+| Reason | Boundary |
+|---|---|
+| `invalid_definition` | the strict Workflow definition was rejected |
+| `tool_contract_mismatch` | the frozen Tool set or shared compiler rejected effect, revision, schema, signature, binding, or wrapper identity |
+| `manifest_rejected` | the bounded detached manifest could not be composed |
+
+Transport/authentication errors retain their existing adapter codes. A
+five-second owner timeout returns retryable `503 runtime_busy` with
+`Retry-After: 1`; it is not success. Browser `AbortController` cancellation
+abandons the response but does not prove that bounded synchronous server work
+was forcibly stopped.
+
+The bundled Studio presents only an exact `422 workflow_preflight_rejected`
+envelope as the authoritative `REJECTED` state. Authentication, authorization,
+timeout, shutdown, network, non-JSON, malformed-success, and client-validation
+failures remain `UNVERIFIED` with `NO SERVER VERDICT`. The `retryable` field is
+displayed as server guidance; the Studio never retries a draft automatically.
+
+Successful and rejected preflight requests do not acquire the runtime mutation
+gate, construct a Harness/Store, call a model/provider/Tool/idempotency hook,
+or create/change any run, call, message, event, checkpoint, approval, recovery,
+artifact, catalog, or execution identity. There is no save, activate, deploy,
+schedule, or run-from-draft operation. The bundled Studio keeps only transient
+page text; reload discards it. This candidate is not promoted as shipped until
+its exact implementation revision completes the Hosted gates in
+[ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md).
+
 ### `GET /v1/runs`
 
 `GET /v1/runs?limit=50&before=219&app_id=developer` returns cursor-paginated

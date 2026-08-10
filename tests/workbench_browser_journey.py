@@ -33,7 +33,7 @@ from workbench_browser_acceptance import (  # noqa: E402
 
 JOURNEY = Path(__file__).with_name("workbench_real_journey.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
-EXPECTED = "PASS:real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle"
+EXPECTED = "PASS:static-workflow-studio-preflight,real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle"
 EXPECTED_INPUT = "browser lifecycle incident"
 EXPECTED_ACTION = f"Operator review: diagnostic captured for {EXPECTED_INPUT}"
 EXPECTED_WORKFLOW_INPUT = "browser workflow incident"
@@ -397,6 +397,8 @@ def run_acceptance(
         )
         if result_tag is None:
             raise AssertionError("real Workbench journey did not expose its result tag")
+        if 'data-studio="preflight-passed"' not in result_tag.group(0):
+            raise AssertionError("real Workbench journey did not pass Studio preflight")
         match = re.search(
             r'data-run-id="([A-Za-z0-9._-]+)"', result_tag.group(0)
         )
@@ -413,16 +415,22 @@ def run_acceptance(
         durable = validate_store(database, artifact_root, run_id, workflow_run_id)
         return {
             "browser": browser_version(binary),
-            "cases": ["real-incident-lifecycle", "typed-workflow-lifecycle"],
+            "cases": [
+                "static-workflow-studio-preflight",
+                "real-incident-lifecycle",
+                "typed-workflow-lifecycle",
+            ],
             "run_id": run_id,
             "workflow_run_id": workflow_run_id,
-            "production_assets": [
+            "bundled_assets": [
                 "event-reducer.0.1.0.js",
                 "app.0.1.2.js",
                 "app.0.1.3.js",
                 "app.0.1.4.js",
                 "workflow.0.2.0.js",
                 "workflow-manifest.0.1.0.js",
+                "workflow-studio.0.1.0.css",
+                "workflow-studio.0.1.0.js",
             ],
             "durable": durable,
             "effect": {"count": 2, "summaries": [item["summary"] for item in actions]},
@@ -430,12 +438,13 @@ def run_acceptance(
             "permission_disclosure_visible": True,
             "artifact_preview_download": True,
             "workflow_step_inspection_visible": True,
+            "static_workflow_studio_preflight_passed": True,
         }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the production Workbench against a real local Sasori Incident server."
+        description="Run the bundled Workbench against a real local Sasori Incident server."
     )
     parser.add_argument(
         "--require-browser",

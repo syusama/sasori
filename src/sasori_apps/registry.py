@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
-from sasori import FULL_HOST_PROCESS_PRIVILEGES, Harness
+from sasori import FULL_HOST_PROCESS_PRIVILEGES, Harness, Tool
 from sasori._provider_common import compile_tool_schema
 from sasori.plugins import PluginManifest, tool_schema_sha256
 from sasori_plugins.git import git_manifest
@@ -65,6 +65,12 @@ _TOOL_ORIGINS = {
 }
 
 
+class WorkflowPreflightFailure(Exception):
+    def __init__(self, reason_code: str, message: str) -> None:
+        self.reason_code = reason_code
+        super().__init__(message)
+
+
 def application_catalog() -> tuple[dict[str, object], ...]:
     return tuple(json.loads(json.dumps(item, ensure_ascii=False)) for item in _APPLICATIONS)
 
@@ -75,6 +81,48 @@ def application_specs() -> dict[str, str]:
 
 def app_id_for_spec(spec: str) -> str | None:
     return next((app_id for app_id, value in _APP_SPECS.items() if value == spec), None)
+
+
+def workflow_preflight_tools(
+    harnesses: Mapping[str, Harness],
+) -> tuple[Tool, ...]:
+    candidates: dict[str, Tool] = {}
+    ambiguous: set[str] = set()
+    for harness in harnesses.values():
+        if isinstance(harness, WorkflowHarness):
+            continue
+        for tool in harness.tools:
+            if tool.name in candidates:
+                ambiguous.add(tool.name)
+            else:
+                candidates[tool.name] = tool
+    return tuple(
+        candidates[name]
+        for name in sorted(candidates)
+        if name not in ambiguous
+    )
+
+
+def workflow_preflight_definition(
+    definition: dict[str, object], tools: Sequence[Tool]
+) -> dict[str, object]:
+    from sasori_flow import (
+        WorkflowCompileError,
+        WorkflowValidationError,
+        preflight_workflow,
+        workflow_spec_from_data,
+    )
+
+    try:
+        spec = workflow_spec_from_data(definition)
+    except WorkflowValidationError as exc:
+        raise WorkflowPreflightFailure("invalid_definition", str(exc)) from None
+    try:
+        return preflight_workflow(spec, tuple(tools))
+    except WorkflowCompileError as exc:
+        raise WorkflowPreflightFailure("tool_contract_mismatch", str(exc)) from None
+    except WorkflowValidationError as exc:
+        raise WorkflowPreflightFailure("manifest_rejected", str(exc)) from None
 
 
 def _permissions(manifest: PluginManifest) -> dict[str, object]:
@@ -235,8 +283,11 @@ def application_surface_catalog(
 
 
 __all__ = [
+    "WorkflowPreflightFailure",
     "app_id_for_spec",
     "application_catalog",
     "application_specs",
     "application_surface_catalog",
+    "workflow_preflight_definition",
+    "workflow_preflight_tools",
 ]

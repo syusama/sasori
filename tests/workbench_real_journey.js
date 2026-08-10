@@ -60,6 +60,44 @@
     document.querySelector("#timeline-tab").click();
   }
 
+  async function studioJourney() {
+    assert(await actionCount() === 0, "Studio journey started after an unexpected side effect");
+    assert(document.querySelectorAll(".history-card").length === 0,
+      "Studio journey started with an unexpected durable run");
+    document.querySelector("#studio-button").click();
+    await waitFor(
+      () => !document.querySelector("#workflow-studio").hidden &&
+        document.querySelector("#studio-editor").value.includes("inspect_incident") &&
+        document.querySelectorAll(".studio-tool-chip").length > 0,
+      "real Static Serial Workflow Studio did not expose a Tool-bound draft",
+    );
+    const studio = document.querySelector("#workflow-studio");
+    assert(studio.textContent.includes("DRAFT ONLY") &&
+      studio.textContent.includes("NO EXECUTION") &&
+      studio.textContent.includes("TRUSTED PYTHON") &&
+      studio.textContent.includes("NO SANDBOX"),
+    "real Studio omitted its authority boundary");
+    document.querySelector("#studio-preflight").click();
+    await waitFor(
+      () => document.querySelector("#studio-status").dataset.state === "accepted" &&
+        document.querySelector(".studio-manifest-hero"),
+      "real Studio preflight did not render the server manifest",
+    );
+    const preview = document.querySelector("#studio-preview").textContent;
+    assert(preview.includes("STATIC CONTRACT ACCEPTED") &&
+      preview.includes("inspect_incident") &&
+      preview.includes("read_only_replay_allowed") &&
+      preview.includes("TRUSTED INSTALLED PYTHON") &&
+      preview.includes("NO SANDBOX"),
+    "real Studio manifest omitted contract or trust evidence");
+    assert(await actionCount() === 0, "Studio preflight executed a Tool side effect");
+    assert(document.querySelectorAll(".history-card").length === 0,
+      "Studio preflight created a durable run");
+    document.querySelector("#studio-close").click();
+    assert(document.querySelector("#workflow-studio").hidden,
+      "real Studio did not return to the Workbench");
+  }
+
   async function initialJourney() {
     await waitFor(
       () => document.querySelector('.worker-card[data-app-id="incident"]') &&
@@ -67,6 +105,7 @@
       "production Workbench did not load the real Incident application",
     );
     assertCapabilitySurface();
+    await studioJourney();
 
     const input = document.querySelector("#task-input");
     input.value = INPUT;
@@ -294,7 +333,8 @@
     result.dataset.workflowRunId = workflowRunId;
     result.dataset.events = "34";
     result.dataset.effects = "2";
-    result.textContent = "PASS:real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle";
+    result.dataset.studio = "preflight-passed";
+    result.textContent = "PASS:static-workflow-studio-preflight,real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle";
     document.title = "Sasori real journey passed";
   }
 

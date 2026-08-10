@@ -40,6 +40,8 @@ WEB_RESOURCES = (
     "workflow.0.1.0.js",
     "workflow.0.2.0.js",
     "workflow-manifest.0.1.0.js",
+    "workflow-studio.0.1.0.css",
+    "workflow-studio.0.1.0.js",
     "mark.0.1.0.svg",
 )
 

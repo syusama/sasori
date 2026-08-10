@@ -15,6 +15,8 @@
   let cancelledRecoveryCount = 0;
   let cancelledRecoveryBody = null;
   let cancelledRecoveryResolved = false;
+  let studioPreflightCount = 0;
+  let lastStudioBody = null;
 
   const application = {
     id: "incident-response",
@@ -329,6 +331,91 @@
     });
   }
 
+  function studioManifest(definition) {
+    const positions = Object.fromEntries(
+      definition.steps.map((step, index) => [step.step_id, index]),
+    );
+    const policies = {
+      read_only: [false, "read_only_replay_allowed"],
+      idempotent: [true, "same_verified_business_key_only"],
+      side_effecting: [true, "manual_effect_resolution_on_ambiguity"],
+    };
+    const steps = definition.steps.map((step, index) => {
+      const dependencies = [];
+      const argumentSources = Object.keys(step.arguments).sort().map((name) => {
+        const binding = step.arguments[name];
+        if (binding.kind === "input") return { name, kind: "input", ref: binding.key };
+        if (binding.kind === "step_output") {
+          if (!dependencies.includes(binding.step_id)) dependencies.push(binding.step_id);
+          return { name, kind: "step", ref: binding.step_id };
+        }
+        const encoded = JSON.stringify(binding.value);
+        return {
+          name,
+          kind: "literal",
+          value_type: binding.value === null ? "null" : Array.isArray(binding.value)
+            ? "array" : typeof binding.value === "object" ? "object"
+              : typeof binding.value === "boolean" ? "boolean"
+                : typeof binding.value === "number" && Number.isInteger(binding.value)
+                  ? "integer" : typeof binding.value,
+          canonical_bytes: new TextEncoder().encode(encoded).byteLength,
+          value_sha256: "a".repeat(64),
+        };
+      });
+      dependencies.sort((left, right) => positions[left] - positions[right]);
+      const policy = policies[step.effect];
+      return {
+        position: index + 1,
+        step_id: step.step_id,
+        depends_on: dependencies,
+        argument_sources: argumentSources,
+        logical_tool_name: step.tool_name,
+        dispatch_tool_name: `wf_studio_${index + 1}`,
+        effect: step.effect,
+        requires_approval: policy[0],
+        recovery_policy: policy[1],
+        logical_tool_revision: step.tool_revision,
+        dispatch_tool_revision: step.effect === "read_only" ? null : `fixture-wrapper-${index + 1}`,
+        logical_schema_sha256: step.schema_sha256,
+        dispatch_schema_sha256: String((index + 1) % 10).repeat(64),
+        result_type: step.result.type,
+        max_result_bytes: step.result.max_bytes,
+        is_output: step.step_id === definition.output_step,
+      };
+    });
+    const appId = `flow.${definition.workflow_id}.999999999999`;
+    return {
+      schema_version: 1,
+      workflow_id: definition.workflow_id,
+      version: definition.version,
+      definition_sha256: "9".repeat(64),
+      app_id: appId,
+      execution: definition.execution,
+      output_step: definition.output_step,
+      step_count: steps.length,
+      supports_parallel: false,
+      supports_branches: false,
+      supports_agent_nodes: false,
+      trust: { execution_mode: "trusted_installed_python", sandboxed: false },
+      inputs: definition.inputs.map((input) => ({
+        key: input.key,
+        type: input.type,
+        required: input.required,
+        max_bytes: input.max_bytes,
+      })),
+      steps,
+    };
+  }
+
+  function studioResponse(definition, extra = {}) {
+    return {
+      ok: true,
+      schema_version: 1,
+      manifest: studioManifest(definition),
+      ...extra,
+    };
+  }
+
   function eventBatch(runId, events = [], afterSeq = 0, latestSeq = events.length) {
     return json({
       run_id: runId,
@@ -403,6 +490,115 @@
         schema_version: 1,
         apps: [application, workflowApplication, unavailableWorkflowApplication],
       });
+    }
+    if (method === "POST" && url.pathname === "/v1/workflows/preflight") {
+      lastStudioBody = JSON.parse(await bodyFor(input, options));
+      studioPreflightCount += 1;
+      if (mode === "workflow-studio-stale-edit") {
+        return defer("workflow-studio-preflight");
+      }
+      if (mode === "workflow-studio-contract") {
+        return json(studioResponse(lastStudioBody, { unexpected: true }));
+      }
+      if (mode === "workflow-studio-rejected") {
+        return json({
+          ok: false,
+          error: {
+            code: "workflow_preflight_rejected",
+            message: "fixture Tool contract drift",
+            retryable: false,
+            reason_code: "tool_contract_mismatch",
+          },
+        }, 422);
+      }
+      if (mode === "workflow-studio-malformed-rejection") {
+        const variants = [
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "missing reason",
+              retryable: false,
+            },
+          },
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "extra field",
+              retryable: false,
+              reason_code: "tool_contract_mismatch",
+              unexpected: true,
+            },
+          },
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "unknown reason",
+              retryable: false,
+              reason_code: "unknown",
+            },
+          },
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "wrong retry policy",
+              retryable: true,
+              reason_code: "tool_contract_mismatch",
+            },
+          },
+          {
+            ok: true,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "wrong top-level verdict",
+              retryable: false,
+              reason_code: "tool_contract_mismatch",
+            },
+          },
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "",
+              retryable: false,
+              reason_code: "tool_contract_mismatch",
+            },
+          },
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "x".repeat(513),
+              retryable: false,
+              reason_code: "tool_contract_mismatch",
+            },
+          },
+          {
+            ok: false,
+            error: {
+              code: "workflow_preflight_rejected",
+              message: "\ud800",
+              retryable: false,
+              reason_code: "tool_contract_mismatch",
+            },
+          },
+        ];
+        return json(variants[studioPreflightCount - 1] || variants.at(-1), 422);
+      }
+      if (mode === "workflow-studio-transport") {
+        return json({
+          ok: false,
+          error: {
+            code: "runtime_busy",
+            message: "runtime owner did not respond",
+            retryable: true,
+          },
+        }, 503);
+      }
+      return json(studioResponse(lastStudioBody));
     }
     if (method === "GET" && url.pathname === "/v1/runs") {
       return json({
@@ -570,6 +766,8 @@
     get workflowStatusMaxInFlight() { return workflowStatusMaxInFlight; },
     get cancelledRecoveryCount() { return cancelledRecoveryCount; },
     get cancelledRecoveryBody() { return cancelledRecoveryBody; },
+    get studioPreflightCount() { return studioPreflightCount; },
+    get lastStudioBody() { return lastStudioBody; },
     pendingCount,
     projection,
     workflowProjection,
@@ -578,6 +776,7 @@
     projectedEvent,
     eventBatch,
     json,
+    studioResponse,
     reset(nextMode) {
       mode = nextMode;
       oldStatusCount = 0;
@@ -588,6 +787,8 @@
       cancelledRecoveryCount = 0;
       cancelledRecoveryBody = null;
       cancelledRecoveryResolved = false;
+      studioPreflightCount = 0;
+      lastStudioBody = null;
     },
     resolveNext,
   };
@@ -1027,6 +1228,224 @@
     record("unavailable-workflow");
   }
 
+  async function workflowStudioCase(fixture) {
+    fixture.reset("workflow-studio-preflight");
+    document.querySelector("#studio-button").click();
+    await waitFor(
+      () => !document.querySelector("#workflow-studio").hidden &&
+        document.querySelectorAll(".studio-tool-chip").length > 0 &&
+        document.querySelector("#studio-editor").value.includes('"schema_version": 1'),
+      "Workflow Studio did not open with a Tool-bound draft",
+    );
+    const studio = document.querySelector("#workflow-studio");
+    await waitFor(
+      () => document.activeElement === document.querySelector("#studio-editor"),
+      "Workflow Studio did not focus its editor on open",
+    );
+    const profile = new URLSearchParams(global.location.hash.slice(1)).get("profile");
+    if (profile === "narrow-reduced") {
+      assert(global.matchMedia("(max-width: 700px)").matches,
+        "narrow browser profile did not activate its media query");
+      assert(global.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        "reduced-motion browser profile was not active");
+      assert(global.getComputedStyle(studio).animationName === "none",
+        "Workflow Studio retained entrance motion under reduced motion");
+      assert(global.getComputedStyle(document.querySelector("#studio-status")).display === "none",
+        "narrow Workflow Studio did not apply its compact status treatment");
+      const columns = global.getComputedStyle(
+        document.querySelector(".studio-grid"),
+      ).gridTemplateColumns.split(" ");
+      assert(columns.length === 1, "narrow Workflow Studio did not collapse to one column");
+      for (const selector of ["#studio-close", "#studio-preflight"]) {
+        const bounds = document.querySelector(selector).getBoundingClientRect();
+        assert(bounds.left >= 0 && bounds.right <= global.innerWidth,
+          `${selector} is clipped in the narrow Workflow Studio`);
+      }
+    }
+    assert(studio.textContent.includes("DRAFT ONLY") &&
+      studio.textContent.includes("NO EXECUTION") &&
+      studio.textContent.includes("TRUSTED PYTHON") &&
+      studio.textContent.includes("NO SANDBOX"),
+    "Workflow Studio trust and non-execution boundaries are not visible");
+    document.querySelector("#studio-editor").dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    }));
+    await waitFor(
+      () => document.querySelector("#studio-status").dataset.state === "accepted" &&
+        document.querySelector(".studio-manifest-hero"),
+      "Workflow Studio did not render the server manifest",
+    );
+    assert(fixture.studioPreflightCount === 1, "Workflow Studio submitted more than one preflight");
+    assert(fixture.lastStudioBody && fixture.lastStudioBody.schema_version === 1,
+      "Workflow Studio did not submit the exact definition object");
+    const previewText = document.querySelector("#studio-preview").textContent;
+    assert(previewText.includes("STATIC CONTRACT ACCEPTED") &&
+      previewText.includes("read_only_replay_allowed") &&
+      previewText.includes("TRUSTED INSTALLED PYTHON") &&
+      previewText.includes("NO SANDBOX"),
+    "Workflow Studio omitted manifest or trust disclosure");
+    assert(!fixture.requests.some((request) => request.method === "POST" &&
+      /\/v1\/runs(?:\/|$)/.test(request.path)),
+    "Workflow Studio preflight triggered a run mutation");
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }));
+    await waitFor(
+      () => studio.hidden && document.activeElement === document.querySelector("#studio-button"),
+      "Escape did not close Workflow Studio and restore launch focus",
+    );
+    assert(document.querySelector("#studio-button").getAttribute("aria-expanded") === "false",
+      "Escape did not restore the Workflow Studio disclosure state");
+    document.querySelector("#studio-button").click();
+    await waitFor(
+      () => !studio.hidden,
+      "Workflow Studio did not reopen for the remaining acceptance cases",
+    );
+    record("workflow-studio-preflight");
+  }
+
+  async function workflowStudioStaleEditCase(fixture) {
+    fixture.reset("workflow-studio-stale-edit");
+    const editor = document.querySelector("#studio-editor");
+    document.querySelector("#studio-preflight").click();
+    await waitFor(
+      () => fixture.pendingCount("workflow-studio-preflight") === 1,
+      "Workflow Studio preflight was not delayed",
+    );
+    const submitted = structuredClone(fixture.lastStudioBody);
+    editor.value = editor.value.replace('"version": "1"', '"version": "2"');
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    assert(document.querySelector("#studio-status").dataset.state === "dirty",
+      "editing did not invalidate the pending preflight");
+    assert(!document.querySelector(".studio-manifest-hero"),
+      "editing retained a successful manifest");
+    fixture.resolveNext(
+      "workflow-studio-preflight",
+      fixture.json(fixture.studioResponse(submitted)),
+    );
+    await tick();
+    await tick();
+    assert(editor.value.includes('"version": "2"'), "stale response replaced draft B");
+    assert(document.querySelector("#studio-status").dataset.state === "dirty",
+      "stale response marked draft B accepted");
+    assert(!document.querySelector(".studio-manifest-hero") &&
+      !document.querySelector("#studio-preview").textContent.includes("999999999999"),
+    "stale response exposed draft A manifest beside draft B");
+    record("workflow-studio-stale-edit");
+  }
+
+  async function workflowStudioContractCase(fixture) {
+    fixture.reset("workflow-studio-contract");
+    document.querySelector("#studio-preflight").click();
+    await waitFor(
+      () => document.querySelector("#studio-status").dataset.state === "dirty" &&
+        document.querySelector('.studio-error[data-state="unverified"]'),
+      "malformed Workflow Studio response did not fail closed",
+    );
+    assert(document.querySelector("#studio-preview").textContent.includes(
+      "Workflow preflight response contract is invalid",
+    ), "Workflow Studio hid its fail-closed response rejection");
+    assert(!document.querySelector(".studio-manifest-hero"),
+      "malformed Workflow Studio response rendered a manifest");
+    assert(document.querySelector("#studio-preview").textContent.includes("NO SERVER VERDICT"),
+      "malformed success was presented as an authoritative rejection");
+    document.querySelector("#studio-close").click();
+    assert(document.querySelector("#workflow-studio").hidden,
+      "Workflow Studio close did not restore the Workbench");
+    record("workflow-studio-contract");
+  }
+
+  async function workflowStudioRejectedCase(fixture) {
+    fixture.reset("workflow-studio-rejected");
+    document.querySelector("#studio-button").click();
+    document.querySelector("#studio-preflight").click();
+    await waitFor(
+      () => document.querySelector("#studio-status").dataset.state === "rejected" &&
+        document.querySelector('.studio-error[data-state="rejected"]'),
+      "authoritative Workflow rejection was not rendered",
+    );
+    const preview = document.querySelector("#studio-preview").textContent;
+    assert(preview.includes("PREFLIGHT REJECTED") &&
+      preview.includes("tool_contract_mismatch") &&
+      !preview.includes("NO SERVER VERDICT"),
+    "authoritative Workflow rejection lost its taxonomy");
+    document.querySelector("#studio-close").click();
+    record("workflow-studio-rejected");
+  }
+
+  async function workflowStudioMalformedRejectionCase(fixture) {
+    fixture.reset("workflow-studio-malformed-rejection");
+    document.querySelector("#studio-button").click();
+    const malformedCases = [
+      "missing field",
+      "extra field",
+      "unknown reason",
+      "retryable true",
+      "ok true",
+      "empty message",
+      "long message",
+      "invalid Unicode message",
+    ];
+    for (const [index, label] of malformedCases.entries()) {
+      document.querySelector("#studio-preflight").click();
+      await waitFor(
+        () => fixture.studioPreflightCount === index + 1 &&
+          document.querySelector("#studio-status").dataset.state === "dirty" &&
+          document.querySelector('.studio-error[data-state="unverified"]'),
+        `${label} Workflow rejection did not fail closed`,
+      );
+      const preview = document.querySelector("#studio-preview").textContent;
+      assert(preview.includes("NO SERVER VERDICT") &&
+        !preview.includes("PREFLIGHT REJECTED") &&
+        !document.querySelector(".studio-manifest-hero"),
+      `${label} Workflow rejection was presented as authoritative`);
+    }
+    document.querySelector("#studio-close").click();
+    record("workflow-studio-malformed-rejection");
+  }
+
+  async function workflowStudioTransportCase(fixture) {
+    fixture.reset("workflow-studio-transport");
+    document.querySelector("#studio-button").click();
+    document.querySelector("#studio-preflight").click();
+    await waitFor(
+      () => document.querySelector("#studio-status").dataset.state === "dirty" &&
+        document.querySelector('.studio-error[data-state="unverified"]'),
+      "retryable transport failure did not remain unverified",
+    );
+    const preview = document.querySelector("#studio-preview").textContent;
+    assert(preview.includes("NO SERVER VERDICT") && preview.includes("runtime_busy") &&
+      preview.includes("RETRYABLEyes") && !preview.includes("PREFLIGHT REJECTED"),
+    "transport failure was presented as a definition rejection");
+    document.querySelector("#studio-close").click();
+    record("workflow-studio-transport");
+  }
+
+  async function workflowStudioInvalidUnicodeCase(fixture) {
+    fixture.reset("workflow-studio-invalid-unicode");
+    document.querySelector("#studio-button").click();
+    const editor = document.querySelector("#studio-editor");
+    const before = fixture.studioPreflightCount;
+    editor.value += "\ud800";
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    await tick();
+    assert(document.querySelector("#studio-byte-count").textContent.includes("INVALID UNICODE"),
+      "unpaired Unicode surrogate was not disclosed");
+    assert(document.querySelector("#studio-preflight").disabled,
+      "unpaired Unicode surrogate remained submittable");
+    assert(document.querySelector("#studio-status").dataset.state === "dirty" &&
+      !document.querySelector(".studio-manifest-hero") &&
+      fixture.studioPreflightCount === before,
+    "unpaired Unicode surrogate reached fetch or retained a verdict");
+    document.querySelector("#studio-close").click();
+    record("workflow-studio-invalid-unicode");
+  }
+
   async function run() {
     const fixture = global.__sasoriFixture;
     await waitFor(
@@ -1035,6 +1454,13 @@
       "production Workbench did not finish initial loading",
     );
     unavailableWorkflowCase();
+    await workflowStudioCase(fixture);
+    await workflowStudioStaleEditCase(fixture);
+    await workflowStudioContractCase(fixture);
+    await workflowStudioMalformedRejectionCase(fixture);
+    await workflowStudioRejectedCase(fixture);
+    await workflowStudioTransportCase(fixture);
+    await workflowStudioInvalidUnicodeCase(fixture);
     memorySkillSurfaceCase();
     await workflowSurfaceCase();
     workflowProjectionContractCase(fixture);

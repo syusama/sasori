@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ast
+import inspect
 import json
 import tempfile
 import unittest
@@ -447,6 +448,66 @@ class WorkflowSpecTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(WorkflowCompileError, "arguments"):
             compile_workflow(reserved, _base_harness(store, (idempotent,)))
+
+        inspectable = Tool("inspectable", lambda value: value, effect="read_only")
+        unreadable_spec = WorkflowSpec(
+            "unreadable-schema",
+            "1",
+            (),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    inspectable,
+                    {"value": Literal("x")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+
+        def unreadable(value):
+            return value
+
+        unreadable.__annotations__["value"] = object()
+        unreadable_tool = Tool("inspectable", unreadable, effect="read_only")
+        unreadable_store = SQLiteStore()
+        self.addCleanup(unreadable_store.close)
+        with self.assertRaisesRegex(
+            WorkflowCompileError, "tool schema cannot be inspected"
+        ):
+            compile_workflow(
+                unreadable_spec,
+                _base_harness(unreadable_store, (unreadable_tool,)),
+            )
+
+        signature_reads = 0
+
+        class ChangingSignature(type):
+            @property
+            def __signature__(cls):
+                nonlocal signature_reads
+                signature_reads += 1
+                if signature_reads == 1:
+                    return inspect.signature(inspectable.handler)
+                raise ValueError("signature changed")
+
+        class ChangingHandler(metaclass=ChangingSignature):
+            def __new__(cls, value: str) -> str:
+                raise AssertionError("rejected Workflow Tool must not execute")
+
+        changing_tool = Tool(
+            "inspectable", ChangingHandler, effect="read_only"
+        )
+        changing_store = SQLiteStore()
+        self.addCleanup(changing_store.close)
+        with self.assertRaisesRegex(
+            WorkflowCompileError, "tool schema cannot be inspected"
+        ):
+            compile_workflow(
+                unreadable_spec,
+                _base_harness(changing_store, (changing_tool,)),
+            )
+        self.assertEqual(signature_reads, 2)
 
     def test_compile_rejects_non_keyword_handlers_before_any_run(self):
         effects: list[object] = []

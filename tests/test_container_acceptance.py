@@ -95,12 +95,20 @@ class ContainerAcceptanceTests(unittest.TestCase):
         for name in (
             "WORKFLOW_EVIDENCE_FILE",
             "WORKFLOW_RESTARTED_FILE",
+            "WORKFLOW_ACTION_BEFORE_FILE",
+            "WORKFLOW_ACTION_PREFLIGHT_FILE",
             "WORKFLOW_ACTION_PAUSED_FILE",
             "WORKFLOW_ACTION_COMPLETE_FILE",
             "WORKFLOW_ACTION_RESTARTED_FILE",
             "SASORI_WORKFLOW_RUN_ID",
         ):
             self.assertIn(name, workflow)
+        self.assertIn(
+            'action_snapshot 1 0 "$WORKFLOW_ACTION_BEFORE_FILE"', workflow
+        )
+        self.assertIn(
+            'action_snapshot 1 0 "$WORKFLOW_ACTION_PREFLIGHT_FILE"', workflow
+        )
         self.assertIn(
             'action_snapshot 1 0 "$WORKFLOW_ACTION_PAUSED_FILE"', workflow
         )
@@ -111,10 +119,16 @@ class ContainerAcceptanceTests(unittest.TestCase):
             'action_snapshot 1 1 "$WORKFLOW_ACTION_RESTARTED_FILE"', workflow
         )
         self.assertIn('> "$WORKFLOW_RESTARTED_FILE"', workflow)
+        self.assertIn("Workflow preflight changed the action log", workflow)
+        self.assertIn(
+            "Workflow prepare changed the action log before resume", workflow
+        )
         self.assertIn('if [[ ! -f "$path" ]]', workflow)
         for stem in (
             "sasori-workflow-evidence-${{ github.run_id }}",
             "sasori-workflow-restarted-${{ github.run_id }}",
+            "sasori-workflow-action-before-${{ github.run_id }}",
+            "sasori-workflow-action-preflight-${{ github.run_id }}",
             "sasori-workflow-action-paused-${{ github.run_id }}",
             "sasori-workflow-action-complete-${{ github.run_id }}",
             "sasori-workflow-action-restarted-${{ github.run_id }}",
@@ -123,6 +137,9 @@ class ContainerAcceptanceTests(unittest.TestCase):
 
         incident_complete = workflow.index(
             "python scripts/container_acceptance.py complete"
+        )
+        workflow_preflight = workflow.index(
+            "python scripts/container_workflow_acceptance.py preflight"
         )
         workflow_prepare = workflow.index(
             "python scripts/container_workflow_acceptance.py prepare"
@@ -159,6 +176,7 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertEqual(
             [
                 incident_complete,
+                workflow_preflight,
                 workflow_prepare,
                 workflow_complete,
                 memory_prepare,
@@ -176,6 +194,7 @@ class ContainerAcceptanceTests(unittest.TestCase):
             sorted(
                 [
                     incident_complete,
+                    workflow_preflight,
                     workflow_prepare,
                     workflow_complete,
                     memory_prepare,
@@ -247,7 +266,10 @@ class ContainerAcceptanceTests(unittest.TestCase):
             0,
             database=self.database,
             artifact_root=self.artifact_root,
-            apps={APP_ID: "sasori_apps.workflow_incident:create_harness"},
+            apps={
+                "incident": "sasori_apps.incident:create_harness",
+                APP_ID: "sasori_apps.workflow_incident:create_harness",
+            },
             token=self.TOKEN,
             publish_final_artifact=True,
             sse_max_seconds=2,
@@ -303,6 +325,24 @@ class ContainerAcceptanceTests(unittest.TestCase):
             str(evidence),
         ]
 
+        code, stdout, stderr = self._workflow_main(["preflight", *common])
+        self.assertEqual((code, stderr), (0, ""))
+        preflight = json.loads(stdout)
+        self.assertEqual(preflight["phase"], "preflight")
+        self.assertEqual(preflight["runtime_before"], preflight["runtime_after"])
+        self.assertEqual(preflight["runtime_before"]["run_count"], 0)
+        self.assertEqual(preflight["runtime_before"]["event_count"], 0)
+        self.assertEqual(
+            preflight["invalid_contract"],
+            {
+                "status": 422,
+                "code": "workflow_preflight_rejected",
+                "reason_code": "tool_contract_mismatch",
+                "retryable": False,
+            },
+        )
+        self.assertFalse(self.action_log.exists())
+
         code, stdout, stderr = self._workflow_main(
             ["prepare", *common, "--run-id", run_id]
         )
@@ -345,6 +385,11 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertEqual((code, stderr), (0, ""))
         restarted = json.loads(stdout)
         self.assertTrue(restarted["verified"])
+        self.assertTrue(restarted["preflight_runtime_unchanged"])
+        self.assertEqual(
+            restarted["preflight_manifest_sha256"],
+            completed["preflight"]["manifest_sha256"],
+        )
         self.assertEqual(restarted["events_sha256"], completed["events_sha256"])
         self.assertEqual(len(self.action_log.read_text("utf-8").splitlines()), 1)
 
@@ -390,6 +435,54 @@ class ContainerAcceptanceTests(unittest.TestCase):
                     "step contracts",
                 ):
                     container_workflow_acceptance._catalog(CatalogClient(malformed))
+
+    def test_workflow_preflight_evidence_shape_fails_closed(self) -> None:
+        digest = "0" * 64
+        snapshot = {
+            "run_count": 0,
+            "event_count": 0,
+            "runs_sha256": "1" * 64,
+            "events_sha256": "2" * 64,
+        }
+        valid = {
+            "schema_version": 2,
+            "kind": "sasori.container-workflow-acceptance",
+            "phase": "preflight",
+            "app_id": f"flow.incident-mechanism.{digest[:12]}",
+            "definition_sha256": digest,
+            "definition_json_sha256": digest,
+            "manifest_sha256": "3" * 64,
+            "runtime_before": snapshot,
+            "runtime_after": dict(snapshot),
+            "invalid_contract": {
+                "status": 422,
+                "code": "workflow_preflight_rejected",
+                "reason_code": "tool_contract_mismatch",
+                "retryable": False,
+            },
+        }
+        self.assertEqual(
+            container_workflow_acceptance._validate_preflight_evidence(valid),
+            valid,
+        )
+        cases = []
+        extra = json.loads(json.dumps(valid))
+        extra["unexpected"] = True
+        cases.append(extra)
+        missing = json.loads(json.dumps(valid))
+        del missing["manifest_sha256"]
+        cases.append(missing)
+        changed = json.loads(json.dumps(valid))
+        changed["runtime_after"]["event_count"] = 1
+        cases.append(changed)
+        nested_extra = json.loads(json.dumps(valid))
+        nested_extra["invalid_contract"]["message"] = "not persisted"
+        cases.append(nested_extra)
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(
+                container_workflow_acceptance.AcceptanceError
+            ):
+                container_workflow_acceptance._validate_preflight_evidence(value)
 
     def test_workflow_public_projection_validation_fails_closed(self) -> None:
         digest = "0" * 64

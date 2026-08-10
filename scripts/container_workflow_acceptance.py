@@ -43,7 +43,7 @@ except ModuleNotFoundError:
 
 
 EVIDENCE_KIND = "sasori.container-workflow-acceptance"
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 2
 MAX_EVIDENCE_BYTES = 128 * 1024
 WORKFLOW_ID = "incident-mechanism"
 WORKFLOW_INPUT = "container typed workflow incident"
@@ -228,11 +228,227 @@ def _catalog(client: HTTPClient) -> dict[str, object]:
     return {
         "app_id": app_id,
         "definition_sha256": digest,
+        "manifest": workflow,
         "wrapper_names": names,
         "wrapper_revisions": [item.get("tool_revision") for item in wrappers],
         "wrapper_schema_sha256": [item.get("schema_sha256") for item in wrappers],
         "steps": projected_steps,
     }
+
+
+def _definition_from_catalog(catalog: dict[str, object]) -> dict[str, object]:
+    manifest = _mapping(catalog.get("manifest"), "Workflow catalog manifest")
+    inputs = manifest.get("inputs")
+    steps = manifest.get("steps")
+    if not isinstance(inputs, list) or not isinstance(steps, list) or not steps:
+        raise AcceptanceError("Workflow catalog cannot reconstruct the definition")
+    definition_steps: list[dict[str, object]] = []
+    for raw_step in steps:
+        step = _mapping(raw_step, "Workflow catalog definition step")
+        raw_sources = step.get("argument_sources")
+        if not isinstance(raw_sources, list):
+            raise AcceptanceError("Workflow catalog argument sources are invalid")
+        arguments: dict[str, object] = {}
+        for raw_source in raw_sources:
+            source = _mapping(raw_source, "Workflow catalog argument source")
+            name = source.get("name")
+            ref = source.get("ref")
+            kind = source.get("kind")
+            if not isinstance(name, str) or not isinstance(ref, str):
+                raise AcceptanceError("Workflow catalog argument reference is invalid")
+            if kind == "input" and set(source) == {"name", "kind", "ref"}:
+                binding = {"kind": "input", "key": ref}
+            elif kind == "step" and set(source) == {"name", "kind", "ref"}:
+                binding = {"kind": "step_output", "step_id": ref}
+            else:
+                raise AcceptanceError(
+                    "Workflow catalog contains a non-reconstructable argument"
+                )
+            if name in arguments:
+                raise AcceptanceError("Workflow catalog argument name is duplicated")
+            arguments[name] = binding
+        definition_steps.append(
+            {
+                "step_id": step.get("step_id"),
+                "kind": "tool",
+                "tool_name": step.get("logical_tool_name"),
+                "effect": step.get("effect"),
+                "tool_revision": step.get("logical_tool_revision"),
+                "schema_sha256": step.get("logical_schema_sha256"),
+                "arguments": arguments,
+                "result": {
+                    "type": step.get("result_type"),
+                    "max_bytes": step.get("max_result_bytes"),
+                },
+            }
+        )
+    definition = {
+        "schema_version": 1,
+        "workflow_id": manifest.get("workflow_id"),
+        "version": manifest.get("version"),
+        "execution": manifest.get("execution"),
+        "inputs": inputs,
+        "steps": definition_steps,
+        "output_step": manifest.get("output_step"),
+    }
+    if _sha256(definition) != manifest.get("definition_sha256"):
+        raise AcceptanceError("Workflow catalog definition digest is inconsistent")
+    return definition
+
+
+def _runtime_snapshot(client: HTTPClient) -> dict[str, object]:
+    history = _mapping(
+        client.json("GET", "/v1/runs?limit=100"),
+        "Workflow preflight run history",
+    )
+    items = history.get("items")
+    if (
+        set(history) != {"items", "next_before"}
+        or not isinstance(items, list)
+        or history.get("next_before") is not None
+    ):
+        raise AcceptanceError("Workflow preflight history snapshot is incomplete")
+    events_by_run: dict[str, object] = {}
+    event_count = 0
+    for raw_item in items:
+        item = _mapping(raw_item, "Workflow preflight history item")
+        run_id = item.get("run_id")
+        if not isinstance(run_id, str) or RUN_ID.fullmatch(run_id) is None:
+            raise AcceptanceError("Workflow preflight history run ID is invalid")
+        events, latest = _events(client, run_id)
+        if item.get("latest_seq") != latest:
+            raise AcceptanceError("Workflow preflight history cursor changed")
+        events_by_run[run_id] = events
+        event_count += len(events)
+    return {
+        "run_count": len(items),
+        "event_count": event_count,
+        "runs_sha256": _sha256(history),
+        "events_sha256": _sha256(events_by_run),
+    }
+
+
+def _validate_runtime_snapshot(value: object) -> dict[str, object]:
+    snapshot = _mapping(value, "Workflow preflight runtime snapshot")
+    if (
+        set(snapshot)
+        != {"run_count", "event_count", "runs_sha256", "events_sha256"}
+        or not isinstance(snapshot.get("runs_sha256"), str)
+        or SHA256.fullmatch(str(snapshot["runs_sha256"])) is None
+        or not isinstance(snapshot.get("events_sha256"), str)
+        or SHA256.fullmatch(str(snapshot["events_sha256"])) is None
+    ):
+        raise AcceptanceError("Workflow preflight runtime snapshot is invalid")
+    _integer(snapshot.get("run_count"), "Workflow preflight run count", minimum=0)
+    _integer(snapshot.get("event_count"), "Workflow preflight event count", minimum=0)
+    return snapshot
+
+
+def _validate_preflight_evidence(value: object) -> dict[str, object]:
+    evidence = _mapping(value, "Workflow preflight evidence")
+    required = {
+        "schema_version",
+        "kind",
+        "phase",
+        "app_id",
+        "definition_sha256",
+        "definition_json_sha256",
+        "manifest_sha256",
+        "runtime_before",
+        "runtime_after",
+        "invalid_contract",
+    }
+    invalid = _mapping(evidence.get("invalid_contract"), "invalid preflight evidence")
+    before = _validate_runtime_snapshot(evidence.get("runtime_before"))
+    after = _validate_runtime_snapshot(evidence.get("runtime_after"))
+    if (
+        set(evidence) != required
+        or evidence.get("schema_version") != EVIDENCE_SCHEMA_VERSION
+        or evidence.get("kind") != EVIDENCE_KIND
+        or evidence.get("phase") != "preflight"
+        or not isinstance(evidence.get("app_id"), str)
+        or not isinstance(evidence.get("definition_sha256"), str)
+        or SHA256.fullmatch(str(evidence["definition_sha256"])) is None
+        or not isinstance(evidence.get("definition_json_sha256"), str)
+        or SHA256.fullmatch(str(evidence["definition_json_sha256"])) is None
+        or evidence.get("definition_json_sha256") != evidence.get("definition_sha256")
+        or not isinstance(evidence.get("manifest_sha256"), str)
+        or SHA256.fullmatch(str(evidence["manifest_sha256"])) is None
+        or before != after
+        or invalid
+        != {
+            "status": 422,
+            "code": "workflow_preflight_rejected",
+            "reason_code": "tool_contract_mismatch",
+            "retryable": False,
+        }
+    ):
+        raise AcceptanceError("Workflow preflight evidence contract is invalid")
+    return evidence
+
+
+def run_preflight(client: HTTPClient) -> dict[str, object]:
+    catalog = _catalog(client)
+    definition = _definition_from_catalog(catalog)
+    before = _runtime_snapshot(client)
+    response = _mapping(
+        client.json("POST", "/v1/workflows/preflight", body=definition),
+        "Workflow preflight success",
+    )
+    if (
+        set(response) != {"ok", "schema_version", "manifest"}
+        or response.get("ok") is not True
+        or response.get("schema_version") != 1
+        or response.get("manifest") != catalog.get("manifest")
+    ):
+        raise AcceptanceError("Workflow preflight manifest differs from the catalog")
+    drifted = json.loads(_canonical(definition).decode("utf-8"))
+    drifted["steps"][0]["schema_sha256"] = "0" * 64
+    rejected = _mapping(
+        client.json(
+            "POST",
+            "/v1/workflows/preflight",
+            body=drifted,
+            expected_status=422,
+        ),
+        "Workflow preflight rejection",
+    )
+    error = _mapping(rejected.get("error"), "Workflow preflight error")
+    message = error.get("message")
+    if (
+        set(rejected) != {"ok", "error"}
+        or rejected.get("ok") is not False
+        or set(error) != {"code", "message", "retryable", "reason_code"}
+        or error.get("code") != "workflow_preflight_rejected"
+        or error.get("retryable") is not False
+        or error.get("reason_code") != "tool_contract_mismatch"
+        or not isinstance(message, str)
+        or not message
+        or len(message.encode("utf-8")) > 512
+    ):
+        raise AcceptanceError("Workflow preflight rejection contract is invalid")
+    after = _runtime_snapshot(client)
+    if before != after:
+        raise AcceptanceError("Workflow preflight mutated runs or events")
+    return _validate_preflight_evidence(
+        {
+            "schema_version": EVIDENCE_SCHEMA_VERSION,
+            "kind": EVIDENCE_KIND,
+            "phase": "preflight",
+            "app_id": catalog["app_id"],
+            "definition_sha256": catalog["definition_sha256"],
+            "definition_json_sha256": _sha256(definition),
+            "manifest_sha256": _sha256(response["manifest"]),
+            "runtime_before": before,
+            "runtime_after": after,
+            "invalid_contract": {
+                "status": 422,
+                "code": error["code"],
+                "reason_code": error["reason_code"],
+                "retryable": error["retryable"],
+            },
+        }
+    )
 
 
 def _workflow_projection(
@@ -511,6 +727,7 @@ def _validate_evidence(value: object, phase: str) -> dict[str, object]:
         "projection_sha256",
         "final_message",
         "artifact",
+        "preflight",
     }
     if (
         set(evidence) != required
@@ -532,6 +749,13 @@ def _validate_evidence(value: object, phase: str) -> dict[str, object]:
         raise AcceptanceError("Workflow evidence contract is invalid")
     _integer(evidence.get("latest_seq"), "Workflow evidence cursor", minimum=1)
     _integer(evidence.get("event_count"), "Workflow evidence event count", minimum=1)
+    preflight = _validate_preflight_evidence(evidence.get("preflight"))
+    if (
+        preflight.get("app_id") != evidence.get("app_id")
+        or preflight.get("definition_sha256")
+        != evidence.get("definition_sha256")
+    ):
+        raise AcceptanceError("Workflow preflight evidence identity changed")
     if phase == "prepare":
         if evidence.get("final_message") is not None or evidence.get("artifact") is not None:
             raise AcceptanceError("prepared Workflow evidence contains a final")
@@ -548,12 +772,21 @@ def _read_evidence(path: Path, token: str, phase: str) -> dict[str, object]:
         raise AcceptanceError("Workflow evidence file could not be read") from None
     if not raw or len(raw) > MAX_EVIDENCE_BYTES or token.encode("ascii") in raw:
         raise AcceptanceError("Workflow evidence file is invalid or contains the token")
-    return _validate_evidence(_strict_json(raw, "Workflow evidence file"), phase)
+    value = _strict_json(raw, "Workflow evidence file")
+    if phase == "preflight":
+        return _validate_preflight_evidence(value)
+    return _validate_evidence(value, phase)
 
 
 def _write_evidence(path: Path, value: dict[str, object], token: str, *, replace: bool) -> None:
+    phase = str(value.get("phase"))
+    validated = (
+        _validate_preflight_evidence(value)
+        if phase == "preflight"
+        else _validate_evidence(value, phase)
+    )
     encoded = json.dumps(
-        _validate_evidence(value, str(value.get("phase"))),
+        validated,
         ensure_ascii=False,
         allow_nan=False,
         indent=2,
@@ -580,11 +813,24 @@ def _write_evidence(path: Path, value: dict[str, object], token: str, *, replace
         raise AcceptanceError("Workflow evidence file could not be written") from None
 
 
-def run_prepare(client: HTTPClient, run_id: str) -> dict[str, object]:
+def run_prepare(
+    client: HTTPClient,
+    run_id: str,
+    preflight: dict[str, object],
+) -> dict[str, object]:
+    preflight = _validate_preflight_evidence(preflight)
     catalog = _catalog(client)
     app_id = str(catalog["app_id"])
     digest = str(catalog["definition_sha256"])
     wrappers = list(catalog["wrapper_names"])
+    if (
+        preflight["app_id"] != app_id
+        or preflight["definition_sha256"] != digest
+        or preflight["definition_json_sha256"]
+        != _sha256(_definition_from_catalog(catalog))
+        or preflight["manifest_sha256"] != _sha256(catalog["manifest"])
+    ):
+        raise AcceptanceError("Workflow preflight identity changed before run")
     encoded_run_id = quote(run_id, safe="")
     paused = _projection(
         client.json(
@@ -648,6 +894,7 @@ def run_prepare(client: HTTPClient, run_id: str) -> dict[str, object]:
         "projection_sha256": _sha256(durable),
         "final_message": None,
         "artifact": None,
+        "preflight": preflight,
     }
 
 
@@ -718,6 +965,17 @@ def run_after_restart(
         or catalog["wrapper_names"] != wrappers
     ):
         raise AcceptanceError("Workflow catalog changed across restart")
+    restarted_preflight = run_preflight(client)
+    stored_preflight = _validate_preflight_evidence(completed.get("preflight"))
+    for field in (
+        "app_id",
+        "definition_sha256",
+        "definition_json_sha256",
+        "manifest_sha256",
+        "invalid_contract",
+    ):
+        if restarted_preflight[field] != stored_preflight[field]:
+            raise AcceptanceError("Workflow preflight changed across restart")
     encoded_run_id = quote(run_id, safe="")
     durable = _projection(
         client.json("GET", f"/v1/runs/{encoded_run_id}"),
@@ -792,6 +1050,8 @@ def run_after_restart(
         "events_sha256": _sha256(events),
         "projection_sha256": _sha256(durable),
         "artifact": artifact,
+        "preflight_manifest_sha256": restarted_preflight["manifest_sha256"],
+        "preflight_runtime_unchanged": True,
     }
 
 
@@ -799,7 +1059,9 @@ def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Verify the containerized Sasori typed Workflow lifecycle."
     )
-    parser.add_argument("phase", choices=("prepare", "complete", "after-restart"))
+    parser.add_argument(
+        "phase", choices=("preflight", "prepare", "complete", "after-restart")
+    )
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--token-file", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
@@ -812,12 +1074,18 @@ def main(arguments: list[str] | None = None) -> int:
             raise AcceptanceError("timeout must be between 0.1 and 60 seconds")
         token = _read_token(options.token_file)
         client = HTTPClient(options.base_url, token, options.timeout)
-        if options.phase == "prepare":
-            run_id = options.run_id or f"workflow-{uuid.uuid4().hex}"
-            if RUN_ID.fullmatch(run_id) is None or options.evidence.exists():
-                raise AcceptanceError("run ID or evidence target is invalid")
-            evidence = run_prepare(client, run_id)
+        if options.phase == "preflight":
+            if options.run_id is not None or options.evidence.exists():
+                raise AcceptanceError("preflight evidence target is invalid")
+            evidence = run_preflight(client)
             _write_evidence(options.evidence, evidence, token, replace=False)
+        elif options.phase == "prepare":
+            run_id = options.run_id or f"workflow-{uuid.uuid4().hex}"
+            if RUN_ID.fullmatch(run_id) is None:
+                raise AcceptanceError("run ID is invalid")
+            preflight = _read_evidence(options.evidence, token, "preflight")
+            evidence = run_prepare(client, run_id, preflight)
+            _write_evidence(options.evidence, evidence, token, replace=True)
         elif options.phase == "complete":
             if options.run_id is not None:
                 raise AcceptanceError("run ID is read from prepared evidence")

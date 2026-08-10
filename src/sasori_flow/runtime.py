@@ -11,6 +11,7 @@ from sasori import (
     Harness,
     Message,
     ModelReply,
+    RegistrationError,
     RunResult,
     Tool,
     ToolCall,
@@ -144,11 +145,22 @@ def _validate_base_tools(spec: WorkflowSpec, tools: Sequence[Tool]) -> None:
             raise WorkflowCompileError(
                 f"workflow step {step.step_id} tool revision changed"
             )
-        if tool_schema_sha256(tool) != step.schema_sha256:
+        try:
+            schema_sha256 = tool_schema_sha256(tool)
+        except RegistrationError:
+            raise WorkflowCompileError(
+                f"workflow step {step.step_id} tool schema cannot be inspected"
+            ) from None
+        if schema_sha256 != step.schema_sha256:
             raise WorkflowCompileError(
                 f"workflow step {step.step_id} tool schema changed"
             )
-        signature = inspect.signature(tool.handler)
+        try:
+            signature = inspect.signature(tool.handler)
+        except (TypeError, ValueError, RecursionError):
+            raise WorkflowCompileError(
+                f"workflow step {step.step_id} tool schema cannot be inspected"
+            ) from None
         parameters: set[str] = set()
         for parameter in signature.parameters.values():
             if parameter.name == "idempotency_key":

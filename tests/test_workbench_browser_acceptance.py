@@ -187,6 +187,29 @@ class BrowserProcessTests(unittest.TestCase):
         self.assertIs(result, completed)
         run.assert_called_once()
 
+    def test_custom_browser_profile_is_passed_to_chromium(self):
+        completed = subprocess.CompletedProcess(
+            ["browser"], returncode=0, stdout="ok", stderr=""
+        )
+        with mock.patch.object(
+            browser_acceptance.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            result = browser_acceptance.run_browser_process(
+                Path("browser"),
+                18080,
+                window_size=(390, 844),
+                extra_arguments=("--force-prefers-reduced-motion",),
+                browser_path="/#profile=narrow-reduced",
+            )
+
+        self.assertIs(result, completed)
+        command = run.call_args.args[0]
+        self.assertIn("--window-size=390,844", command)
+        self.assertIn("--force-prefers-reduced-motion", command)
+        self.assertEqual(command[-1], "http://127.0.0.1:18080/#profile=narrow-reduced")
+
     @staticmethod
     def _png(width=1600, height=1000):
         header = (

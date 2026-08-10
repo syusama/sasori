@@ -32,7 +32,7 @@ from sasori_artifacts import (
 )
 
 from .app import AppLoadError, load_harness
-from .contracts import Message, is_valid_app_id
+from .contracts import Message, Tool, is_valid_app_id
 from .projection import (
     compose_run_projection,
     event_projection,
@@ -78,6 +78,8 @@ _WORKBENCH_ASSETS = {
     "/assets/workflow.0.1.0.js": ("workflow.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow.0.2.0.js": ("workflow.0.2.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow-manifest.0.1.0.js": ("workflow-manifest.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/workflow-studio.0.1.0.css": ("workflow-studio.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/workflow-studio.0.1.0.js": ("workflow-studio.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/mark.0.1.0.svg": ("mark.0.1.0.svg", "image/svg+xml", "public, max-age=31536000, immutable"),
 }
 _WORKBENCH_SECURITY_HEADERS = {
@@ -114,6 +116,12 @@ class InvalidTransition(Exception):
 
 class InvalidRequest(Exception):
     pass
+
+
+class WorkflowPreflightRejected(Exception):
+    def __init__(self, reason_code: str, message: str) -> None:
+        self.reason_code = reason_code
+        super().__init__(message)
 
 
 class InvalidArtifactRange(Exception):
@@ -154,6 +162,17 @@ def _strict_json(value: bytes) -> object:
         parse_constant=invalid_constant,
         object_pairs_hook=pairs,
     )
+
+
+def _bounded_workflow_error(exc: Exception, fallback: str) -> str:
+    try:
+        message = str(exc)
+        encoded = message.encode("utf-8", "strict")
+    except (UnicodeEncodeError, UnicodeError):
+        return fallback
+    if not message or len(encoded) > 512:
+        return fallback
+    return message
 
 
 def _loopback(host: str) -> bool:
@@ -223,6 +242,7 @@ class _Owner:
         self._artifacts: ArtifactStore | None = None
         self._harnesses: dict[str, Harness] = {}
         self._unavailable: dict[str, str] = {}
+        self._workflow_tools: tuple[Tool, ...] = ()
         self._gate: asyncio.Lock | None = None
         self._error: BaseException | None = None
         self._state = "OPEN"
@@ -283,6 +303,9 @@ class _Owner:
                     if len(self.apps) == 1 and first_error is not None:
                         raise first_error
                     raise ServerConfigurationError("no configured application could start")
+                from sasori_apps.registry import workflow_preflight_tools
+
+                self._workflow_tools = workflow_preflight_tools(self._harnesses)
                 if self.publish_final_artifact:
                     self._reconcile_artifacts()
                 self._gate = asyncio.Lock()
@@ -539,6 +562,30 @@ class _Owner:
         from sasori_apps.registry import application_surface_catalog
 
         return application_surface_catalog(self._harnesses, self._unavailable)
+
+    async def workflow_preflight(
+        self, definition: dict[str, object]
+    ) -> dict[str, object]:
+        from sasori_apps.registry import (
+            WorkflowPreflightFailure,
+            workflow_preflight_definition,
+        )
+
+        try:
+            manifest = workflow_preflight_definition(
+                definition, self._workflow_tools
+            )
+        except WorkflowPreflightFailure as exc:
+            fallback = {
+                "invalid_definition": "workflow definition was rejected",
+                "tool_contract_mismatch": "workflow Tool contract was rejected",
+                "manifest_rejected": "workflow manifest was rejected",
+            }[exc.reason_code]
+            raise WorkflowPreflightRejected(
+                exc.reason_code,
+                _bounded_workflow_error(exc, fallback),
+            ) from None
+        return {"ok": True, "schema_version": 1, "manifest": manifest}
 
     async def history(
         self, limit: int, before: int | None, app_id: str | None
@@ -1035,7 +1082,7 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             return None
         try:
             value = _strict_json(raw)
-        except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError, RecursionError):
             self._error(400, "malformed_json", "request body is not valid JSON")
             return None
         if not isinstance(value, dict):
@@ -1146,6 +1193,13 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             self._error(409, "invalid_transition", str(exc), run_id=run_id)
         elif isinstance(exc, InvalidRequest):
             self._error(422, "invalid_request", str(exc), run_id=run_id)
+        elif isinstance(exc, WorkflowPreflightRejected):
+            self._error(
+                422,
+                "workflow_preflight_rejected",
+                str(exc),
+                reason_code=exc.reason_code,
+            )
         elif isinstance(exc, ModelTimeoutError):
             self._error(504, exc.code, str(exc), run_id=run_id, retryable=True)
         elif isinstance(exc, (ModelCallError, DuplicateToolCallError)):
@@ -1231,6 +1285,9 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                     raise InvalidRequest("app catalog does not accept query parameters")
                 value = self.sasori.owner.call(self.sasori.owner.catalog(), 5)
                 self._json(200, value)
+                return
+            if parsed.path == "/v1/workflows/preflight":
+                self._error(405, "method_not_allowed", "GET is not allowed")
                 return
             if parsed.path == "/v1/runs":
                 limit, before, app_id = self._history_query(parsed.query)
@@ -1506,10 +1563,14 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 parsed = urllib.parse.urlsplit(self.path)
             except ValueError as exc:
                 raise InvalidRequest("request path is invalid") from exc
-            if parsed.path == "/v1/runs":
+            if parsed.path in {"/v1/runs", "/v1/workflows/preflight"}:
                 if parsed.query:
                     raise InvalidRequest(
-                        "run endpoint does not accept query parameters"
+                        (
+                            "run endpoint does not accept query parameters"
+                            if parsed.path == "/v1/runs"
+                            else "workflow preflight does not accept query parameters"
+                        )
                     )
             else:
                 path = self._path()
@@ -1521,6 +1582,12 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             if body is None:
                 return
             assert isinstance(body, dict)
+            if parsed.path == "/v1/workflows/preflight":
+                value = self.sasori.owner.call(
+                    self.sasori.owner.workflow_preflight(body), 5
+                )
+                self._json(200, value)
+                return
             if parsed.path == "/v1/runs":
                 self._fields(body, {"run_id", "app_id", "input"})
                 prompt = body.get("input")

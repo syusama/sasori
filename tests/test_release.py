@@ -50,9 +50,9 @@ def metadata(*, dependency=False, extra=""):
 
 class ReleaseVerificationTests(unittest.TestCase):
     def test_release_contract_version_tracks_workflow_inventory(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "10")
+        self.assertEqual(release_verify.VERIFIER_VERSION, "11")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v7"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v8"
         )
 
     def setUp(self):

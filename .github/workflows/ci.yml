@@ -126,6 +126,8 @@ jobs:
               "ACTION_COMPLETE_FILE": root / f"sasori-action-complete-{suffix}.json",
               "ACTION_RESTARTED_FILE": root / f"sasori-action-restarted-{suffix}.json",
               "WORKFLOW_ACTION_PAUSED_FILE": root / f"sasori-workflow-action-paused-{suffix}.json",
+              "WORKFLOW_ACTION_BEFORE_FILE": root / f"sasori-workflow-action-before-{suffix}.json",
+              "WORKFLOW_ACTION_PREFLIGHT_FILE": root / f"sasori-workflow-action-preflight-{suffix}.json",
               "WORKFLOW_ACTION_COMPLETE_FILE": root / f"sasori-workflow-action-complete-{suffix}.json",
               "WORKFLOW_ACTION_RESTARTED_FILE": root / f"sasori-workflow-action-restarted-{suffix}.json",
               "OWNER_LOG_FILE": root / f"sasori-owner-{suffix}.log",
@@ -345,6 +347,20 @@ jobs:
 
           action_snapshot 1 0 "$ACTION_COMPLETE_FILE"
 
+          action_snapshot 1 0 "$WORKFLOW_ACTION_BEFORE_FILE"
+
+          python scripts/container_workflow_acceptance.py preflight \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$WORKFLOW_EVIDENCE_FILE"
+
+          action_snapshot 1 0 "$WORKFLOW_ACTION_PREFLIGHT_FILE"
+          if ! cmp -s \
+            "$WORKFLOW_ACTION_BEFORE_FILE" "$WORKFLOW_ACTION_PREFLIGHT_FILE"; then
+            echo "::error::Workflow preflight changed the action log"
+            exit 1
+          fi
+
           python scripts/container_workflow_acceptance.py prepare \
             --base-url "$SASORI_BASE_URL" \
             --token-file "$SASORI_TOKEN_FILE" \
@@ -352,6 +368,11 @@ jobs:
             --run-id "$SASORI_WORKFLOW_RUN_ID"
 
           action_snapshot 1 0 "$WORKFLOW_ACTION_PAUSED_FILE"
+          if ! cmp -s \
+            "$WORKFLOW_ACTION_PREFLIGHT_FILE" "$WORKFLOW_ACTION_PAUSED_FILE"; then
+            echo "::error::Workflow prepare changed the action log before resume"
+            exit 1
+          fi
 
           python scripts/container_workflow_acceptance.py complete \
             --base-url "$SASORI_BASE_URL" \
@@ -585,6 +606,8 @@ jobs:
           complete_file="${ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-action-complete-$suffix.json}"
           restarted_file="${ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-action-restarted-$suffix.json}"
           workflow_paused="${WORKFLOW_ACTION_PAUSED_FILE:-$RUNNER_TEMP/sasori-workflow-action-paused-$suffix.json}"
+          workflow_before="${WORKFLOW_ACTION_BEFORE_FILE:-$RUNNER_TEMP/sasori-workflow-action-before-$suffix.json}"
+          workflow_preflight="${WORKFLOW_ACTION_PREFLIGHT_FILE:-$RUNNER_TEMP/sasori-workflow-action-preflight-$suffix.json}"
           workflow_complete="${WORKFLOW_ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-workflow-action-complete-$suffix.json}"
           workflow_action_restarted="${WORKFLOW_ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-workflow-action-restarted-$suffix.json}"
           owner_log="${OWNER_LOG_FILE:-$RUNNER_TEMP/sasori-owner-$suffix.log}"
@@ -623,6 +646,8 @@ jobs:
                 "paused action evidence:$paused_file" \
                 "completed action evidence:$complete_file" \
                 "restarted action evidence:$restarted_file" \
+                "Workflow before-preflight action evidence:$workflow_before" \
+                "Workflow preflight action evidence:$workflow_preflight" \
                 "Workflow paused action evidence:$workflow_paused" \
                 "Workflow completed action evidence:$workflow_complete" \
                 "Workflow restarted action evidence:$workflow_action_restarted" \
@@ -658,6 +683,8 @@ jobs:
               "paused-action:$paused_file" \
               "completed-action:$complete_file" \
               "restarted-action:$restarted_file" \
+              "workflow-before-preflight-action:$workflow_before" \
+              "workflow-preflight-action:$workflow_preflight" \
               "workflow-paused-action:$workflow_paused" \
               "workflow-completed-action:$workflow_complete" \
               "workflow-restarted-action:$workflow_action_restarted" \
@@ -721,6 +748,8 @@ jobs:
             ${{ runner.temp }}/sasori-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-action-before-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-action-preflight-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-workflow-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-workflow-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-workflow-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json

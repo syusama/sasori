@@ -177,6 +177,83 @@ executor, Agent node, subflow system, sandbox, signed provenance, or
 production-readiness claim. See
 [ADR-0015](ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md).
 
+## Transient Static Serial Workflow Studio (W1.2 candidate)
+
+The W1.2 implementation candidate adds one browser authoring surface over the
+same W1/W1.1 contracts:
+
+```text
+transient strict JSON text
+    -> POST /v1/workflows/preflight
+    -> workflow_spec_from_data()
+    -> preflight_workflow(spec, frozen_host_tools)
+    -> exact detached manifest
+```
+
+The request body is the definition itself, so the HTTP adapter owns the one
+strict JSON parse and the existing 1 MiB transport limit remains aligned with
+the Workflow definition limit. The browser sends its exact textarea bytes; it
+does not parse and stringify the draft into a relaxed second representation.
+Duplicate keys, unknown fields, dynamic code/import fields, malformed Unicode,
+non-finite numbers, size/depth/count drift, and compiler contract drift fail
+closed.
+
+The server freezes one Studio Tool tuple during startup. It collects Tools from
+successfully loaded ordinary Harnesses only, excludes compiled
+`WorkflowHarness` wrapper Tools and unavailable applications, removes every
+ambiguous Tool name instead of choosing a winner, sorts the remaining names,
+and never accepts a preflight eligibility decision from the request or browser
+catalog. A
+Workflow-only deployment intentionally freezes an empty tuple and rejects each
+Tool step. Deployers that want Studio suggestions must also configure the
+ordinary source-Tool Harnesses they trust; this slice does not reach through
+private compiled-step state.
+
+Preflight reuses the existing Workflow codec and shared compiler. It does not
+construct a Harness or Store, call a model/provider/Tool handler/idempotency
+callback, take the runtime mutation gate, or create/change a run, call,
+checkpoint, message, event, approval, recovery, artifact, or catalog record.
+It may complete concurrently while an ordinary run waits at a Tool boundary,
+but that is read-only inspection—not parallel Workflow execution. Client abort
+means only that the response was abandoned; it is not forced cancellation of
+synchronous server work.
+
+The Workbench calls the endpoint with the existing bearer/same-origin client
+boundary and hands a successful response to the existing exact manifest
+consumer. It renders response and draft content with text nodes, keeps no
+definition in `localStorage`, and offers no save, activation, deployment, or
+run control. Every editor input mutation:
+
+1. increments an edit epoch;
+2. clears the previous success and manifest immediately;
+3. aborts or logically abandons the pending request;
+4. permits a response to render only if request identity, captured epoch,
+   captured exact text, and non-aborted signal still match.
+
+Before fetch, the editor also requires its `TextEncoder` bytes to round-trip
+through a fatal UTF-8 `TextDecoder` to the exact same JavaScript string. An
+unpaired surrogate therefore displays `INVALID UNICODE`, disables preflight,
+clears any prior verdict, and sends no replacement-character payload.
+
+Only an exact `422 workflow_preflight_rejected` response becomes the
+authoritative `REJECTED` state. A `401`, `403`, `503`, network failure,
+non-JSON response, malformed success envelope, or client-side validation
+failure remains `UNVERIFIED` with `NO SERVER VERDICT`. Retryability is shown to
+the operator and never triggers an automatic retry.
+
+Consequently, submit A then edit B without resubmitting cannot display A's
+manifest next to B. The visible boundary remains `DRAFT ONLY`, `NO EXECUTION`,
+`TRUSTED PYTHON`, and `NO SANDBOX`.
+
+This checkout is still an implementation candidate, not Hosted-verified
+shipped behavior. It does not add a saved Workflow catalog, durable draft,
+activation, run-from-draft, visual DAG, branch, parallel set, Agent node,
+subflow, marketplace, sandbox, second reducer/runtime/checkpoint, exactly-once
+execution, or production-readiness claim. Promotion requires the exact
+implementation SHA to pass source, wheel, rebuilt-sdist, real-browser, release,
+and mainland-source container gates from
+[ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md).
+
 ## Run, approve, then explicitly resume
 
 ```python
@@ -470,6 +547,7 @@ replace them.
 W0  one-Harness ordered Tool proof
 W1  strict static serial authoring and versioned public step projection
 W1.1 static compiled manifest and zero-execution preflight
+W1.2 candidate: transient browser draft and authoritative HTTP preflight preview
 W2  bounded Workbench step inspection from the public projection;
     existing reducer retained for timeline/cursor
 W3  bounded parallel ready set

@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import http.client
+import inspect
 import json
 import socket
 import sys
@@ -27,6 +28,7 @@ from sasori.server import (  # noqa: E402
     ServerConfigurationError,
     ServerShutdownIncomplete,
     ServerShuttingDown,
+    WorkflowPreflightRejected,
     _Owner,
     create_server,
 )
@@ -36,11 +38,15 @@ from sasori_apps.workflow_incident import (  # noqa: E402
     WORKFLOW_SPEC as INCIDENT_WORKFLOW_SPEC,
 )
 from sasori_flow import (  # noqa: E402
+    canonical_json,
     InputRef,
     InputSlot,
     ToolStep,
+    WorkflowCompileError,
     WorkflowSpec,
+    WorkflowValidationError,
     compile_workflow,
+    preflight_workflow,
     workflow_app_id,
 )
 
@@ -125,6 +131,30 @@ class ServerTests(unittest.TestCase):
         if response_headers.get("Content-Type", "").startswith("application/json"):
             return status, json.loads(payload), response_headers
         return status, payload.decode("utf-8"), response_headers
+
+    def durable_snapshot(self, server):
+        async def collect():
+            store = server.owner._store
+            self.assertIsNotNone(store)
+            return {
+                table: tuple(
+                    tuple(row)
+                    for row in store._db.execute(
+                        f"SELECT * FROM {table} ORDER BY rowid"
+                    )
+                )
+                for table in (
+                    "runs",
+                    "events",
+                    "checkpoints",
+                    "accepted_replies",
+                    "tool_calls",
+                    "approvals",
+                    "artifacts",
+                )
+            }
+
+        return server.owner.call(collect(), 2)
 
     def test_http_approval_resume_status_events_and_sse_use_durable_projection(self):
         class Model:
@@ -514,6 +544,752 @@ class ServerTests(unittest.TestCase):
             (status, error["error"]["code"]), (409, "app_binding_missing")
         )
 
+    def test_workflow_preflight_is_exact_detached_and_zero_execution(self):
+        calls = {"model": 0, "tool": 0, "idempotency": 0}
+
+        class UnusedModel:
+            async def complete(self, messages, tools):
+                calls["model"] += 1
+                raise AssertionError("preflight must not execute a model")
+
+        def inspect(summary: str, *, idempotency_key: str) -> str:
+            calls["tool"] += 1
+            raise AssertionError("preflight must not execute a Tool")
+
+        def business_key(arguments):
+            calls["idempotency"] += 1
+            raise AssertionError("preflight must not reserve an idempotency key")
+
+        tool = Tool(
+            "inspect",
+            inspect,
+            effect="idempotent",
+            tool_revision="contract-1",
+            idempotency_key=business_key,
+        )
+        spec = WorkflowSpec(
+            "http-preflight",
+            "1",
+            (InputSlot("incident", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"summary": InputRef("incident")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        server = self.start(
+            app=lambda store: Harness(UnusedModel(), (tool,), store=store)
+        )
+
+        status, before, _ = self.request(server, "GET", "/v1/runs")
+        self.assertEqual((status, before["items"]), (200, []))
+        status, value, _ = self.request(
+            server, "POST", "/v1/workflows/preflight", spec.as_data()
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(set(value), {"ok", "schema_version", "manifest"})
+        self.assertEqual((value["ok"], value["schema_version"]), (True, 1))
+        self.assertEqual(value["manifest"], preflight_workflow(spec, (tool,)))
+        self.assertEqual(
+            value["manifest"]["trust"],
+            {"execution_mode": "trusted_installed_python", "sandboxed": False},
+        )
+
+        value["manifest"]["workflow_id"] = "client-tampered"
+        status, repeated, _ = self.request(
+            server, "POST", "/v1/workflows/preflight", spec.as_data()
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(repeated["manifest"], preflight_workflow(spec, (tool,)))
+        status, after, _ = self.request(server, "GET", "/v1/runs")
+        self.assertEqual((status, after["items"]), (200, []))
+        self.assertEqual(calls, {"model": 0, "tool": 0, "idempotency": 0})
+
+    def test_workflow_preflight_preserves_all_durable_tables_and_external_spies(self):
+        calls = {"model": 0, "tool": 0, "idempotency": 0, "fault": 0}
+
+        class Model:
+            async def complete(self, messages, tools):
+                calls["model"] += 1
+                return ModelReply(content="seeded")
+
+        def inspect(value: str, *, idempotency_key: str) -> str:
+            calls["tool"] += 1
+            return value
+
+        def business_key(arguments):
+            calls["idempotency"] += 1
+            return str(arguments["value"])
+
+        def fault(point):
+            calls["fault"] += 1
+
+        tool = Tool(
+            "inspect",
+            inspect,
+            effect="idempotent",
+            tool_revision="contract-1",
+            idempotency_key=business_key,
+        )
+        spec = WorkflowSpec(
+            "deep-zero-preflight",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        server = self.start(
+            app=lambda store: Harness(
+                Model(), (tool,), store=store, fault_injector=fault
+            )
+        )
+        status, seeded, _ = self.request(
+            server,
+            "POST",
+            "/v1/runs",
+            {"run_id": "preflight-existing", "input": "seed"},
+        )
+        self.assertEqual((status, seeded["state"]), (200, "completed"))
+        calls.update({"model": 0, "tool": 0, "idempotency": 0, "fault": 0})
+        before = self.durable_snapshot(server)
+        drifted = spec.as_data()
+        drifted["steps"][0]["schema_sha256"] = "0" * 64
+
+        def forbidden(label):
+            def fail(*args, **kwargs):
+                raise AssertionError(f"preflight invoked forbidden {label}")
+
+            return fail
+
+        with (
+            mock.patch("sasori.server.SQLiteStore", side_effect=forbidden("store")),
+            mock.patch(
+                "sasori.server.ArtifactStore",
+                side_effect=forbidden("artifact store"),
+            ),
+            mock.patch("sasori.server.load_harness", side_effect=forbidden("loader")),
+            mock.patch(
+                "asyncio.create_subprocess_exec", side_effect=forbidden("process")
+            ),
+            mock.patch("asyncio.open_connection", side_effect=forbidden("network")),
+            mock.patch("socket.create_connection", side_effect=forbidden("network")),
+            mock.patch("subprocess.Popen", side_effect=forbidden("process")),
+            mock.patch("subprocess.run", side_effect=forbidden("process")),
+            mock.patch("urllib.request.urlopen", side_effect=forbidden("network")),
+        ):
+            accepted = server.owner.call(
+                server.owner.workflow_preflight(spec.as_data()), 2
+            )
+            self.assertTrue(accepted["ok"])
+            with self.assertRaises(WorkflowPreflightRejected):
+                server.owner.call(server.owner.workflow_preflight(drifted), 2)
+
+        after = self.durable_snapshot(server)
+        self.assertEqual(after, before)
+        self.assertTrue(before["runs"])
+        self.assertTrue(before["events"])
+        self.assertTrue(before["checkpoints"])
+        self.assertTrue(before["accepted_replies"])
+        self.assertEqual(calls, {"model": 0, "tool": 0, "idempotency": 0, "fault": 0})
+
+    def test_workflow_preflight_error_taxonomy_is_exact_and_bounded(self):
+        tool = Tool("inspect", lambda value: value, effect="read_only")
+        spec = WorkflowSpec(
+            "preflight-taxonomy",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        server = self.start(
+            app=lambda store: Harness(object(), (tool,), store=store)
+        )
+        before = self.durable_snapshot(server)
+
+        cases = (
+            (
+                WorkflowValidationError("manifest composition failed"),
+                "manifest_rejected",
+                "manifest composition failed",
+            ),
+            (
+                WorkflowCompileError("x" * 513),
+                "tool_contract_mismatch",
+                "workflow Tool contract was rejected",
+            ),
+            (
+                WorkflowCompileError("\ud800"),
+                "tool_contract_mismatch",
+                "workflow Tool contract was rejected",
+            ),
+        )
+        for failure, reason_code, message in cases:
+            with self.subTest(failure=type(failure).__name__, message=message):
+                with mock.patch(
+                    "sasori_flow.preflight_workflow", side_effect=failure
+                ):
+                    status, error, _ = self.request(
+                        server,
+                        "POST",
+                        "/v1/workflows/preflight",
+                        spec.as_data(),
+                    )
+                self.assertEqual(
+                    (
+                        status,
+                        set(error),
+                        set(error["error"]),
+                        error["error"]["code"],
+                        error["error"]["reason_code"],
+                        error["error"]["retryable"],
+                        error["error"]["message"],
+                    ),
+                    (
+                        422,
+                        {"ok", "error"},
+                        {"code", "message", "retryable", "reason_code"},
+                        "workflow_preflight_rejected",
+                        reason_code,
+                        False,
+                        message,
+                    ),
+                )
+
+        self.assertEqual(self.durable_snapshot(server), before)
+
+    def test_workflow_preflight_timeout_is_retryable_and_non_mutating(self):
+        tool = Tool("inspect", lambda value: value, effect="read_only")
+        spec = WorkflowSpec(
+            "preflight-timeout",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        server = self.start(
+            app=lambda store: Harness(object(), (tool,), store=store)
+        )
+        before = self.durable_snapshot(server)
+        original = server.owner.workflow_preflight
+        cancelled = threading.Event()
+
+        async def slow_preflight(definition):
+            try:
+                await asyncio.sleep(60)
+            finally:
+                cancelled.set()
+
+        server.owner.workflow_preflight = slow_preflight
+        started = time.monotonic()
+        try:
+            status, error, headers = self.request(
+                server,
+                "POST",
+                "/v1/workflows/preflight",
+                spec.as_data(),
+                timeout=8,
+            )
+        finally:
+            server.owner.workflow_preflight = original
+        elapsed = time.monotonic() - started
+        self.assertEqual(
+            (
+                status,
+                error["error"]["code"],
+                error["error"]["retryable"],
+                headers["Retry-After"],
+            ),
+            (503, "runtime_busy", True, "1"),
+        )
+        self.assertGreaterEqual(elapsed, 4.5)
+        self.assertLess(elapsed, 7.5)
+        self.assertTrue(cancelled.wait(2), "timed-out owner operation was not cancelled")
+        self.assertEqual(self.durable_snapshot(server), before)
+        status, accepted, _ = self.request(
+            server, "POST", "/v1/workflows/preflight", spec.as_data()
+        )
+        self.assertEqual((status, accepted["ok"]), (200, True))
+
+    def test_workflow_preflight_rejects_strict_json_and_contract_drift(self):
+        handler_calls = 0
+
+        def inspect(summary: str) -> str:
+            nonlocal handler_calls
+            handler_calls += 1
+            raise AssertionError("rejected preflight must not execute a Tool")
+
+        tool = Tool("inspect", inspect, effect="read_only")
+        spec = WorkflowSpec(
+            "http-preflight-errors",
+            "1",
+            (InputSlot("incident", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"summary": InputRef("incident")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        server = self.start(
+            app=lambda store: Harness(object(), (tool,), store=store)
+        )
+
+        invalid = spec.as_data()
+        invalid["python_entrypoint"] = "unsafe.module:factory"
+        status, error, _ = self.request(
+            server, "POST", "/v1/workflows/preflight", invalid
+        )
+        self.assertEqual(
+            (
+                status,
+                error["error"]["code"],
+                error["error"]["reason_code"],
+                error["error"]["retryable"],
+            ),
+            (422, "workflow_preflight_rejected", "invalid_definition", False),
+        )
+        self.assertNotIn("unsafe.module:factory", error["error"]["message"])
+
+        drifted = spec.as_data()
+        drifted["steps"][0]["schema_sha256"] = "0" * 64
+        status, error, _ = self.request(
+            server, "POST", "/v1/workflows/preflight", drifted
+        )
+        self.assertEqual(
+            (
+                status,
+                error["error"]["code"],
+                error["error"]["reason_code"],
+            ),
+            (
+                422,
+                "workflow_preflight_rejected",
+                "tool_contract_mismatch",
+            ),
+        )
+        self.assertLessEqual(len(error["error"]["message"].encode("utf-8")), 512)
+
+        document = canonical_json(spec.as_data()).replace(
+            '"schema_version":1',
+            '"schema_version":1,"schema_version":1',
+            1,
+        ).encode("utf-8")
+        raw = (
+            b"POST /v1/workflows/preflight HTTP/1.1\r\n"
+            + f"Host: 127.0.0.1:{server.server_port}\r\n".encode("ascii")
+            + b"Content-Type: application/json; charset=utf-8\r\n"
+            + f"Content-Length: {len(document)}\r\nConnection: close\r\n\r\n".encode(
+                "ascii"
+            )
+            + document
+        )
+        response, eof = self.raw_request(server, raw)
+        self.assertTrue(eof)
+        self.assertIn(b"HTTP/1.1 400", response)
+        self.assertIn(b'"code":"malformed_json"', response)
+
+        status, error, _ = self.request(
+            server, "POST", "/v1/workflows/preflight?mode=unsafe", spec.as_data()
+        )
+        self.assertEqual((status, error["error"]["code"]), (422, "invalid_request"))
+        status, error, _ = self.request(
+            server, "GET", "/v1/workflows/preflight"
+        )
+        self.assertEqual(
+            (status, error["error"]["code"]), (405, "method_not_allowed")
+        )
+        self.assertEqual(handler_calls, 0)
+
+    def test_workflow_preflight_maps_repeated_signature_failure_to_contract_rejection(self):
+        calls = {"handler": 0, "idempotency": 0}
+
+        def stable(value: str, *, idempotency_key: str) -> str:
+            return value
+
+        def business_key(arguments):
+            calls["idempotency"] += 1
+            raise AssertionError("rejected preflight must not reserve a key")
+
+        stable_tool = Tool(
+            "changing",
+            stable,
+            effect="idempotent",
+            idempotency_key=business_key,
+            tool_revision="changing-v1",
+        )
+        spec = WorkflowSpec(
+            "changing-signature",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "changing",
+                    stable_tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "changing",
+        )
+        signature_reads = 0
+
+        class ChangingSignature(type):
+            @property
+            def __signature__(cls):
+                nonlocal signature_reads
+                signature_reads += 1
+                if signature_reads <= 2:
+                    return inspect.signature(stable)
+                raise ValueError("signature changed")
+
+        class ChangingHandler(metaclass=ChangingSignature):
+            def __new__(cls, value: str, *, idempotency_key: str) -> str:
+                calls["handler"] += 1
+                raise AssertionError("rejected preflight must not execute a Tool")
+
+        changing_tool = Tool(
+            "changing",
+            ChangingHandler,
+            effect="idempotent",
+            idempotency_key=business_key,
+            tool_revision="changing-v1",
+        )
+        server = self.start(
+            app=lambda store: Harness(object(), (changing_tool,), store=store)
+        )
+        before = self.durable_snapshot(server)
+
+        status, error, _ = self.request(
+            server, "POST", "/v1/workflows/preflight", spec.as_data()
+        )
+
+        self.assertEqual(
+            (
+                status,
+                error["error"]["code"],
+                error["error"]["reason_code"],
+                error["error"]["retryable"],
+            ),
+            (422, "workflow_preflight_rejected", "tool_contract_mismatch", False),
+        )
+        self.assertIn("tool schema cannot be inspected", error["error"]["message"])
+        self.assertEqual(signature_reads, 3)
+        self.assertEqual(calls, {"handler": 0, "idempotency": 0})
+        self.assertEqual(self.durable_snapshot(server), before)
+
+    def test_workflow_preflight_registry_excludes_ambiguous_and_wrapper_tools(self):
+        class UnusedModel:
+            async def complete(self, messages, tools):
+                raise AssertionError("preflight must not execute a model")
+
+        first_duplicate = Tool("duplicate", lambda value: value, effect="read_only")
+        second_duplicate = Tool("duplicate", lambda value: value, effect="read_only")
+        unique = Tool("unique", lambda value: value, effect="read_only")
+        self.module.first = lambda store: Harness(
+            UnusedModel(), (first_duplicate, unique), store=store
+        )
+        self.module.second = lambda store: Harness(
+            UnusedModel(), (second_duplicate,), store=store
+        )
+        server = create_server(
+            "127.0.0.1",
+            0,
+            database=self.db,
+            apps={
+                "incident": "sasori_server_test_app:first",
+                "research": "sasori_server_test_app:second",
+            },
+            trusted_loopback_no_auth=True,
+            sse_max_seconds=2,
+            sse_keepalive_seconds=0.1,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.servers.append((server, thread))
+
+        def definition(workflow_id, tool):
+            return WorkflowSpec(
+                workflow_id,
+                "1",
+                (InputSlot("value", "string"),),
+                (
+                    ToolStep.from_tool(
+                        "step",
+                        tool,
+                        {"value": InputRef("value")},
+                        result_type="string",
+                    ),
+                ),
+                "step",
+            ).as_data()
+
+        status, accepted, _ = self.request(
+            server,
+            "POST",
+            "/v1/workflows/preflight",
+            definition("unique-tool", unique),
+        )
+        self.assertEqual((status, accepted["ok"]), (200, True))
+        status, rejected, _ = self.request(
+            server,
+            "POST",
+            "/v1/workflows/preflight",
+            definition("ambiguous-tool", first_duplicate),
+        )
+        self.assertEqual(
+            (
+                status,
+                rejected["error"]["code"],
+                rejected["error"]["reason_code"],
+            ),
+            (
+                422,
+                "workflow_preflight_rejected",
+                "tool_contract_mismatch",
+            ),
+        )
+        self.assertIn("unknown tool duplicate", rejected["error"]["message"])
+
+        wrapper_spec = WorkflowSpec(
+            "wrapper-only",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "step",
+                    unique,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "step",
+        )
+        self.module.wrapper = lambda store: compile_workflow(
+            wrapper_spec,
+            Harness(UnusedModel(), (unique,), store=store),
+        )
+        wrapper_server = create_server(
+            "127.0.0.1",
+            0,
+            database=str(Path(self.temp.name) / "wrapper.sqlite3"),
+            app="sasori_server_test_app:wrapper",
+            trusted_loopback_no_auth=True,
+        )
+        wrapper_thread = threading.Thread(
+            target=wrapper_server.serve_forever, daemon=True
+        )
+        wrapper_thread.start()
+        self.servers.append((wrapper_server, wrapper_thread))
+        status, wrapper_rejected, _ = self.request(
+            wrapper_server,
+            "POST",
+            "/v1/workflows/preflight",
+            wrapper_spec.as_data(),
+        )
+        self.assertEqual(
+            (
+                status,
+                wrapper_rejected["error"]["reason_code"],
+            ),
+            (422, "tool_contract_mismatch"),
+        )
+        self.assertIn("unknown tool unique", wrapper_rejected["error"]["message"])
+
+    def test_workflow_preflight_auth_and_origin_fail_before_preflight(self):
+        tool = Tool("inspect", lambda value: value, effect="read_only")
+        spec = WorkflowSpec(
+            "authorized-preflight",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        server = self.start(
+            token="studio-secret",
+            cors_origins=("https://studio.example",),
+            app=lambda store: Harness(object(), (tool,), store=store),
+        )
+        calls = 0
+        original = server.owner.workflow_preflight
+
+        async def counted(definition):
+            nonlocal calls
+            calls += 1
+            return await original(definition)
+
+        server.owner.workflow_preflight = counted
+        for headers, expected in (
+            ({}, 401),
+            ({"Authorization": "Bearer wrong"}, 401),
+            (
+                {
+                    "Authorization": "Bearer studio-secret",
+                    "Origin": "https://evil.example",
+                },
+                403,
+            ),
+        ):
+            with self.subTest(headers=headers):
+                status, _, _ = self.request(
+                    server,
+                    "POST",
+                    "/v1/workflows/preflight",
+                    spec.as_data(),
+                    headers=headers,
+                )
+                self.assertEqual(status, expected)
+                self.assertEqual(calls, 0)
+
+        document = canonical_json(spec.as_data()).encode("utf-8")
+        repeated_headers = (
+            (
+                b"Authorization: Bearer studio-secret\r\n"
+                b"Authorization: Bearer studio-secret\r\n",
+                b'"code":"invalid_header"',
+            ),
+            (
+                b"Authorization: Bearer studio-secret\r\n"
+                b"Origin: https://studio.example\r\n"
+                b"Origin: https://studio.example\r\n",
+                b'"code":"invalid_header"',
+            ),
+        )
+        for repeated, expected_code in repeated_headers:
+            raw = (
+                b"POST /v1/workflows/preflight HTTP/1.1\r\n"
+                + f"Host: 127.0.0.1:{server.server_port}\r\n".encode("ascii")
+                + repeated
+                + b"Content-Type: application/json\r\n"
+                + f"Content-Length: {len(document)}\r\nConnection: close\r\n\r\n".encode(
+                    "ascii"
+                )
+                + document
+            )
+            response, eof = self.raw_request(server, raw)
+            self.assertTrue(eof)
+            self.assertIn(b"HTTP/1.1 400", response)
+            self.assertIn(expected_code, response)
+            self.assertEqual(calls, 0)
+
+        status, value, headers = self.request(
+            server,
+            "POST",
+            "/v1/workflows/preflight",
+            spec.as_data(),
+            headers={
+                "Authorization": "Bearer studio-secret",
+                "Origin": "https://studio.example",
+            },
+        )
+        self.assertEqual((status, value["ok"], calls), (200, True, 1))
+        self.assertEqual(
+            headers["Access-Control-Allow-Origin"], "https://studio.example"
+        )
+
+    def test_workflow_preflight_does_not_acquire_the_runtime_mutation_gate(self):
+        entered = threading.Event()
+        release = threading.Event()
+        tool_calls = 0
+
+        def slow(value: str) -> str:
+            nonlocal tool_calls
+            tool_calls += 1
+            entered.set()
+            if not release.wait(15):
+                raise AssertionError("test did not release the controlled Tool")
+            return value
+
+        tool = Tool("slow", slow, effect="read_only")
+
+        class Model:
+            async def complete(self, messages, tools):
+                if messages[-1].role == "tool":
+                    return ModelReply(content="done")
+                return ModelReply(
+                    tool_calls=(ToolCall("slow-1", "slow", {"value": "x"}),)
+                )
+
+        spec = WorkflowSpec(
+            "concurrent-preflight",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "slow",
+                    tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "slow",
+        )
+        server = self.start(app=lambda store: Harness(Model(), (tool,), store=store))
+        drive = {}
+
+        def run():
+            drive["response"] = self.request(
+                server,
+                "POST",
+                "/v1/runs",
+                {"run_id": "preflight-gate", "input": "drive"},
+                timeout=20,
+            )
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(10), "Tool did not enter its await boundary")
+            status, value, _ = self.request(
+                server,
+                "POST",
+                "/v1/workflows/preflight",
+                spec.as_data(),
+                timeout=10,
+            )
+            self.assertEqual((status, value["ok"]), (200, True))
+            self.assertEqual(tool_calls, 1)
+        finally:
+            release.set()
+            thread.join(20)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(drive["response"][0], 200)
+        self.assertEqual(tool_calls, 1)
+
     def test_first_party_workflow_uses_existing_http_approval_and_resume(self):
         action_log = Path(self.temp.name) / "workflow-actions.jsonl"
         with mock.patch.dict(
@@ -745,6 +1521,10 @@ class ServerTests(unittest.TestCase):
         self.assertIn('id="connection-signal" data-state="idle" role="status"', page)
         self.assertIn('id="surface-tab" role="tab"', page)
         self.assertIn('id="artifacts-tab" role="tab"', page)
+        self.assertIn('id="studio-button" type="button"', page)
+        self.assertIn('id="workflow-studio" hidden', page)
+        self.assertIn("DRAFT ONLY", page)
+        self.assertIn("NO EXECUTION", page)
         self.assertIn('id="artifact-list" aria-live="polite"', page)
         self.assertIn('tabindex="-1"', page)
         self.assertIn('data-mobile-view="stage" class="active" aria-pressed="true"', page)
@@ -762,6 +1542,8 @@ class ServerTests(unittest.TestCase):
             ("/assets/workflow.0.1.0.js", "text/javascript"),
             ("/assets/workflow.0.2.0.js", "text/javascript"),
             ("/assets/workflow-manifest.0.1.0.js", "text/javascript"),
+            ("/assets/workflow-studio.0.1.0.css", "text/css"),
+            ("/assets/workflow-studio.0.1.0.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -790,6 +1572,10 @@ class ServerTests(unittest.TestCase):
         self.assertLess(
             page.index("/assets/workflow.0.2.0.js"),
             page.index("/assets/workflow-manifest.0.1.0.js"),
+        )
+        self.assertLess(
+            page.index("/assets/workflow-manifest.0.1.0.js"),
+            page.index("/assets/workflow-studio.0.1.0.js"),
         )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
@@ -844,6 +1630,18 @@ class ServerTests(unittest.TestCase):
         self.assertIn("manual_effect_resolution_on_ambiguity", workflow_manifest_script)
         self.assertIn("trusted_installed_python", workflow_manifest_script)
         self.assertNotIn("innerHTML", workflow_manifest_script)
+        workflow_studio_script = assets["/assets/workflow-studio.0.1.0.js"]
+        self.assertIn('fetch("/v1/workflows/preflight"', workflow_studio_script)
+        self.assertIn("request.editEpoch !== editEpoch", workflow_studio_script)
+        self.assertIn("editor.value !== request.draft", workflow_studio_script)
+        self.assertIn("workflowManifestContract(app)", workflow_studio_script)
+        self.assertIn("activeRequest.controller.abort()", workflow_studio_script)
+        self.assertNotIn("innerHTML", workflow_studio_script)
+        self.assertNotIn("localStorage", workflow_studio_script)
+        self.assertNotIn("/v1/runs", workflow_studio_script)
+        workflow_studio_styles = assets["/assets/workflow-studio.0.1.0.css"]
+        self.assertIn(".workflow-studio", workflow_studio_styles)
+        self.assertIn("prefers-reduced-motion", workflow_studio_styles)
         workflow_styles = assets["/assets/workflow.0.1.0.css"]
         self.assertIn(".workflow-rail", workflow_styles)
 
@@ -859,6 +1657,10 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(
             server, "GET", "/assets/workflow-manifest.0.1.0.js?v=1"
+        )
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(
+            server, "GET", "/assets/workflow-studio.0.1.0.js?v=1"
         )
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")
