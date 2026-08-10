@@ -1,3 +1,13 @@
+from .authoring import (
+    SerialWorkflowBuilder,
+    workflow_spec_from_data,
+    workflow_spec_from_json,
+)
+from .projection import (
+    MAX_WORKFLOW_PROJECTION_BYTES,
+    workflow_public_projection,
+    workflow_public_run_projection,
+)
 from .runtime import (
     WorkflowCompileError,
     WorkflowHarness,
@@ -34,12 +44,14 @@ __all__ = [
     "InputRef",
     "InputSlot",
     "Literal",
+    "MAX_WORKFLOW_PROJECTION_BYTES",
     "MAX_WORKFLOW_DEFINITION_BYTES",
     "MAX_WORKFLOW_INPUT_BYTES",
     "MAX_WORKFLOW_INPUT_SLOTS",
     "MAX_WORKFLOW_PAYLOAD_BYTES",
     "MAX_WORKFLOW_STEP_ARGUMENTS",
     "MAX_WORKFLOW_STEPS",
+    "SerialWorkflowBuilder",
     "StepRef",
     "ToolStep",
     "WorkflowCompileError",
@@ -56,4 +68,8 @@ __all__ = [
     "plain_json",
     "resolve_arguments",
     "workflow_app_id",
+    "workflow_public_projection",
+    "workflow_public_run_projection",
+    "workflow_spec_from_data",
+    "workflow_spec_from_json",
 ]

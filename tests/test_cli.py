@@ -55,6 +55,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual((code, errors), (0, ""))
         self.assertEqual(output[0]["state"], "completed")
         self.assertNotIn("private", json.dumps(output))
+        self.assertNotIn("workflow", output[0])
 
         code, status, _ = self.call("status", "cli-1")
         self.assertEqual(code, 0)
@@ -62,6 +63,62 @@ class CLITests(unittest.TestCase):
         code, events, _ = self.call("events", "cli-1", "--after", "0")
         self.assertEqual(code, 0)
         self.assertEqual([item["seq"] for item in events], list(range(1, len(events) + 1)))
+
+    def test_cli_ignores_legacy_projection_override(self):
+        class LegacyHarness(Harness):
+            def public_run_projection(self, run_id):
+                return {
+                    "run_id": "forged",
+                    "app_id": "forged.app",
+                    "state": "completed",
+                }
+
+        self.module.create = lambda store: LegacyHarness(
+            ScriptedModel(ModelReply(content="done")), store=store
+        )
+        code, output, errors = self.call(
+            "--app",
+            "sasori_cli_test_app:create",
+            "run",
+            "hello",
+            "--run-id",
+            "cli-core-owned",
+        )
+        self.assertEqual((code, errors), (0, ""))
+        self.assertEqual(output[0]["run_id"], "cli-core-owned")
+        self.assertEqual(output[0]["state"], "completed")
+        self.assertNotIn("workflow", output[0])
+
+    def test_cli_projection_extension_failure_is_stable_and_redacted(self):
+        private = "private transcript and arguments"
+
+        class MalformedHarness(Harness):
+            def public_projection_extension(self, run_id):
+                raise RuntimeError(private)
+
+        self.module.create = lambda store: MalformedHarness(
+            ScriptedModel(ModelReply(content="done")), store=store
+        )
+        code, output, errors = self.call(
+            "--app",
+            "sasori_cli_test_app:create",
+            "run",
+            "hello",
+            "--run-id",
+            "cli-projection-failed",
+        )
+        self.assertEqual((code, errors), (5, ""))
+        self.assertEqual(
+            output,
+            [{
+                "ok": False,
+                "error": {
+                    "code": "projection_integrity_failed",
+                    "message": "public projection extension failed integrity validation",
+                },
+            }],
+        )
+        self.assertNotIn(private, json.dumps(output))
 
     def test_approval_is_explicit_and_resume_uses_the_same_harness(self):
         class ApprovalModel:
@@ -123,6 +180,13 @@ class CLITests(unittest.TestCase):
             self.assertEqual(paused[0]["detail"], "awaiting_approval")
             self.assertEqual(paused[0]["app_id"], APP_ID)
             self.assertEqual(paused[0]["input"], "checkout latency")
+            self.assertEqual(
+                [step["status"] for step in paused[0]["workflow"]["steps"]],
+                ["completed", "approval_required"],
+            )
+            self.assertEqual(
+                paused[0]["workflow"]["definition_sha256"], WORKFLOW_SPEC.digest
+            )
             self.assertEqual(paused[0]["pending"]["effect"], "side_effecting")
             self.assertEqual(paused[0]["pending"]["arguments"]["step_id"], "record")
             self.assertEqual(
@@ -147,11 +211,19 @@ class CLITests(unittest.TestCase):
             self.assertEqual(decided[0]["state"], "paused")
             self.assertEqual(decided[0]["detail"], "awaiting_resume")
             self.assertEqual(decided[0]["pause_reason"], "resume_required")
+            self.assertEqual(
+                decided[0]["workflow"]["steps"][1]["status"], "resume_required"
+            )
             self.assertFalse(action_log.exists())
 
             code, completed, errors = self.call(*app, "resume", "cli-workflow")
             self.assertEqual((code, errors), (0, ""))
             self.assertEqual(completed[0]["state"], "completed")
+            self.assertEqual(
+                [step["status"] for step in completed[0]["workflow"]["steps"]],
+                ["completed", "completed"],
+            )
+            self.assertIsNone(completed[0]["workflow"]["current_step_id"])
             final = json.loads(completed[0]["final_message"]["content"])
             self.assertEqual(final["workflow_id"], "incident-mechanism")
             self.assertEqual(final["workflow_version"], "1")
@@ -185,7 +257,14 @@ class CLITests(unittest.TestCase):
             )
 
             code, status, _ = self.call("status", "cli-workflow")
-            self.assertEqual((code, status[0]), (0, completed[0]))
+            self.assertEqual(code, 0)
+            self.assertNotIn("workflow", status[0])
+            self.assertEqual(
+                status[0], {key: value for key, value in completed[0].items() if key != "workflow"}
+            )
+            code, exact_status, errors = self.call(*app, "status", "cli-workflow")
+            self.assertEqual((code, errors), (0, ""))
+            self.assertEqual(exact_status[0], completed[0])
             code, events, _ = self.call("events", "cli-workflow")
             self.assertEqual(code, 0)
             self.assertEqual(

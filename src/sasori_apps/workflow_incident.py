@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from sasori import Harness, ModelReply, SQLiteStore
 from sasori_flow import (
-    InputRef,
-    InputSlot,
-    StepRef,
-    ToolStep,
-    WorkflowSpec,
+    SerialWorkflowBuilder,
     compile_workflow,
     workflow_app_id,
 )
@@ -20,28 +16,25 @@ class _UnusedModel:
 
 
 _TOOLS = incident_tools()
-WORKFLOW_SPEC = WorkflowSpec(
-    workflow_id="incident-mechanism",
-    version="1",
-    inputs=(InputSlot("incident", "string", max_bytes=16 * 1024),),
-    steps=(
-        ToolStep.from_tool(
-            "inspect",
-            _TOOLS[0],
-            {"summary": InputRef("incident")},
-            result_type="string",
-            max_result_bytes=32 * 1024,
-        ),
-        ToolStep.from_tool(
-            "record",
-            _TOOLS[1],
-            {"summary": StepRef("inspect")},
-            result_type="string",
-            max_result_bytes=32 * 1024,
-        ),
-    ),
-    output_step="record",
+_BUILDER = SerialWorkflowBuilder("incident-mechanism", version="1")
+_INCIDENT = _BUILDER.input(
+    "incident", value_type="string", max_bytes=16 * 1024
 )
+_INSPECTION = _BUILDER.step(
+    "inspect",
+    _TOOLS[0],
+    arguments={"summary": _INCIDENT},
+    result_type="string",
+    max_result_bytes=32 * 1024,
+)
+_RECORD = _BUILDER.step(
+    "record",
+    _TOOLS[1],
+    arguments={"summary": _INSPECTION},
+    result_type="string",
+    max_result_bytes=32 * 1024,
+)
+WORKFLOW_SPEC = _BUILDER.build(output=_RECORD)
 APP_ID = workflow_app_id(WORKFLOW_SPEC)
 
 APP_METADATA = {

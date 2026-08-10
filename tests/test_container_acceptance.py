@@ -348,6 +348,103 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertEqual(restarted["events_sha256"], completed["events_sha256"])
         self.assertEqual(len(self.action_log.read_text("utf-8").splitlines()), 1)
 
+    def test_workflow_public_projection_validation_fails_closed(self) -> None:
+        digest = "0" * 64
+        app_id = f"flow.incident-mechanism.{digest[:12]}"
+        logical_names = ("inspect_incident", "record_action")
+        dispatch_names = ("flow_inspect", "flow_record")
+        effects = ("read_only", "side_effecting")
+        logical_revisions = (None, "1")
+        dispatch_revisions = (None, "flow-1")
+        logical_schemas = ("1" * 64, "2" * 64)
+        dispatch_schemas = ("3" * 64, "4" * 64)
+        catalog_steps = [
+            {
+                "position": position,
+                "step_id": step_id,
+                "logical_tool_name": logical_names[index],
+                "dispatch_tool_name": dispatch_names[index],
+                "effect": effects[index],
+                "logical_tool_revision": logical_revisions[index],
+                "dispatch_tool_revision": dispatch_revisions[index],
+                "logical_schema_sha256": logical_schemas[index],
+                "dispatch_schema_sha256": dispatch_schemas[index],
+                "result_type": "string",
+                "max_result_bytes": 32 * 1024,
+                "is_output": index == 1,
+            }
+            for index, (position, step_id) in enumerate(
+                ((1, "inspect"), (2, "record"))
+            )
+        ]
+        catalog = {
+            "app_id": app_id,
+            "definition_sha256": digest,
+            "steps": catalog_steps,
+        }
+        workflow = {
+            "schema_version": 1,
+            "workflow_id": "incident-mechanism",
+            "version": "1",
+            "definition_sha256": digest,
+            "app_id": app_id,
+            "execution": "single-harness-ordered-tools-v1",
+            "output_step": "record",
+            "current_step_id": "record",
+            "latest_seq": 11,
+            "steps": [
+                {
+                    key: value
+                    for key, value in {
+                        **catalog_steps[index],
+                        "kind": "tool",
+                        "call_id": f"call-{index + 1}",
+                        "status": status,
+                        "error_code": None,
+                    }.items()
+                    if key != "is_output"
+                }
+                for index, status in enumerate(
+                    ("completed", "resume_required")
+                )
+            ],
+        }
+        validated = container_workflow_acceptance._workflow_projection(
+            workflow,
+            catalog=catalog,
+            latest_seq=11,
+            statuses=("completed", "resume_required"),
+            current_step_id="record",
+        )
+        self.assertEqual(validated, workflow)
+
+        cases = []
+        missing = json.loads(json.dumps(workflow))
+        del missing["definition_sha256"]
+        cases.append(missing)
+        unknown_status = json.loads(json.dumps(workflow))
+        unknown_status["steps"][1]["status"] = "invented"
+        cases.append(unknown_status)
+        private_argument = json.loads(json.dumps(workflow))
+        private_argument["steps"][1]["arguments"] = {"summary": "private"}
+        cases.append(private_argument)
+        duplicate_call = json.loads(json.dumps(workflow))
+        duplicate_call["steps"][1]["call_id"] = duplicate_call["steps"][0][
+            "call_id"
+        ]
+        cases.append(duplicate_call)
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(
+                container_workflow_acceptance.AcceptanceError
+            ):
+                container_workflow_acceptance._workflow_projection(
+                    value,
+                    catalog=catalog,
+                    latest_seq=11,
+                    statuses=("completed", "resume_required"),
+                    current_step_id="record",
+                )
+
     def test_memory_acceptance_write_search_and_fresh_store_restart(self) -> None:
         database = self.root / "memory-acceptance.sqlite3"
         evidence = self.root / "memory-acceptance-evidence.json"

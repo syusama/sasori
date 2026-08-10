@@ -9,6 +9,12 @@
   let oldEventHistoryCount = 0;
   let acceptedCreates = 0;
   let lastCreatedRunId = null;
+  let workflowStatusCount = 0;
+  let workflowStatusInFlight = 0;
+  let workflowStatusMaxInFlight = 0;
+  let cancelledRecoveryCount = 0;
+  let cancelledRecoveryBody = null;
+  let cancelledRecoveryResolved = false;
 
   const application = {
     id: "incident-response",
@@ -170,9 +176,128 @@
     };
   }
 
-  function projectedEvent(runId, type = "run.completed") {
+  function workflowProjection(runId) {
+    const steps = workflowApplication.workflow.steps.map((step, index) => ({
+      position: step.position,
+      step_id: step.step_id,
+      kind: "tool",
+      logical_tool_name: step.logical_tool_name,
+      dispatch_tool_name: step.dispatch_tool_name,
+      effect: step.effect,
+      logical_tool_revision: step.logical_tool_revision,
+      dispatch_tool_revision: step.dispatch_tool_revision,
+      logical_schema_sha256: step.logical_schema_sha256,
+      dispatch_schema_sha256: step.dispatch_schema_sha256,
+      result_type: step.result_type,
+      max_result_bytes: step.max_result_bytes,
+      call_id: `wf_fixture_${index + 1}`,
+      status: index === 0 ? "completed" : "approval_required",
+      error_code: null,
+    }));
+    return projection(runId, "fixture Workflow projection", "paused", {
+      app_id: workflowApplication.id,
+      pause_reason: "approval_required",
+      detail: "awaiting_approval",
+      step: 2,
+      latest_seq: 0,
+      final_message: null,
+      pending: {
+        call_id: "wf_fixture_2",
+        tool_name: "wf_record_fixture",
+        effect: "side_effecting",
+        tool_revision: "fixture-wrapper-v1",
+        fingerprint: "fixture-workflow-fingerprint",
+        idempotency_key: null,
+        arguments: { redacted_from_workflow_extension: true },
+      },
+      workflow: {
+        schema_version: 1,
+        workflow_id: workflowApplication.workflow.workflow_id,
+        version: workflowApplication.workflow.version,
+        definition_sha256: workflowApplication.workflow.definition_sha256,
+        app_id: workflowApplication.id,
+        execution: workflowApplication.workflow.execution,
+        output_step: "record",
+        current_step_id: "record",
+        latest_seq: 0,
+        steps,
+      },
+    });
+  }
+
+  function workflowProjectionCase(runId, kind) {
+    const value = JSON.parse(JSON.stringify(workflowProjection(runId)));
+    value.pause_reason = null;
+    value.pending = null;
+    value.final_message = null;
+    if (kind === "requested-pending") {
+      value.state = "running";
+      value.detail = "processing_reply";
+      value.step = 1;
+      value.latest_seq = 1;
+      value.workflow.latest_seq = 1;
+      value.workflow.current_step_id = "inspect";
+      value.workflow.steps[0].status = "requested";
+      value.workflow.steps[1].status = "pending";
+      value.workflow.steps[1].call_id = null;
+    } else if (kind === "failed-stopped") {
+      value.state = "failed";
+      value.detail = "failed";
+      value.step = 1;
+      value.latest_seq = 2;
+      value.workflow.latest_seq = 2;
+      value.workflow.current_step_id = null;
+      value.workflow.steps[0].status = "failed";
+      value.workflow.steps[0].error_code = "workflow_result_type";
+      value.workflow.steps[1].status = "stopped";
+      value.workflow.steps[1].call_id = null;
+    } else if (kind === "cancelled-unknown") {
+      value.state = "cancelled";
+      value.pause_reason = "effect_unknown";
+      value.detail = "cancelled";
+      value.step = 2;
+      value.latest_seq = 3;
+      value.workflow.latest_seq = 3;
+      value.workflow.current_step_id = null;
+      value.workflow.steps[0].status = "completed";
+      value.workflow.steps[1].status = "effect_unknown";
+      value.pending = {
+        call_id: "wf_fixture_2",
+        tool_name: "wf_record_fixture",
+        effect: "side_effecting",
+        tool_revision: "fixture-wrapper-v1",
+        fingerprint: "fixture-cancelled-fingerprint",
+        idempotency_key: null,
+        arguments: { private_recovery_input: true },
+      };
+    } else if (kind === "cancelled-resolved") {
+      value.state = "cancelled";
+      value.detail = "cancelled";
+      value.step = 2;
+      value.latest_seq = 5;
+      value.revision = 2;
+      value.workflow.latest_seq = 5;
+      value.workflow.current_step_id = null;
+      value.workflow.steps[0].status = "completed";
+      value.workflow.steps[1].status = "failed";
+      value.workflow.steps[1].error_code = "manual_recovery_failed";
+    } else {
+      throw new Error(`unknown Workflow projection fixture: ${kind}`);
+    }
+    return value;
+  }
+
+  function workflowProjectionAtCursor(runId, latestSeq, revision) {
+    const value = workflowProjection(runId);
+    value.latest_seq = latestSeq;
+    value.revision = revision;
+    value.workflow.latest_seq = latestSeq;
+    return value;
+  }
+
+  function projectedEvent(runId, type = "run.completed", seq = 1) {
     return {
-      seq: 1,
+      seq,
       event: {
         type,
         run_id: runId,
@@ -192,11 +317,11 @@
     });
   }
 
-  function eventBatch(runId, events = []) {
+  function eventBatch(runId, events = [], afterSeq = 0, latestSeq = events.length) {
     return json({
       run_id: runId,
-      after_seq: 0,
-      latest_seq: events.length,
+      after_seq: afterSeq,
+      latest_seq: latestSeq,
       events,
     });
   }
@@ -272,6 +397,7 @@
         items: [
           { run_id: "run-old", state: "completed", input_preview: "old fixture run" },
           { run_id: "run-new", state: "completed", input_preview: "new fixture run" },
+          { run_id: "run-workflow", state: "paused", input_preview: "fixture Workflow projection" },
         ],
         next_before: null,
       });
@@ -281,6 +407,52 @@
     }
     if (method === "GET" && url.pathname === "/v1/runs/run-new/events") {
       return eventBatch("run-new", [projectedEvent("run-new")]);
+    }
+    if (method === "GET" && url.pathname === "/v1/runs/run-workflow") {
+      if (mode === "cancelled-recovery") {
+        return json(workflowProjectionCase(
+          "run-workflow",
+          cancelledRecoveryResolved ? "cancelled-resolved" : "cancelled-unknown",
+        ));
+      }
+      if (["workflow-refresh-burst", "workflow-refresh-switch"].includes(mode)) {
+        workflowStatusCount += 1;
+        workflowStatusInFlight += 1;
+        workflowStatusMaxInFlight = Math.max(
+          workflowStatusMaxInFlight,
+          workflowStatusInFlight,
+        );
+        try {
+          if (workflowStatusCount === 1) {
+            return await defer(`${mode}-status`);
+          }
+          const latestSeq = mode === "workflow-refresh-burst" ? 20 : 1;
+          return json(workflowProjectionAtCursor(
+            "run-workflow",
+            latestSeq,
+            workflowStatusCount + 1,
+          ));
+        } finally {
+          workflowStatusInFlight -= 1;
+        }
+      }
+      return json(workflowProjection("run-workflow"));
+    }
+    if (method === "GET" && url.pathname === "/v1/runs/run-workflow/events") {
+      if (mode === "cancelled-recovery") {
+        const afterSeq = Number(url.searchParams.get("after_seq") || "0");
+        return eventBatch(
+          "run-workflow",
+          [],
+          afterSeq,
+          cancelledRecoveryResolved ? 5 : 3,
+        );
+      }
+      if (mode === "workflow-refresh-burst") {
+        const afterSeq = Number(url.searchParams.get("after_seq") || "0");
+        return eventBatch("run-workflow", [], afterSeq, 20);
+      }
+      return eventBatch("run-workflow");
     }
     if (method === "GET" && url.pathname === "/v1/runs/run-old") {
       oldStatusCount += 1;
@@ -354,6 +526,13 @@
     if (method === "POST" && url.pathname === "/v1/runs/run-old/approval") {
       return defer("approval");
     }
+    if (method === "POST" && url.pathname === "/v1/runs/run-workflow/effect" &&
+        mode === "cancelled-recovery") {
+      cancelledRecoveryBody = JSON.parse(await bodyFor(input, options));
+      cancelledRecoveryCount += 1;
+      cancelledRecoveryResolved = true;
+      return json(workflowProjectionCase("run-workflow", "cancelled-resolved"));
+    }
     if (method === "POST" && url.pathname === "/v1/runs") {
       const body = JSON.parse(await bodyFor(input, options));
       acceptedCreates += 1;
@@ -374,8 +553,16 @@
     get acceptedCreates() { return acceptedCreates; },
     get lastCreatedRunId() { return lastCreatedRunId; },
     get requests() { return requests.slice(); },
+    get workflowStatusCount() { return workflowStatusCount; },
+    get workflowStatusInFlight() { return workflowStatusInFlight; },
+    get workflowStatusMaxInFlight() { return workflowStatusMaxInFlight; },
+    get cancelledRecoveryCount() { return cancelledRecoveryCount; },
+    get cancelledRecoveryBody() { return cancelledRecoveryBody; },
     pendingCount,
     projection,
+    workflowProjection,
+    workflowProjectionAtCursor,
+    workflowProjectionCase,
     projectedEvent,
     eventBatch,
     json,
@@ -383,6 +570,12 @@
       mode = nextMode;
       oldStatusCount = 0;
       oldEventHistoryCount = 0;
+      workflowStatusCount = 0;
+      workflowStatusInFlight = 0;
+      workflowStatusMaxInFlight = 0;
+      cancelledRecoveryCount = 0;
+      cancelledRecoveryBody = null;
+      cancelledRecoveryResolved = false;
     },
     resolveNext,
   };
@@ -586,7 +779,7 @@
     record("memory-skill-surface");
   }
 
-  function workflowSurfaceCase() {
+  async function workflowSurfaceCase() {
     const card = document.querySelector('.worker-card[data-app-id="flow.fixture.aaaaaaaaaaaa"]');
     assert(card, "Workflow worker card is not visible");
     card.click();
@@ -600,10 +793,174 @@
     assert(text.includes("SERIAL ONLY"), "serial-only boundary is not visible");
     assert(text.includes("NO BRANCHES"), "branch non-goal is not visible");
     assert(surface.querySelectorAll(".workflow-step").length === 2, "ordered step count is invalid");
-    assert(surface.querySelectorAll('[data-step-state="queued"]').length === 2, "definition preview invented durable progress");
+    assert(surface.querySelectorAll('[data-step-status="pending"]').length === 2, "definition preview invented durable progress");
+    await open("run-workflow");
+    await waitFor(() => document.querySelector("#active-run-label").textContent === "run-workflow", "Workflow run projection did not load");
+    document.querySelector("#surface-tab").click();
+    const projected = document.querySelector(".workflow-surface");
+    const statuses = [...projected.querySelectorAll(".workflow-step")].map((step) => step.dataset.stepStatus);
+    assert(JSON.stringify(statuses) === JSON.stringify(["completed", "approval_required"]), "Workbench did not consume the public Workflow projection");
+    assert(projected.textContent.includes("HUMAN GATE"), "public Workflow approval gate is not visible");
     document.querySelector('.worker-card[data-app-id="incident-response"]').click();
     document.querySelector("#timeline-tab").click();
     record("workflow-surface");
+  }
+
+  function workflowProjectionContractCase(fixture) {
+    const app = state.apps.find((item) => item.id === "flow.fixture.aaaaaaaaaaaa");
+    const contract = workflowContract(app);
+    assert(app && contract, "Workflow production contract is unavailable to the fixture");
+
+    const requested = workflowRunProjection(
+      app,
+      contract,
+      fixture.workflowProjectionCase("run-workflow", "requested-pending"),
+    );
+    assert(
+      JSON.stringify(requested.steps.map((step) => [step.status, step.callId])) ===
+        JSON.stringify([["requested", "wf_fixture_1"], ["pending", null]]),
+      "requested and pending nullable call bindings were rejected",
+    );
+
+    const failed = workflowRunProjection(
+      app,
+      contract,
+      fixture.workflowProjectionCase("run-workflow", "failed-stopped"),
+    );
+    assert(
+      failed.currentStepId === null && failed.steps[0].status === "failed" &&
+        failed.steps[1].status === "stopped" && failed.steps[1].callId === null,
+      "terminal failed and stopped projection was rejected",
+    );
+
+    const cancelled = workflowRunProjection(
+      app,
+      contract,
+      fixture.workflowProjectionCase("run-workflow", "cancelled-unknown"),
+    );
+    assert(
+      cancelled.currentStepId === null && cancelled.steps[0].status === "completed" &&
+        cancelled.steps[1].status === "effect_unknown",
+      "cancelled mutable ambiguity was hidden or rejected",
+    );
+
+    for (const nestedCursor of [3, 5]) {
+      const mismatched = fixture.workflowProjectionAtCursor("run-workflow", 4, 1);
+      mismatched.workflow.latest_seq = nestedCursor;
+      let rejected = false;
+      try {
+        workflowRunProjection(app, contract, mismatched);
+      } catch (error) {
+        rejected = /binding is invalid/.test(String(error && error.message));
+      }
+      assert(rejected, `Workflow nested cursor ${nestedCursor} did not fail closed`);
+    }
+    record("workflow-projection-contract");
+  }
+
+  async function cancelledRecoveryCase(fixture) {
+    fixture.reset("cancelled-recovery");
+    await open("run-workflow");
+    await waitFor(
+      () => document.querySelector("#operator-action .recovery-card"),
+      "cancelled effect recovery form was not rendered",
+    );
+    const form = document.querySelector("#operator-action .recovery-card");
+    const action = form.querySelector(".recovery-action");
+    assert(!action.querySelector('option[value="retry"]'),
+      "cancelled recovery offered a forbidden retry action");
+    assert(form.querySelector(".cancelled-recovery-note"),
+      "cancelled recovery policy was not disclosed");
+    action.value = "fail";
+    action.dispatchEvent(new Event("change", { bubbles: true }));
+    form.querySelector(".recovery-reason").value = "fixture outcome could not be verified";
+    form.requestSubmit();
+    await waitFor(
+      () => fixture.cancelledRecoveryCount === 1,
+      "cancelled recovery decision was not submitted",
+    );
+    assert(
+      JSON.stringify(fixture.cancelledRecoveryBody) === JSON.stringify({
+        fingerprint: "fixture-cancelled-fingerprint",
+        action: "fail",
+        reason: "fixture outcome could not be verified",
+        result: null,
+      }),
+      "cancelled recovery request changed its bounded contract",
+    );
+    await waitFor(
+      () => document.querySelectorAll('.workflow-step[data-step-status="failed"]').length === 1,
+      "cancelled recovery result did not update the Workflow rail",
+    );
+    assert(document.querySelector("#operator-action").hidden,
+      "resolved cancelled effect kept an actionable recovery form");
+    await waitFor(
+      () => document.querySelector("#toast-region .toast:last-child")?.textContent.includes(
+        "运行保持已取消状态",
+      ),
+      "cancelled recovery terminal toast was not rendered",
+    );
+    const recoveryToast = document.querySelector("#toast-region .toast:last-child");
+    assert(recoveryToast && recoveryToast.textContent.includes("运行保持已取消状态"),
+      "cancelled recovery did not disclose its terminal outcome");
+    assert(!recoveryToast.textContent.includes("显式恢复"),
+      "cancelled recovery incorrectly invited Loop re-entry");
+    record("cancelled-recovery");
+  }
+
+  async function workflowRefreshBurstCase(fixture) {
+    fixture.reset("workflow-refresh-burst");
+    const context = activateRun("run-workflow");
+    setRunProjection(fixture.workflowProjectionAtCursor("run-workflow", 20, 1), context);
+    addEvent(fixture.projectedEvent("run-workflow", "fixture.refresh", 1));
+    await waitFor(
+      () => fixture.pendingCount("workflow-refresh-burst-status") === 1,
+      "first Workflow status refresh was not delayed",
+    );
+    for (let seq = 2; seq <= 20; seq += 1) {
+      addEvent(fixture.projectedEvent("run-workflow", "fixture.refresh", seq));
+    }
+    await tick();
+    assert(fixture.workflowStatusInFlight === 1, "Workflow refresh lost its active request");
+    assert(fixture.workflowStatusMaxInFlight === 1, "Workflow refresh requests overlapped");
+    fixture.resolveNext(
+      "workflow-refresh-burst-status",
+      fixture.json(fixture.workflowProjectionAtCursor("run-workflow", 20, 2)),
+    );
+    await waitFor(
+      () => fixture.workflowStatusCount === 2 && fixture.workflowStatusInFlight === 0 &&
+        state.run && state.run.run_id === "run-workflow" && state.run.revision === 3,
+      "coalesced Workflow follow-up refresh did not settle",
+    );
+    assert(fixture.workflowStatusMaxInFlight === 1, "Workflow refresh exceeded one in-flight GET");
+    assert(state.run.latest_seq === 20 && state.run.workflow.latest_seq === 20,
+      "Workflow refresh did not retain the greatest coherent cursor");
+    await open("run-new");
+    await waitForSelected("run-new", "fresh selected run");
+    record("workflow-refresh-burst");
+  }
+
+  async function workflowRefreshSwitchCase(fixture) {
+    fixture.reset("workflow-refresh-switch");
+    const context = activateRun("run-workflow");
+    setRunProjection(fixture.workflowProjectionAtCursor("run-workflow", 1, 1), context);
+    addEvent(fixture.projectedEvent("run-workflow", "fixture.refresh", 1));
+    await waitFor(
+      () => fixture.pendingCount("workflow-refresh-switch-status") === 1,
+      "old Workflow refresh was not delayed",
+    );
+    await open("run-new");
+    await waitForSelected("run-new", "fresh selected run");
+    fixture.resolveNext(
+      "workflow-refresh-switch-status",
+      fixture.json(fixture.workflowProjectionAtCursor("run-workflow", 1, 2)),
+    );
+    await tick();
+    await tick();
+    assertFreshNewView("workflow-refresh-switch");
+    assert(fixture.workflowStatusMaxInFlight === 1,
+      "old Workflow refresh overlapped another status request");
+    record("workflow-refresh-switch");
   }
 
   function unavailableWorkflowCase() {
@@ -628,7 +985,11 @@
     );
     unavailableWorkflowCase();
     memorySkillSurfaceCase();
-    workflowSurfaceCase();
+    await workflowSurfaceCase();
+    workflowProjectionContractCase(fixture);
+    await cancelledRecoveryCase(fixture);
+    await workflowRefreshBurstCase(fixture);
+    await workflowRefreshSwitchCase(fixture);
     await staleStatusCase(fixture);
     await sameRunEpochCase(fixture);
     await coldEventsCase(fixture);

@@ -186,8 +186,8 @@
     const steps = [...surface.querySelectorAll(".workflow-step")];
     assert(steps.length === 2, "Workflow ordered step count is invalid");
     assert(
-      JSON.stringify(steps.map((step) => step.dataset.stepState)) === JSON.stringify(expectedStates),
-      `Workflow durable step states are invalid: ${steps.map((step) => step.dataset.stepState)}`,
+      JSON.stringify(steps.map((step) => step.dataset.stepStatus)) === JSON.stringify(expectedStates),
+      `Workflow durable step states are invalid: ${steps.map((step) => step.dataset.stepStatus)}`,
     );
     return surface;
   }
@@ -196,7 +196,7 @@
     const card = workflowCard();
     assert(card, "production Workbench did not load the real typed Workflow application");
     card.click();
-    assertWorkflowSurface(["queued", "queued"]);
+    assertWorkflowSurface(["pending", "pending"]);
 
     const input = document.querySelector("#task-input");
     input.value = WORKFLOW_INPUT;
@@ -214,7 +214,7 @@
     assert(approvalText.includes("wf_record_"), "approval does not name the wrapper Tool");
     assert(approvalText.includes("record"), "approval does not expose the bound Workflow step");
     assert(await actionCount() === 1, "Workflow effect occurred before approval");
-    const pausedSurface = assertWorkflowSurface(["completed", "approval"]);
+    const pausedSurface = assertWorkflowSurface(["completed", "approval_required"]);
     assert(pausedSurface.textContent.includes("CURRENT DURABLE STEP · 02 / record"), "current durable step is not visible");
     assert(pausedSurface.textContent.includes("HUMAN GATE"), "Workflow human gate is not visible");
 
@@ -226,7 +226,7 @@
       "Workflow approval did not stop at explicit resume",
     );
     assert(await actionCount() === 1, "Workflow approval implicitly executed the effect");
-    assertWorkflowSurface(["completed", "ready"]);
+    assertWorkflowSurface(["completed", "resume_required"]);
 
     document.querySelector("#timeline-tab").click();
     document.querySelector("#operator-action .button.brass").click();

@@ -53,7 +53,15 @@ from .plugins import (
     validate_registration,
     worker_content_sha256,
 )
-from .projection import event_projection, run_list_projection, run_projection, validate_run_id
+from .projection import (
+    MAX_PUBLIC_PROJECTION_EXTENSION_BYTES,
+    ProjectionIntegrityError,
+    compose_run_projection,
+    event_projection,
+    run_list_projection,
+    run_projection,
+    validate_run_id,
+)
 from .provider_anthropic import AnthropicMessagesModel
 from .provider_openai import OpenAIResponsesModel
 from .runtime import (
@@ -117,6 +125,7 @@ __all__ = [
     "ProviderTimeoutError",
     "PermissionDisclosure",
     "PermissionSet",
+    "ProjectionIntegrityError",
     "PluginLoadError",
     "PluginManifest",
     "PluginPermissionError",
@@ -138,6 +147,8 @@ __all__ = [
     "SchemaVersionError",
     "StoreError",
     "StoredEvent",
+    "MAX_PUBLIC_PROJECTION_EXTENSION_BYTES",
+    "compose_run_projection",
     "event_projection",
     "is_valid_app_id",
     "is_valid_tool_call_id",

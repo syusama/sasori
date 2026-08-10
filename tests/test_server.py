@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import http.client
 import json
 import socket
@@ -32,6 +33,14 @@ from sasori.server import (  # noqa: E402
 from sasori_apps.workflow_incident import (  # noqa: E402
     APP_ID as WORKFLOW_INCIDENT_ID,
     WORKFLOW_SPEC as INCIDENT_WORKFLOW_SPEC,
+)
+from sasori_flow import (  # noqa: E402
+    InputRef,
+    InputSlot,
+    ToolStep,
+    WorkflowSpec,
+    compile_workflow,
+    workflow_app_id,
 )
 
 
@@ -142,6 +151,7 @@ class ServerTests(unittest.TestCase):
             {"run_id": "http-1", "input": "write"},
         )
         self.assertEqual((status, paused["state"]), (202, "paused"))
+        self.assertNotIn("workflow", paused)
         fingerprint = paused["pending"]["fingerprint"]
         status, decided, _ = self.request(
             server,
@@ -202,6 +212,177 @@ class ServerTests(unittest.TestCase):
             f"/v1/runs/http-1/events?after_seq={events['latest_seq'] + 1}",
         )
         self.assertEqual((status, error["error"]["code"]), (409, "cursor_ahead"))
+
+    def test_http_ignores_legacy_full_projection_override(self):
+        class LegacyHarness(Harness):
+            def public_run_projection(self, run_id):
+                return {
+                    "run_id": "forged",
+                    "app_id": "forged.app",
+                    "state": "completed",
+                }
+
+        class FinalModel:
+            async def complete(self, messages, tools):
+                return ModelReply(content="done")
+
+        server = self.start(
+            app=lambda store: LegacyHarness(FinalModel(), store=store)
+        )
+        status, projected, _ = self.request(
+            server,
+            "POST",
+            "/v1/runs",
+            {"run_id": "http-core-owned", "input": "hello"},
+        )
+        self.assertEqual((status, projected["run_id"]), (200, "http-core-owned"))
+        self.assertEqual(projected["state"], "completed")
+        self.assertNotIn("workflow", projected)
+
+    def test_http_projection_extension_failure_is_stable_and_redacted(self):
+        private = "private transcript and arguments"
+
+        class MalformedHarness(Harness):
+            def public_projection_extension(self, run_id):
+                raise RuntimeError(private)
+
+        class FinalModel:
+            async def complete(self, messages, tools):
+                return ModelReply(content="done")
+
+        server = self.start(
+            app=lambda store: MalformedHarness(FinalModel(), store=store)
+        )
+        status, error, _ = self.request(
+            server,
+            "POST",
+            "/v1/runs",
+            {"run_id": "http-projection-failed", "input": "hello"},
+        )
+        self.assertEqual(
+            (status, error["error"]),
+            (
+                502,
+                {
+                    "code": "projection_integrity_failed",
+                    "message": "public projection extension failed integrity validation",
+                    "retryable": False,
+                },
+            ),
+        )
+        self.assertNotIn(private, json.dumps(error))
+
+    def test_active_workflow_status_projection_remains_cursor_coherent(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        async def slow(value: str) -> str:
+            started.set()
+            await asyncio.to_thread(release.wait)
+            return value
+
+        tool = Tool("slow_read", slow, effect="read_only")
+        spec = WorkflowSpec(
+            "http-active-projection",
+            "1",
+            (InputSlot("value", "string"),),
+            (
+                ToolStep.from_tool(
+                    "slow",
+                    tool,
+                    {"value": InputRef("value")},
+                    result_type="string",
+                ),
+            ),
+            "slow",
+        )
+        app_id = workflow_app_id(spec)
+
+        class UnusedModel:
+            async def complete(self, messages, tools):
+                raise AssertionError("compiled Workflow must replace the base model")
+
+        self.module.create = lambda store: compile_workflow(
+            spec,
+            Harness(
+                UnusedModel(),
+                (tool,),
+                store=store,
+                model_timeout=2,
+                tool_timeout=5,
+            ),
+        )
+        server = create_server(
+            "127.0.0.1",
+            0,
+            database=self.db,
+            apps={app_id: "sasori_server_test_app:create"},
+            trusted_loopback_no_auth=True,
+            sse_max_seconds=2,
+            sse_keepalive_seconds=0.1,
+        )
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        self.servers.append((server, server_thread))
+        drive: dict[str, object] = {}
+
+        def post_run() -> None:
+            drive["response"] = self.request(
+                server,
+                "POST",
+                "/v1/runs",
+                {
+                    "run_id": "HttpActiveWorkflow",
+                    "app_id": app_id,
+                    "input": "hold",
+                },
+            )
+
+        drive_thread = threading.Thread(target=post_run, daemon=True)
+        drive_thread.start()
+        try:
+            self.assertTrue(started.wait(2), "Workflow Tool did not enter its await boundary")
+
+            def read_status(_: int):
+                return self.request(
+                    server, "GET", "/v1/runs/HttpActiveWorkflow"
+                )
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                responses = list(pool.map(read_status, range(32)))
+            cursors = []
+            revisions = []
+            for status, projected, _ in responses:
+                self.assertEqual(status, 200)
+                self.assertEqual(projected["state"], "running")
+                self.assertEqual(
+                    projected["workflow"]["latest_seq"], projected["latest_seq"]
+                )
+                self.assertEqual(projected["workflow"]["current_step_id"], "slow")
+                self.assertEqual(
+                    [step["status"] for step in projected["workflow"]["steps"]],
+                    ["running"],
+                )
+                self.assertIsNotNone(
+                    projected["workflow"]["steps"][0]["call_id"]
+                )
+                cursors.append(projected["latest_seq"])
+                revisions.append(projected["revision"])
+            self.assertTrue(all(cursor == cursors[0] for cursor in cursors))
+            self.assertTrue(all(revision == revisions[0] for revision in revisions))
+        finally:
+            release.set()
+            drive_thread.join(5)
+        self.assertFalse(drive_thread.is_alive())
+        status, completed, _ = drive["response"]
+        self.assertEqual((status, completed["state"]), (200, "completed"))
+        self.assertEqual(
+            completed["workflow"]["latest_seq"], completed["latest_seq"]
+        )
+        self.assertEqual(
+            [step["status"] for step in completed["workflow"]["steps"]],
+            ["completed"],
+        )
 
     def test_multi_app_binding_catalog_and_history_are_durable(self):
         class NamedModel:
@@ -417,6 +598,14 @@ class ServerTests(unittest.TestCase):
             )
             self.assertEqual((status, paused["state"]), (202, "paused"))
             self.assertEqual(paused["input"], "checkout latency is high")
+            self.assertEqual(
+                paused["workflow"]["definition_sha256"],
+                INCIDENT_WORKFLOW_SPEC.digest,
+            )
+            self.assertEqual(
+                [step["status"] for step in paused["workflow"]["steps"]],
+                ["completed", "approval_required"],
+            )
             self.assertEqual(paused["pending"]["effect"], "side_effecting")
             self.assertEqual(
                 paused["pending"]["arguments"]["step_id"], "record"
@@ -430,15 +619,30 @@ class ServerTests(unittest.TestCase):
                 {"fingerprint": fingerprint, "approved": True},
             )
             self.assertEqual((status, decided["detail"]), (200, "awaiting_resume"))
+            self.assertEqual(
+                decided["workflow"]["steps"][1]["status"], "resume_required"
+            )
             self.assertFalse(action_log.exists())
             status, completed, _ = self.request(
                 server, "POST", "/v1/runs/HttpTypedWorkflow/resume", {}
             )
             self.assertEqual((status, completed["state"]), (200, "completed"))
+            self.assertEqual(
+                [step["status"] for step in completed["workflow"]["steps"]],
+                ["completed", "completed"],
+            )
+            self.assertIsNone(completed["workflow"]["current_step_id"])
             outcome = json.loads(completed["final_message"]["content"])
             self.assertEqual(outcome["status"], "succeeded")
             self.assertEqual(outcome["definition_sha256"], INCIDENT_WORKFLOW_SPEC.digest)
             self.assertEqual(len(action_log.read_text("utf-8").splitlines()), 1)
+            status, reopened, _ = self.request(
+                server, "GET", "/v1/runs/HttpTypedWorkflow"
+            )
+            self.assertEqual((status, reopened), (200, completed))
+            status, history, _ = self.request(server, "GET", "/v1/runs?limit=10")
+            self.assertEqual(status, 200)
+            self.assertNotIn("workflow", history["items"][0])
 
     def test_auth_cursor_and_request_boundary_fail_closed(self):
         server = self.start(
@@ -547,8 +751,10 @@ class ServerTests(unittest.TestCase):
             ("/assets/event-reducer.0.1.0.js", "text/javascript"),
             ("/assets/app.0.1.2.js", "text/javascript"),
             ("/assets/app.0.1.3.js", "text/javascript"),
+            ("/assets/app.0.1.4.js", "text/javascript"),
             ("/assets/workflow.0.1.0.css", "text/css"),
             ("/assets/workflow.0.1.0.js", "text/javascript"),
+            ("/assets/workflow.0.2.0.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -568,7 +774,11 @@ class ServerTests(unittest.TestCase):
         )
         self.assertLess(
             page.index("/assets/app.0.1.3.js"),
-            page.index("/assets/workflow.0.1.0.js"),
+            page.index("/assets/app.0.1.4.js"),
+        )
+        self.assertLess(
+            page.index("/assets/app.0.1.4.js"),
+            page.index("/assets/workflow.0.2.0.js"),
         )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
@@ -593,9 +803,25 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("innerHTML", artifact_script)
         artifact_styles = assets["/assets/artifacts.0.1.0.css"]
         self.assertIn(".artifact-card", artifact_styles)
-        workflow_script = assets["/assets/workflow.0.1.0.js"]
-        self.assertIn("state.eventState.events", workflow_script)
+        recovery_script = assets["/assets/app.0.1.4.js"]
+        self.assertIn("renderOperatorActionWithCancelledPolicy", recovery_script)
+        self.assertIn("state.run.state !== \"cancelled\"", recovery_script)
+        self.assertIn("retry.remove()", recovery_script)
+        self.assertNotIn("innerHTML", recovery_script)
+        workflow_script = assets["/assets/workflow.0.2.0.js"]
+        self.assertIn("state.run.workflow", workflow_script)
+        self.assertIn(
+            "function workflowRunProjection(app, contract, run = state.run)",
+            workflow_script,
+        )
         self.assertIn("function renderWorkflowSurface(app)", workflow_script)
+        self.assertIn("workflowRefreshInFlight", workflow_script)
+        self.assertIn("workflowRefreshPendingContext", workflow_script)
+        self.assertIn(
+            "value.latest_seq !== Number(run.latest_seq || 0)", workflow_script
+        )
+        self.assertNotIn("state.eventState.events", workflow_script)
+        self.assertNotIn("function workflowStepProjection", workflow_script)
         self.assertNotIn("reduceEvent(", workflow_script)
         self.assertNotIn("new Map", workflow_script)
         self.assertNotIn("innerHTML", workflow_script)
@@ -608,7 +834,9 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.3.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
-        status, error, _ = self.request(server, "GET", "/assets/workflow.0.1.0.js?v=1")
+        status, error, _ = self.request(server, "GET", "/assets/app.0.1.4.js?v=1")
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(server, "GET", "/assets/workflow.0.2.0.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))

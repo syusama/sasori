@@ -35,8 +35,10 @@ WEB_RESOURCES = (
     "event-reducer.0.1.0.js",
     "app.0.1.2.js",
     "app.0.1.3.js",
+    "app.0.1.4.js",
     "workflow.0.1.0.css",
     "workflow.0.1.0.js",
+    "workflow.0.2.0.js",
     "mark.0.1.0.svg",
 )
 
@@ -81,14 +83,44 @@ def main() -> int:
     workflow_spec = getattr(workflow_app, "WORKFLOW_SPEC", None)
     create_workflow_harness = getattr(workflow_app, "create_harness", None)
     derive_workflow_app_id = getattr(modules["sasori_flow"], "workflow_app_id", None)
+    SerialWorkflowBuilder = getattr(
+        modules["sasori_flow"], "SerialWorkflowBuilder", None
+    )
+    workflow_spec_from_data = getattr(
+        modules["sasori_flow"], "workflow_spec_from_data", None
+    )
+    workflow_spec_from_json = getattr(
+        modules["sasori_flow"], "workflow_spec_from_json", None
+    )
     if (
         not isinstance(workflow_app_id, str)
         or workflow_spec is None
         or not callable(create_workflow_harness)
         or not callable(derive_workflow_app_id)
+        or not callable(SerialWorkflowBuilder)
+        or not callable(workflow_spec_from_data)
+        or not callable(workflow_spec_from_json)
         or workflow_app_id != derive_workflow_app_id(workflow_spec)
     ):
         raise RuntimeError("installed Workflow application identity is invalid")
+    workflow_document = json.dumps(
+        workflow_spec.as_data(),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    parsed_workflows = (
+        workflow_spec_from_data(workflow_spec.as_data()),
+        workflow_spec_from_json(workflow_document.encode("utf-8")),
+    )
+    if any(
+        parsed.as_data() != workflow_spec.as_data()
+        or parsed.digest != workflow_spec.digest
+        or derive_workflow_app_id(parsed) != workflow_app_id
+        for parsed in parsed_workflows
+    ):
+        raise RuntimeError("installed Workflow authoring identity is invalid")
 
     SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
     RunPaused = getattr(modules["sasori"], "RunPaused", None)
@@ -120,11 +152,29 @@ def main() -> int:
                 raise RuntimeError("installed Workflow did not require approval")
             if action_log.exists():
                 raise RuntimeError("installed Workflow executed before approval and resume")
+            paused_projection = harness.public_run_projection("InstalledWorkflow")
+            if (
+                paused_projection.get("state") != "paused"
+                or paused_projection.get("workflow", {}).get("definition_sha256")
+                != workflow_spec.digest
+                or [
+                    step.get("status")
+                    for step in paused_projection.get("workflow", {}).get("steps", ())
+                ]
+                != ["completed", "approval_required"]
+            ):
+                raise RuntimeError("installed Workflow paused projection is invalid")
             harness.resolve_approval(
                 "InstalledWorkflow", approval_request.fingerprint, True
             )
             if action_log.exists():
                 raise RuntimeError("installed Workflow approval executed the effect")
+            approved_projection = harness.public_run_projection("InstalledWorkflow")
+            if [
+                step.get("status")
+                for step in approved_projection.get("workflow", {}).get("steps", ())
+            ] != ["completed", "resume_required"]:
+                raise RuntimeError("installed Workflow approved projection is invalid")
             result = asyncio.run(harness.resume("InstalledWorkflow"))
             final_content = result.final_message.content
             final = json.loads(final_content)
@@ -157,6 +207,18 @@ def main() -> int:
             ):
                 raise RuntimeError("installed Workflow typed final is invalid")
             events = first_store.events("InstalledWorkflow")
+            completed_projection = harness.public_run_projection("InstalledWorkflow")
+            if (
+                completed_projection.get("state") != "completed"
+                or completed_projection.get("workflow", {}).get("current_step_id")
+                is not None
+                or [
+                    step.get("status")
+                    for step in completed_projection.get("workflow", {}).get("steps", ())
+                ]
+                != ["completed", "completed"]
+            ):
+                raise RuntimeError("installed Workflow completed projection is invalid")
         finally:
             first_store.close()
 
@@ -169,6 +231,8 @@ def main() -> int:
             if (
                 again.final_message.content != final_content
                 or second_store.events("InstalledWorkflow") != events
+                or reopened.public_run_projection("InstalledWorkflow")
+                != completed_projection
             ):
                 raise RuntimeError("installed Workflow durable reopen changed the run")
         finally:

@@ -34,9 +34,9 @@ from sasori_artifacts import (
 from .app import AppLoadError, load_harness
 from .contracts import Message, is_valid_app_id
 from .projection import (
+    compose_run_projection,
     event_projection,
     run_list_projection,
-    run_projection,
     validate_run_id,
 )
 from .runtime import (
@@ -73,8 +73,10 @@ _WORKBENCH_ASSETS = {
     "/assets/event-reducer.0.1.0.js": ("event-reducer.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/app.0.1.2.js": ("app.0.1.2.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/app.0.1.3.js": ("app.0.1.3.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/app.0.1.4.js": ("app.0.1.4.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow.0.1.0.css": ("workflow.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow.0.1.0.js": ("workflow.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/workflow.0.2.0.js": ("workflow.0.2.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/mark.0.1.0.svg": ("mark.0.1.0.svg", "image/svg+xml", "public, max-age=31536000, immutable"),
 }
 _WORKBENCH_SECURITY_HEADERS = {
@@ -390,6 +392,16 @@ class _Owner:
             app_id = next(iter(self.apps))
         return self._selected(app_id)
 
+    def _run_projection(
+        self, run_id: str, harness: Harness | None = None
+    ) -> dict[str, object]:
+        assert self._store is not None
+        if harness is None:
+            snapshot = self._store.load(run_id)
+            if snapshot.app_id is not None:
+                harness = self._harnesses.get(snapshot.app_id)
+        return compose_run_projection(self._store, run_id, harness)
+
     def _materialize_final_artifact(self, run_id: str) -> None:
         assert self._store is not None and self._artifacts is not None
         if not self.publish_final_artifact:
@@ -452,9 +464,9 @@ class _Owner:
                     (Message("user", prompt),), run_id=run_id, app_id=selected_id
                 )
                 self._materialize_final_artifact(result.run_id)
-                return 200, run_projection(self._store, result.run_id)
+                return 200, self._run_projection(result.run_id, harness)
             except RunPaused as paused:
-                return 202, run_projection(self._store, paused.run_id)
+                return 202, self._run_projection(paused.run_id, harness)
 
         return await self._exclusive(drive)
 
@@ -469,9 +481,9 @@ class _Owner:
             try:
                 await harness.resume(run_id)
                 self._materialize_final_artifact(run_id)
-                return 200, run_projection(self._store, run_id)
+                return 200, self._run_projection(run_id, harness)
             except RunPaused:
-                return 202, run_projection(self._store, run_id)
+                return 202, self._run_projection(run_id, harness)
             except RunCancelled as exc:
                 raise InvalidTransition(str(exc)) from None
 
@@ -485,7 +497,7 @@ class _Owner:
 
         async def mutate():
             harness.resolve_approval(run_id, fingerprint, approved)
-            return run_projection(self._store, run_id)
+            return self._run_projection(run_id, harness)
 
         return await self._exclusive(mutate)
 
@@ -507,13 +519,13 @@ class _Owner:
                 )
             except ValueError as exc:
                 raise InvalidTransition(str(exc)) from None
-            return run_projection(self._store, run_id)
+            return self._run_projection(run_id, harness)
 
         return await self._exclusive(mutate)
 
     async def status(self, run_id: str) -> dict[str, object]:
         assert self._store is not None
-        return run_projection(self._store, run_id)
+        return self._run_projection(run_id)
 
     async def events(self, run_id: str, after: int) -> list[dict[str, object]]:
         assert self._store is not None

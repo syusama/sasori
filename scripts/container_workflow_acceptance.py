@@ -167,19 +167,124 @@ def _catalog(client: HTTPClient) -> dict[str, object]:
         "wrapper_names": names,
         "wrapper_revisions": [item.get("tool_revision") for item in wrappers],
         "wrapper_schema_sha256": [item.get("schema_sha256") for item in wrappers],
+        "steps": projected_steps,
     }
+
+
+def _workflow_projection(
+    value: object,
+    *,
+    catalog: dict[str, object],
+    latest_seq: int,
+    statuses: tuple[str, str],
+    current_step_id: str | None,
+) -> dict[str, object]:
+    workflow = _mapping(value, "Workflow public projection")
+    expected_fields = {
+        "schema_version",
+        "workflow_id",
+        "version",
+        "definition_sha256",
+        "app_id",
+        "execution",
+        "output_step",
+        "current_step_id",
+        "latest_seq",
+        "steps",
+    }
+    if (
+        set(workflow) != expected_fields
+        or workflow.get("schema_version") != 1
+        or workflow.get("workflow_id") != WORKFLOW_ID
+        or workflow.get("version") != "1"
+        or workflow.get("definition_sha256") != catalog["definition_sha256"]
+        or workflow.get("app_id") != catalog["app_id"]
+        or workflow.get("execution") != "single-harness-ordered-tools-v1"
+        or workflow.get("output_step") != "record"
+        or workflow.get("current_step_id") != current_step_id
+        or workflow.get("latest_seq") != latest_seq
+    ):
+        raise AcceptanceError("Workflow public projection identity is invalid")
+    values = workflow.get("steps")
+    contract_steps = catalog.get("steps")
+    if (
+        not isinstance(values, list)
+        or len(values) != 2
+        or not isinstance(contract_steps, list)
+        or len(contract_steps) != 2
+    ):
+        raise AcceptanceError("Workflow public step projection is invalid")
+    steps = [_mapping(item, "Workflow public step") for item in values]
+    expected_step_fields = {
+        "position",
+        "step_id",
+        "kind",
+        "logical_tool_name",
+        "dispatch_tool_name",
+        "effect",
+        "logical_tool_revision",
+        "dispatch_tool_revision",
+        "logical_schema_sha256",
+        "dispatch_schema_sha256",
+        "result_type",
+        "max_result_bytes",
+        "call_id",
+        "status",
+        "error_code",
+    }
+    call_ids = []
+    for index, (step, raw_contract) in enumerate(
+        zip(steps, contract_steps, strict=True)
+    ):
+        contract = _mapping(raw_contract, "Workflow catalog step")
+        call_id = step.get("call_id")
+        expected = {
+            "position": contract.get("position"),
+            "step_id": contract.get("step_id"),
+            "kind": "tool",
+            "logical_tool_name": contract.get("logical_tool_name"),
+            "dispatch_tool_name": contract.get("dispatch_tool_name"),
+            "effect": contract.get("effect"),
+            "logical_tool_revision": contract.get("logical_tool_revision"),
+            "dispatch_tool_revision": contract.get("dispatch_tool_revision"),
+            "logical_schema_sha256": contract.get("logical_schema_sha256"),
+            "dispatch_schema_sha256": contract.get("dispatch_schema_sha256"),
+            "result_type": contract.get("result_type"),
+            "max_result_bytes": contract.get("max_result_bytes"),
+            "status": statuses[index],
+            "error_code": None,
+        }
+        if (
+            set(step) != expected_step_fields
+            or any(step.get(key) != item for key, item in expected.items())
+            or not isinstance(call_id, str)
+            or not call_id
+            or "\x00" in call_id
+            or len(call_id.encode("utf-8")) > 256
+        ):
+            raise AcceptanceError("Workflow public step contract is inconsistent")
+        call_ids.append(call_id)
+    if len(set(call_ids)) != 2:
+        raise AcceptanceError("Workflow public call identity is invalid")
+    encoded = _canonical(workflow)
+    if WORKFLOW_INPUT.encode("utf-8") in encoded or EXPECTED_VALUE.encode("utf-8") in encoded:
+        raise AcceptanceError("Workflow public projection disclosed private values")
+    return workflow
 
 
 def _projection(
     value: object,
     *,
     run_id: str,
-    app_id: str,
+    catalog: dict[str, object],
     state: str,
     pause_reason: str | None,
     detail: str,
+    statuses: tuple[str, str],
+    current_step_id: str | None,
 ) -> dict[str, object]:
     projected = _mapping(value, "Workflow run projection")
+    app_id = str(catalog["app_id"])
     expected = {
         "run_id": run_id,
         "app_id": app_id,
@@ -190,7 +295,16 @@ def _projection(
     }
     if any(projected.get(key) != item for key, item in expected.items()):
         raise AcceptanceError("Workflow run projection is inconsistent")
-    _integer(projected.get("latest_seq"), "Workflow latest sequence", minimum=1)
+    latest_seq = _integer(
+        projected.get("latest_seq"), "Workflow latest sequence", minimum=1
+    )
+    _workflow_projection(
+        projected.get("workflow"),
+        catalog=catalog,
+        latest_seq=latest_seq,
+        statuses=statuses,
+        current_step_id=current_step_id,
+    )
     return projected
 
 
@@ -416,10 +530,12 @@ def run_prepare(client: HTTPClient, run_id: str) -> dict[str, object]:
             expected_status=202,
         ),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="paused",
         pause_reason="approval_required",
         detail="awaiting_approval",
+        statuses=("completed", "approval_required"),
+        current_step_id="record",
     )
     fingerprint = _pending(
         paused.get("pending"),
@@ -433,18 +549,22 @@ def run_prepare(client: HTTPClient, run_id: str) -> dict[str, object]:
             body={"fingerprint": fingerprint, "approved": True},
         ),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="paused",
         pause_reason="resume_required",
         detail="awaiting_resume",
+        statuses=("completed", "resume_required"),
+        current_step_id="record",
     )
     durable = _projection(
         client.json("GET", f"/v1/runs/{encoded_run_id}"),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="paused",
         pause_reason="resume_required",
         detail="awaiting_resume",
+        statuses=("completed", "resume_required"),
+        current_step_id="record",
     )
     if durable != decided:
         raise AcceptanceError("Workflow approval response is not durable")
@@ -473,22 +593,33 @@ def run_complete(client: HTTPClient, prepared: dict[str, object]) -> dict[str, o
     app_id = str(prepared["app_id"])
     digest = str(prepared["definition_sha256"])
     wrappers = list(prepared["wrapper_names"])
+    catalog = _catalog(client)
+    if (
+        catalog["app_id"] != app_id
+        or catalog["definition_sha256"] != digest
+        or catalog["wrapper_names"] != wrappers
+    ):
+        raise AcceptanceError("Workflow catalog changed before resume")
     encoded_run_id = quote(run_id, safe="")
     completed = _projection(
         client.json("POST", f"/v1/runs/{encoded_run_id}/resume", body={}),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="completed",
         pause_reason=None,
         detail="completed",
+        statuses=("completed", "completed"),
+        current_step_id=None,
     )
     durable = _projection(
         client.json("GET", f"/v1/runs/{encoded_run_id}"),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="completed",
         pause_reason=None,
         detail="completed",
+        statuses=("completed", "completed"),
+        current_step_id=None,
     )
     if durable != completed:
         raise AcceptanceError("completed Workflow projection is not durable")
@@ -527,10 +658,12 @@ def run_after_restart(
     durable = _projection(
         client.json("GET", f"/v1/runs/{encoded_run_id}"),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="completed",
         pause_reason=None,
         detail="completed",
+        statuses=("completed", "completed"),
+        current_step_id=None,
     )
     final = _final(durable.get("final_message"), digest)
     events, latest = _events(client, run_id)
@@ -566,10 +699,12 @@ def run_after_restart(
     durable_after = _projection(
         client.json("GET", f"/v1/runs/{encoded_run_id}"),
         run_id=run_id,
-        app_id=app_id,
+        catalog=catalog,
         state="completed",
         pause_reason=None,
         detail="completed",
+        statuses=("completed", "completed"),
+        current_step_id=None,
     )
     events_after, latest_after = _events(client, run_id)
     artifact_after = _artifact(client, run_id, final)

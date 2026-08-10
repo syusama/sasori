@@ -91,14 +91,17 @@ def plain_json(value: object) -> object:
 
 def canonical_json(value: object) -> str:
     try:
+        frozen = _freeze_json(value)
         return json.dumps(
-            plain_json(value),
+            plain_json(frozen),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
             allow_nan=False,
         )
-    except (TypeError, ValueError, UnicodeEncodeError):
+    except WorkflowValidationError:
+        raise
+    except (TypeError, ValueError, UnicodeEncodeError, RecursionError):
         raise WorkflowValidationError("value is not canonical JSON data") from None
 
 

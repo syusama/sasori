@@ -747,6 +747,25 @@ class WorkflowHarness(Harness):
             "steps": steps,
         }
 
+    def public_projection(self, run_id: str) -> dict[str, object]:
+        """Return the bounded, redacted Workflow step projection."""
+
+        from .projection import workflow_public_projection
+
+        return workflow_public_projection(self, run_id)
+
+    def public_projection_extension(self, run_id: str) -> dict[str, object]:
+        """Return the only public extension accepted by the core composer."""
+
+        return {"workflow": self.public_projection(run_id)}
+
+    def public_run_projection(self, run_id: str) -> dict[str, object]:
+        """Compose the core run projection with the public Workflow extension."""
+
+        from .projection import workflow_public_run_projection
+
+        return workflow_public_run_projection(self, run_id)
+
     def _assert_run(self, run_id: str):
         state = self.store.load(run_id)
         if state.app_id != self.app_id:

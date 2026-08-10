@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 from .app import AppLoadError, load_harness
 from .contracts import Message
-from .projection import event_projection, run_projection, validate_run_id
+from .projection import compose_run_projection, event_projection, validate_run_id
 from .runtime import RunCancelled, RunPaused, SasoriError
 from .sqlite_store import (
     ApprovalConflict,
@@ -104,6 +104,12 @@ def _print_projection(value: dict[str, object], json_output: bool) -> None:
         print("FINAL " + str(final.get("content", "")))
 
 
+def _run_projection(
+    store: SQLiteStore, run_id: str, harness=None
+) -> dict[str, object]:
+    return compose_run_projection(store, run_id, harness)
+
+
 def _print_error(code: str, message: str, json_output: bool) -> None:
     if json_output:
         _print_json({"ok": False, "error": {"code": code, "message": message}})
@@ -156,7 +162,10 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
     try:
         store = SQLiteStore(args.db)
         if args.command == "status":
-            _print_projection(run_projection(store, args.run_id), args.json_output)
+            harness = _need_app(args, store) if args.app else None
+            _print_projection(
+                _run_projection(store, args.run_id, harness), args.json_output
+            )
             return 0
         if args.command == "events":
             return _events(args, store)
@@ -189,26 +198,30 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                 run_id = result.run_id
             except RunPaused as paused:
                 _print_projection(
-                    run_projection(store, paused.run_id), args.json_output
+                    _run_projection(store, paused.run_id, harness), args.json_output
                 )
                 return 3
-            _print_projection(run_projection(store, run_id), args.json_output)
+            _print_projection(_run_projection(store, run_id, harness), args.json_output)
             return 0
         run_id = validate_run_id(args.run_id)
         if args.command == "resume":
             try:
                 asyncio.run(harness.resume(run_id))
             except RunPaused:
-                _print_projection(run_projection(store, run_id), args.json_output)
+                _print_projection(
+                    _run_projection(store, run_id, harness), args.json_output
+                )
                 return 3
             except RunCancelled:
-                _print_projection(run_projection(store, run_id), args.json_output)
+                _print_projection(
+                    _run_projection(store, run_id, harness), args.json_output
+                )
                 return 4
-            _print_projection(run_projection(store, run_id), args.json_output)
+            _print_projection(_run_projection(store, run_id, harness), args.json_output)
             return 0
         if args.command == "approval":
             harness.resolve_approval(run_id, args.fingerprint, args.approve)
-            _print_projection(run_projection(store, run_id), args.json_output)
+            _print_projection(_run_projection(store, run_id, harness), args.json_output)
             return 0
         if args.command == "effect":
             result: object | None = args.result_text
@@ -221,7 +234,7 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                 reason=args.reason,
                 result=result,
             )
-            _print_projection(run_projection(store, run_id), args.json_output)
+            _print_projection(_run_projection(store, run_id, harness), args.json_output)
             return 0
         raise AssertionError("unreachable command")
     except KeyboardInterrupt:
@@ -237,7 +250,10 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
         _print_error("run_cancelled", str(exc), args.json_output)
         return 4
     except RunPaused as exc:
-        _print_projection(run_projection(store, exc.run_id), args.json_output)
+        _print_projection(
+            _run_projection(store, exc.run_id, locals().get("harness")),
+            args.json_output,
+        )
         return 3
     except SasoriError as exc:
         _print_error(getattr(exc, "code", "run_failed"), str(exc), args.json_output)

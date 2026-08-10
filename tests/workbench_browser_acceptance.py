@@ -17,7 +17,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
-EXPECTED = "PASS:unavailable-workflow,memory-skill-surface,workflow-surface,stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
+EXPECTED = (
+    "PASS:unavailable-workflow,memory-skill-surface,workflow-surface,"
+    "workflow-projection-contract,cancelled-recovery,workflow-refresh-burst,workflow-refresh-switch,"
+    "stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
+)
 BROWSER_TIMEOUT_SECONDS = 35
 BROWSER_ATTEMPTS = 2
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -81,8 +85,10 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
                 "artifacts.0.1.0.css",
                 "app.0.1.2.js",
                 "app.0.1.3.js",
+                "app.0.1.4.js",
                 "workflow.0.1.0.css",
                 "workflow.0.1.0.js",
+                "workflow.0.2.0.js",
                 "event-reducer.0.1.0.js",
                 "mark.0.1.0.svg",
             }:
@@ -268,7 +274,8 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "event-reducer.0.1.0.js",
             "app.0.1.2.js",
             "app.0.1.3.js",
-            "workflow.0.1.0.js",
+            "app.0.1.4.js",
+            "workflow.0.2.0.js",
         ],
     }
 

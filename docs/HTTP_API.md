@@ -55,23 +55,94 @@ Every CLI/HTTP response uses the same public projection:
 }
 ```
 
+For a run whose exact loaded Harness is a Sasori typed Workflow, create,
+approval, effect, resume, and single-run status add one optional top-level
+`workflow` extension:
+
+```json
+{
+  "schema_version": 1,
+  "workflow_id": "incident-mechanism",
+  "version": "1",
+  "definition_sha256": "sha256...",
+  "app_id": "flow.incident-mechanism....",
+  "execution": "single-harness-ordered-tools-v1",
+  "output_step": "record",
+  "current_step_id": "record",
+  "latest_seq": 11,
+  "steps": [
+    {
+      "position": 2,
+      "step_id": "record",
+      "kind": "tool",
+      "logical_tool_name": "record_action",
+      "dispatch_tool_name": "wf_record_...",
+      "effect": "side_effecting",
+      "logical_tool_revision": "1",
+      "dispatch_tool_revision": "sha256...",
+      "logical_schema_sha256": "sha256...",
+      "dispatch_schema_sha256": "sha256...",
+      "result_type": "string",
+      "max_result_bytes": 32768,
+      "call_id": "wf_...",
+      "status": "approval_required",
+      "error_code": null
+    }
+  ]
+}
+```
+
+Machine status is one of `pending`, `requested`, `running`,
+`approval_required`, `resume_required`, `retryable_idempotent`,
+`effect_unknown`, `completed`, `failed`, or `stopped`. The extension is
+canonical-JSON bounded to 256 KiB and does not include Workflow input,
+arguments, literal values, intermediate output, result envelopes, approval
+fingerprints, idempotency keys, recovery reasons, provider state, timestamps,
+or exception prose. `stopped` is a projection of terminal run state, not proof
+that an arbitrary remote or synchronous operation was forcibly cancelled.
+`call_id` is `null` while a step is still `pending`; it may also be `null` for
+a downstream `stopped` step that never acquired a durable call. A cancelled
+mutable call whose outcome is ambiguous remains `effect_unknown`, even though
+the outer run is terminal. In that case only, the outer projection retains
+`pause_reason: effect_unknown` and the existing `pending` recovery handle while
+`state` remains `cancelled`. Operators may `record_result` or `fail`; retry and
+Loop re-entry remain forbidden. Resolving the ambiguity removes the handle but
+does not change the cancelled run into a resumable or completed run.
+
+Ordinary applications retain the exact base shape above. History list items do
+not include `workflow`. A server that does not have an old Workflow definition
+loaded can still return its core cold status; it never guesses a newer
+definition. If the matching loaded Workflow fails definition/transcript/call
+integrity validation, the request fails closed instead of silently omitting the
+extension. The core always constructs `run_id`, `app_id`, state, revision,
+cursor, pending Tool, and final-message fields first. A Harness can contribute
+only the exact `workflow` namespace through the bounded extension protocol; it
+cannot replace core fields. The core validates the exact Workflow v1 field and
+step allowlists, bounded types, enums, call bindings, uniqueness, and cursor;
+client validation is defense in depth, not the disclosure boundary. A
+malformed, mismatched, oversized, or throwing extension returns the stable
+`projection_integrity_failed` error without including Harness exception prose.
+
 `completed` means the Loop's final answer and event were durably committed. It is not a claim that an external business goal succeeded.
 
-After approval or manual effect resolution, the projection is paused with
-`pause_reason: "resume_required"`. The durable internal status is
+After approval or non-cancelled manual effect resolution, the projection is
+paused with `pause_reason: "resume_required"`. The durable internal status is
 `awaiting_resume`; only the explicit resume endpoint re-enters the same Loop.
+Cancelled effect resolution is the exception described above: it clears the
+recovery handle while state remains `cancelled`, with no Loop re-entry.
 
 ## Endpoints
 
 ### `GET /v1/apps`
 
-Returns schema-versioned application metadata for Incident, Research, and
-Developer. Each item contains fixed worker and skill metadata, runtime
+Returns schema-versioned application metadata for the first-party catalog
+entries, currently Incident, Research, Developer, and Incident Mechanism
+Workflow. Each item contains fixed worker and skill metadata, runtime
 availability, actual loaded tool schemas/effects/revisions, and plugin
-permission disclosure. A configured factory that did not load is
-`unavailable` with a bounded `reason_code`; catalog data never includes raw
-exceptions, API keys, environment values, system prompts, MCP snapshots, or
-internal paths.
+permission disclosure. Configuration affects availability, not whether a
+catalog entry is returned. A disabled or failed entry is `unavailable` with a
+bounded `reason_code`; catalog data never includes raw exceptions, API keys,
+environment values, system prompts, MCP snapshots, or internal paths.
 
 `requested_permissions` is disclosure. For `trusted_process` code the response
 also states `effective_access: "FULL HOST PROCESS PRIVILEGES"` and
@@ -127,7 +198,9 @@ may use the only configured application, but a multi-application server returns
 ### `GET /v1/runs/{run_id}`
 
 Returns the durable projection, including `app_id` and the initial user input,
-without driving the model. Private provider/checkpoint state is excluded.
+without driving the model. A matching loaded Workflow also returns the optional
+redacted `workflow` extension described above. Private provider/checkpoint state
+is excluded.
 
 ### `POST /v1/runs/{run_id}/approval`
 
@@ -151,8 +224,10 @@ This endpoint records the decision only and returns a paused
 ```
 
 Actions are `record_result`, `fail`, or `retry`. A non-empty audit reason is
-mandatory. Cancelled runs cannot retry. Resolution records the decision and
-returns `resume_required`; it does not drive the Loop.
+mandatory. A non-cancelled resolution records the decision and returns
+`resume_required`; it does not drive the Loop. A cancelled run cannot retry;
+`record_result` or `fail` clears its recovery handle while the run remains
+`cancelled`, and it cannot re-enter the Loop.
 
 ### `GET /v1/runs/{run_id}/events?after_seq=N`
 
