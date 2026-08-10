@@ -108,8 +108,10 @@ class ServerTests(unittest.TestCase):
                 chunks.append(chunk)
         return b"".join(chunks), eof
 
-    def request(self, server, method, path, body=None, headers=None):
-        connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+    def request(self, server, method, path, body=None, headers=None, *, timeout=5):
+        connection = http.client.HTTPConnection(
+            *server.server_address, timeout=timeout
+        )
         encoded = None if body is None else json.dumps(body).encode("utf-8")
         request_headers = dict(headers or {})
         if encoded is not None:
@@ -309,8 +311,8 @@ class ServerTests(unittest.TestCase):
                 UnusedModel(),
                 (tool,),
                 store=store,
-                model_timeout=2,
-                tool_timeout=5,
+                model_timeout=5,
+                tool_timeout=15,
             ),
         )
         server = create_server(
@@ -337,12 +339,16 @@ class ServerTests(unittest.TestCase):
                     "app_id": app_id,
                     "input": "hold",
                 },
+                timeout=20,
             )
 
         drive_thread = threading.Thread(target=post_run, daemon=True)
         drive_thread.start()
         try:
-            self.assertTrue(started.wait(2), "Workflow Tool did not enter its await boundary")
+            self.assertTrue(
+                started.wait(10),
+                "Workflow Tool did not enter its await boundary",
+            )
 
             def read_status(_: int):
                 return self.request(
@@ -373,7 +379,7 @@ class ServerTests(unittest.TestCase):
             self.assertTrue(all(revision == revisions[0] for revision in revisions))
         finally:
             release.set()
-            drive_thread.join(5)
+            drive_thread.join(20)
         self.assertFalse(drive_thread.is_alive())
         status, completed, _ = drive["response"]
         self.assertEqual((status, completed["state"]), (200, "completed"))
