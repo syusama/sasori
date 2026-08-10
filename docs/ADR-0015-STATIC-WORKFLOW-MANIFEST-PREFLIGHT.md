@@ -1,6 +1,6 @@
 # ADR-0015: Static compiled Workflow manifest and zero-execution preflight
 
-- Status: Accepted for W1.1 implementation
+- Status: Accepted and Hosted-verified for W1.1
 - Date: 2026-08-10
 - Depends on: [ADR-0013](ADR-0013-TYPED-WORKFLOW-BOUNDARY.md),
   [ADR-0014](ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md)
@@ -251,6 +251,34 @@ Before W1.1 may be promoted as shipped:
 Passing these gates does not establish live-provider quality, plugin honesty,
 publisher provenance, multi-tenant security, public deployment, Workflow
 Studio delivery, W3 parallel execution, or production readiness.
+
+## Promotion evidence
+
+W1.1 was promoted only after its exact implementation commit
+[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
+completed [Hosted run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778).
+All 20 non-tag jobs passed: six source jobs, six installed-wheel jobs, six
+rebuilt-sdist jobs, package verification, and the mainland-source container
+product gate. The exact-tag release-candidate bundle was correctly skipped on
+the ordinary `main` push. The run completed in 2m42s and published five
+digest-identified evidence artifacts; these branch-run artifacts are not a
+signed release or trusted provenance.
+
+The six-platform source matrix ran 403 deterministic tests. The final local
+candidate also passed the same 403-case suite (with five documented
+platform-capability skips), the 14-case real-Chrome fixture, real Incident and
+Typed Workflow server/browser journeys, installed-wheel and offline
+sdist-rebuild smoke tests, and a no-cache digest-pinned DaoCloud/Tsinghua
+Compose workflow. The container path proved preview/prepare/explicit-resume,
+restart-stable events/projection/artifact, and one approved mutable action with
+no replay. Local package outputs remained ignored candidates and were not
+described as a release or attestation.
+
+This evidence promotes only the static manifest/preflight and immutable
+Workbench definition-preview boundary decided above. It does not promote a
+saved Workflow catalog, Studio/editor, DAG, branch or parallel executor, Agent
+node, subflow, exactly-once effect, sandbox, live-provider quality, signed
+provenance, public deployment, or production readiness.
 
 ## Future sequencing
 

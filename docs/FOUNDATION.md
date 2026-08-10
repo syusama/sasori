@@ -10,18 +10,20 @@ compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP
 entry points, local multi-application HTTP/SSE, domestic-source Docker delivery,
 trusted local plugins, four first-party application compositions, curated
 catalog metadata, and a bundled Workbench exist. The fourth composition is a
-core-external W1 static serial Tool Workflow: strict data/JSON and a small
-Python builder produce the existing immutable W0 definition, while a
-core-owned versioned public run projection supplies the bounded Workbench step
-rail. The event reducer remains responsible for timeline/cursor state; DAG
-scheduling, branches, parallelism, agent nodes, and visual authoring remain
-later work. Memory is accepted only for a deployment-owned local-single-owner
+core-external W1.1 static serial Tool Workflow: strict data/JSON and a small
+Python builder produce the existing immutable W0 definition, zero-execution
+preflight returns its bounded detached compiled manifest, and a core-owned
+versioned public run projection supplies the bounded Workbench step rail. The
+Workbench exact-validates and previews immutable definition metadata while the
+event reducer remains responsible for timeline/cursor state; saved authoring,
+DAG scheduling, branches, parallelism, agent nodes, and subflows remain later
+work. Memory is accepted only for a deployment-owned local-single-owner
 namespace after its deterministic, package, mainland-source container, and
 [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961)
-gates passed. Workflow W1 is accepted at
-[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
+gates passed. Workflow W1.1 is accepted at
+[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
 after its source, package, real-browser, mainland-source container, and
-[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31366385628)
+[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31375975778)
 gates passed. Real-provider semantic/Memory quality evaluation, per-request
 user/tenant identity, public token streaming, multi-agent orchestration,
 untrusted-plugin isolation, and a central marketplace remain incomplete;
@@ -137,9 +139,9 @@ These are boundaries, not directories to scaffold before use:
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
 | MCP adapter | current frozen host adapter; split only after an external package consumer exists | bounded stdio boundary accepted |
-| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring around bounded serial W0, plus one-Harness recovery and public projection, Hosted-verified at `b410ceb`; DAG/parallel/Agent-node gates remain open |
+| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, and public projection around serial W0, Hosted-verified at `709200b`; DAG/parallel/Agent-node gates remain open |
 | DAG/graph/multi-agent | later extensions | requires parallel/branch/ownership/recovery ADRs; not current W0 behavior |
-| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product consumes the versioned Workflow run projection for serial step state; the existing reducer remains the event timeline/cursor authority |
+| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product exact-validates/previews immutable Workflow definition metadata and consumes the versioned run projection for serial step state; the existing reducer remains the event timeline/cursor authority |
 | Marketplace | metadata service, not binary host | market gate in section 8 |
 
 ### 3.4 Public events and run views are projections
@@ -350,8 +352,8 @@ Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic 
 
 For the current implementation baseline, that exact-revision public CI
 requirement is satisfied by
-[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
-and [Hosted run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628).
+[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
+and [Hosted run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778).
 The older paragraph remains a dated record of the narrower 2026-08-08 local
 evidence; it is not the current Hosted baseline.
 
@@ -368,21 +370,23 @@ prompt-injection neutralization, provider usage, billing, or cost savings. The
 exact-tag release bundle was correctly skipped on this ordinary `main` push, so
 signing and trusted provenance remain separate.
 
-Current deterministic Workflow W1 evidence on 2026-08-10 is bound to
-[`b410ceb`](https://github.com/syusama/sasori/commit/b410cebf8633e3ea77ca187174e4f02347aea840)
-and [Hosted run 31366385628](https://github.com/syusama/sasori/actions/runs/31366385628).
+Current deterministic Workflow W1.1 evidence on 2026-08-10 is bound to
+[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
+and [Hosted run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778).
 The Hosted workflow completed successfully: all 20 non-tag jobs across five
 job families passed, while the exact-tag-only release-bundle job was correctly
-skipped. The executed gates covered the 396-case source matrix, installed-wheel
-and rebuilt-sdist consumers, package verification, real Chrome
-Incident/Workflow journeys, and the mainland-source container
+skipped; five digest-identified evidence artifacts were published. The executed
+gates covered the 403-case source matrix, installed-wheel and rebuilt-sdist
+consumers, package verification, real Chrome Incident/Workflow journeys, and
+the mainland-source container
 approval/resume/restart/no-replay, Memory, Artifact, second-owner, tamper,
 token-audit, and image-SBOM gates. This accepts strict static data/JSON/builder
-authoring and a core-owned versioned Workflow projection around only the
-definition-bound serial ordered-Tool W0 runtime; it does not establish DAGs,
-branches, parallel ready sets, Agent nodes, distributed execution, exactly-once
-effects, visual authoring, live-provider quality, signing, or trusted
-provenance.
+authoring, zero-execution bounded manifest preflight, immutable Workbench
+definition preview, and a core-owned versioned Workflow projection around only
+the definition-bound serial ordered-Tool W0 runtime; it does not establish a
+saved catalog, Studio/editor, DAGs, branches, parallel ready sets, Agent nodes,
+subflows, distributed execution, exactly-once effects, sandboxing, live-provider
+quality, signing, trusted provenance, or production readiness.
 
 ### Days 56-75: switching-value validation
 
@@ -451,13 +455,18 @@ The Workbench is a task-control surface, not another chat skin. It currently:
    wrapper-Tool mechanism, including current durable step and approval/recovery
    state consumed from the core-owned versioned run projection. The event
    reducer supplies only the timeline and durable cursor.
+8. Previews the exact-validated immutable compiled definition manifest,
+   including dependencies, argument sources, approval/recovery policy, Tool
+   revisions, and explicit trusted-Python/no-sandbox disclosure. It does not
+   execute, edit, or persist a definition in the browser.
 
 Desktop information architecture: worker/history navigation on the left, task
 conversation and composer in the center, and timeline/approval/evidence/
 capability views on the right. Narrow screens switch these three surfaces with
 a bottom navigation bar without hiding pending approvals.
 
-Structured plans, visual Workflow authoring, DAG branches/parallel execution, run cancellation, dynamic
+Structured plans, saved Workflow authoring, visual editing, DAG
+branches/parallel execution, Agent nodes/subflows, run cancellation, dynamic
 skill selection, background queues, multi-agent collaboration, sandboxed plugin
 execution, and marketplace installation are not current Workbench capabilities.
 Research citations and Developer file/Git results remain ordinary untrusted

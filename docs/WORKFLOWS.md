@@ -132,7 +132,7 @@ does not execute code. Compiling and running an accepted definition is
 authorization-sensitive and invokes explicitly supplied trusted installed
 Tools; those Python handlers are not sandboxed plugins.
 
-## Static compiled manifest preflight (W1.1 candidate)
+## Static compiled manifest preflight (W1.1)
 
 `preflight_workflow()` validates the definition against the same trusted Tool
 registry and wrapper compiler used by `compile_workflow()`, then returns a
@@ -168,11 +168,14 @@ and event reducer. It displays dependencies, approval points, recovery policy,
 and the trusted-Python/no-sandbox boundary; it does not execute or persist a
 Workflow definition in the browser.
 
-This W1.1 code remains a candidate until its source, installed-wheel,
-rebuilt-sdist, mainland-source container, browser, and exact-revision Hosted
-gates pass. It is not yet a Workflow Studio, saved user catalog, visual editor,
-branch/parallel executor, Agent node, sandbox, or production-readiness claim.
-See [ADR-0015](ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md).
+This W1.1 boundary is Hosted-verified at
+[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
+in [run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778):
+all 20 non-tag jobs passed and the exact-tag-only bundle was correctly skipped.
+It is not a Workflow Studio, saved user catalog, visual editor, branch/parallel
+executor, Agent node, subflow system, sandbox, signed provenance, or
+production-readiness claim. See
+[ADR-0015](ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md).
 
 ## Run, approve, then explicitly resume
 
@@ -484,7 +487,10 @@ editor, or a new runtime. Richer authoring and all W3-W5 phases require their
 own contracts, negative architecture controls, recovery decisions, and
 acceptance evidence.
 
-The current W1.1 candidate adds only the ADR-0015 static manifest/preflight
+The current W1.1 implementation, Hosted-verified at
+[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
+in [run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778),
+adds only the ADR-0015 static manifest/preflight and immutable definition-preview
 boundary. It does not change the W0/W1 execution marker, digest, application
 identity, wrapper identity, event trace, recovery semantics, or public run
-projection. README promotion remains blocked on exact-revision Hosted evidence.
+projection.

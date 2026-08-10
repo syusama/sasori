@@ -201,10 +201,10 @@ Windows: the source regression suite, the installed-wheel smoke, and a source
 archive consumer rebuild. Both consumer paths run from a directory that cannot
 import the checkout's `src/`. The smoke verifies distribution metadata, zero
 runtime dependencies, eight import packages (including the optional
-`sasori_memory` extension), eight Workbench resources, and all three console
-scripts. The installed-wheel smoke also creates a separate Memory database,
-writes one immutable revision, and retrieves it through the installed package;
-it does not import the source checkout.
+`sasori_memory` extension), all allowlisted Workbench resources, and all three
+console scripts. The installed-wheel smoke also creates a separate Memory
+database, writes one immutable revision, and retrieves it through the installed
+package; it does not import the source checkout.
 
 The source-archive gate rejects a missing, nested, symlinked, non-wheel, or
 multi-file build wheelhouse before launching a subprocess. It clears inherited
