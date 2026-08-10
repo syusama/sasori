@@ -365,12 +365,12 @@ The no-build UI includes:
 | `sasori_artifacts` | immutable content-addressed blobs; run/event association; verified list/content/HEAD/Range |
 | CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
 | HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
-| Applications | deterministic Incident; configured Research; configured Developer |
+| Applications | deterministic Incident; configured Research; configured Developer; definition-bound Incident Mechanism Workflow |
 | Plugins | bounded workspace, allowlisted HTTPS fetch, SQLite/FTS5 RAG, local Git, frozen MCP stdio; first-party Memory registration when configured |
 | Catalog | strict local curated index and manifest checks; no central marketplace yet |
 | Delivery | source, wheel, rebuilt sdist, Compose candidate, SBOM binding, Windows/Linux matrices |
 
-The three applications are compositions, not three engines:
+The four applications are compositions, not four engines:
 
 - **Incident Chamber** — deterministic diagnosis and one operator-approved
   local audit action.
@@ -378,6 +378,8 @@ The three applications are compositions, not three engines:
   citation-preserving SQLite/FTS5 retrieval + optional fixed-scope Memory.
 - **Puppet Workshop** — configured provider + bounded workspace tools +
   state-bound local Git + optional frozen MCP tools and fixed-scope Memory.
+- **Incident Mechanism** — a definition-bound, serial `inspect → record` Tool
+  Workflow that reuses the same approval, effect, recovery, and event path.
 
 Unavailable configuration is reported as unavailable; Sasori does not silently
 replace an app with the demo.
@@ -482,32 +484,34 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-The latest Hosted-verified main baseline,
-[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72),
-passed [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961):
+The latest Hosted-verified implementation baseline,
+[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2),
+completed successfully in
+[Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157).
+All five executed job families passed; the exact-tag-only release-bundle job was
+correctly skipped. The executed gates covered:
 
-- all 347 deterministic cases across the Ubuntu + Windows × Python 3.11, 3.12,
-  and 3.13 source matrix, including Memory, Semantic Compaction, cancellation,
-  deadline, cache-race, replay-tamper, and app-alias contracts;
+- the 377-case deterministic source suite across Ubuntu + Windows × Python
+  3.11, 3.12, and 3.13, including the Workflow definition, transcript,
+  approval, effect, cancellation, crash, and no-replay contracts;
 - installed-wheel and rebuilt-sdist matrices;
 - package verification, with the exact-tag release bundle correctly skipped on
   this ordinary `main` push;
-- mainland-source image build and real Compose workflow/restart/owner lock,
-  including installed-container Memory write/search/restart, run-scoped artifact
-  GET/HEAD/Range, and same-size tamper rejection;
+- mainland-source image build and real Compose Incident + Typed Workflow
+  approval/resume/restart/no-replay, single-owner, Memory, run-scoped Artifact,
+  and same-size tamper gates;
 - SBOM generation, image binding, and audited evidence upload;
-- delayed-response UI race acceptance and a real 17-event Artifact-enabled
-  Incident lifecycle in Chrome on Ubuntu/Python 3.12, including the Memory Skill
-  surface.
+- delayed-response UI race acceptance and real Incident + Typed Workflow
+  browser journeys on Ubuntu/Python 3.12, including serial step inspection.
 
 That main-branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.
 
-The run verifies Memory and Semantic Compaction's deterministic protocols and
-integration gates for the documented local-single-owner boundary. It is **not**
-evidence of per-user/tenant isolation, prompt-injection neutralization, real
-OpenAI/Anthropic quality, factual recall, unsupported-claim or contradiction
-rates, provider token usage, billing, or cost savings; those gates remain open.
+The run verifies W0 as a core-external, definition-bound, serial ordered Tool
+Workflow on the documented local-single-owner Harness path. It is **not** a DAG
+engine, parallel/branch executor, Agent-node graph, distributed scheduler,
+exactly-once runtime, sandbox, or evidence of real-provider quality. Those gates
+remain open.
 
 ## Current and Next
 
@@ -518,10 +522,10 @@ rates, provider token usage, billing, or cost savings; those gates remain open.
 | Single-agent loop and one runtime path | Trusted per-request user/tenant identity for multi-user Memory |
 | Local single-owner durable bounded Memory | Automatic low-trust extraction, conflict policy, embeddings/rerank, TTL/export/restore |
 | Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
-| Approval, effect fingerprints, crash ambiguity recovery | Typed Workflow on the same tool/effect contracts |
+| Approval, effect fingerprints, crash ambiguity recovery + definition-bound serial Typed Workflow W0 | DAG/branches/parallel ready sets/Agent nodes/visual authoring |
 | OpenAI + Anthropic conformance | More providers after the shared suite passes |
 | Structural projection + opt-in whole-request-bound unverified compaction note | Project Charter/Board and multi-agent orchestration |
-| CLI, local HTTP/SSE, three app compositions, Workbench | Safe versioned GenUI and richer product surfaces |
+| CLI, local HTTP/SSE, four app compositions, Workbench | Safe versioned GenUI and richer product surfaces |
 | Single-owner SQLite/Compose delivery | Leased durable executor and genuine isolation boundary |
 
 The complete source-grounded comparison, anti-patterns, P0/P1/P2 order, and

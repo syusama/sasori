@@ -328,18 +328,20 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 | `sasori_artifacts` | immutable content-addressed blobs、run/event association、verified list/content/HEAD/Range |
 | CLI | run/status/events/approval/resume/effect；JSON/JSONL 模式 |
 | HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、readiness、Workbench |
-| Applications | 确定性 Incident；需配置的 Research 与 Developer |
+| Applications | 确定性 Incident；需配置的 Research 与 Developer；定义绑定的 Incident Mechanism Workflow |
 | Plugins | workspace、allowlisted HTTPS、SQLite/FTS5 RAG、Git、冻结 MCP stdio；配置后注册第一方 Memory |
 | Catalog | 严格本地 curated index；中央 marketplace 尚未上线 |
 | Delivery | source、wheel、重建 sdist、Compose candidate、SBOM binding、多系统矩阵 |
 
-三种应用只是 composition，不是三套 Runtime：
+四种应用只是 composition，不是四套 Runtime：
 
 - **Incident Chamber**：确定性诊断 + 一个经操作者批准的本地审计动作。
 - **Research Atelier**：已配置 provider + allowlisted web evidence + 保留引用的
   SQLite/FTS5 retrieval + 可选 fixed-scope Memory。
 - **Puppet Workshop**：已配置 provider + 有界 workspace tools + state-bound Git
   + 可选冻结 MCP tools 与 fixed-scope Memory。
+- **Incident Mechanism**：定义绑定、串行 `inspect → record` 的 Tool Workflow；
+  复用同一套 approval、effect、recovery 与事件路径。
 
 配置不足会显示 unavailable，不会偷偷用 Incident Demo 冒充成功。
 
@@ -434,29 +436,31 @@ python tests/workbench_browser_journey.py --require-browser `
   --screenshot docs/assets/workbench.png
 ```
 
-最新已托管验证的 main 基线
-[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec806b450b2d746cdedc1afc3a7813cec72)
-通过了 [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961)：
+最新已托管验证的实现基线
+[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2)
+在 [Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157)
+中成功完成：五个实际执行的 job families 全部通过；仅用于 exact tag 的
+release-bundle job 按设计跳过。实际执行的门禁包括：
 
-- 347 个确定性用例全部通过 Ubuntu + Windows × Python 3.11 / 3.12 / 3.13
-  source matrix，覆盖 Memory、Semantic Compaction、取消、deadline、cache race、
-  replay tamper 与 app alias 合同；
+- 377 项确定性 source suite 通过 Ubuntu + Windows × Python 3.11 / 3.12 /
+  3.13 matrix，覆盖 Workflow definition、transcript、approval、effect、取消、
+  崩溃与 no-replay 合同；
 - installed wheel 与 rebuilt sdist matrix；
 - package 验证；普通 `main` push 上 exact-tag release bundle 按设计跳过；
-- 国内源 image build、真实 Compose workflow/restart/owner lock，包括精确 run
-  关联的 installed-container Memory write/search/restart、Artifact GET/HEAD/Range
-  与同尺寸篡改拒绝；
+- 国内源 image build、真实 Compose Incident + Typed Workflow 的
+  approval/resume/restart/no-replay、single-owner、Memory、run-scoped Artifact
+  与同尺寸篡改门禁；
 - SBOM、image binding 与审计证据上传；
-- Ubuntu/Python 3.12 上的延迟响应竞态与真实 Chrome 17-event Artifact
-  lifecycle，包括 Memory Skill surface。
+- Ubuntu/Python 3.12 上的延迟响应竞态与真实 Incident + Typed Workflow
+  浏览器旅程，包括串行步骤检视。
 
 该 main branch run **没有**创建 tag、签名 attestation 或最终 release bundle。
 Exact-tag provenance 仍是单独的发布门禁。
 
-该 run 验证的是文档所述 local-single-owner 边界内 Memory 与 Semantic
-Compaction 的确定性协议和集成门禁，**不是** per-user/tenant isolation、prompt
-injection neutralization、真实 OpenAI/Anthropic 质量、事实召回、unsupported claim /
-contradiction 指标、provider token 用量、账单或成本收益证据；这些门禁仍然开放。
+该 run 验证的是文档所述 local-single-owner Harness 路径上的核心外、定义绑定、
+串行有序 Tool Workflow W0。它**不是** DAG Engine、并行/分支执行器、Agent-node
+图、分布式 scheduler、exactly-once runtime、sandbox 或真实 provider 质量证据；
+这些门禁仍然开放。
 
 ## Current / Next
 
@@ -467,10 +471,10 @@ contradiction 指标、provider token 用量、账单或成本收益证据；这
 | 单 Agent Loop 与一个 Runtime path | multi-user Memory 所需的可信 per-request user/tenant identity |
 | 本地 single-owner durable bounded Memory | 自动低信任 extraction、conflict policy、embedding/rerank、TTL/export/restore |
 | 版本化耐久事件与纯 UI reducer | 动态 skill selection 与受审市场 |
-| approval、effect fingerprint、崩溃歧义恢复 | 复用同一 tool/effect contract 的 typed Workflow |
+| approval、effect fingerprint、崩溃歧义恢复 + 定义绑定的串行 Typed Workflow W0 | DAG/分支/并行 ready set/Agent node/可视化 authoring |
 | OpenAI + Anthropic conformance | 通过共享套件后的更多 providers |
 | 结构投影 + 可选整包请求绑定、未经事实验证的语义注记 | Project Charter/Board 与多 Agent orchestration |
-| CLI、HTTP/SSE、三种应用、Workbench | 安全 versioned GenUI 与更丰富产品面 |
+| CLI、HTTP/SSE、四种应用、Workbench | 安全 versioned GenUI 与更丰富产品面 |
 | single-owner SQLite/Compose | leased durable executor 与真正隔离边界 |
 
 完整源码对标、反模式、P0/P1/P2 顺序与验收门禁见

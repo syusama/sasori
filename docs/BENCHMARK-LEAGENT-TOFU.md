@@ -2,13 +2,13 @@
 
 > 研究日期：2026-08-09
 >
-> Sasori 最新 main 回归基线：[`7fc6511`](https://github.com/syusama/sasori/commit/7fc651120cf66327f188f29be8185cf090f9165d)，[Hosted run 31324811635](https://github.com/syusama/sasori/actions/runs/31324811635) 全绿；这是后续 docs-only revision，不替代功能实现 revision 的证据
+> Sasori 当前 Workflow 实现基线：[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2)，[Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157) 成功；五个实际执行的 job families 全部通过，exact-tag release-bundle 按设计跳过
 >
 > Semantic compaction 实现证据：[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206) / [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164)
 >
 > Durable Memory 实现证据：[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec) / [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961)
 >
-> 本文中的 W0 Typed Workflow 是当前工作树的本地候选：source/package/真实浏览器/国内源 container 已在本地通过，仍必须取得自身实现提交的 exact-revision Hosted 结果才能晋级；不得继承上述历史 run
+> W0 Typed Workflow 已由自身实现提交 `af3ecb4` 的 exact-revision Hosted 结果晋级；其证据不继承上述历史 run，也不扩大为 DAG/并行/Agent node/分布式 Workflow
 >
 > LeAgent 基线：[`1f16badc`](https://github.com/vixues/LeAgent/tree/1f16badc834abbd829d3cb7e9f8fcb5b2d57f443)
 >
@@ -16,7 +16,7 @@
 
 这不是按 README 关键词计数的功能表。LeAgent/ToFu 结论来自上述固定 commit
 的入口、运行循环、事件、持久化、工具、上下文、插件、部署、测试和 UI 源码；
-Sasori 的 Hosted 结论分别绑定上述实现 commit；`7fc6511` 只证明后续文档 revision 未破坏 main。当前 Workflow 结论只来自本地候选证据。上游随时会变化；
+Sasori 的 Hosted 结论分别绑定上述实现 commit；Workflow 结论绑定 `af3ecb4` / run `31355739157`，本地候选镜像证据不冒充签名 provenance。上游随时会变化；
 重新做产品决策前必须刷新 Sasori、LeAgent、ToFu 的 commit 与证据。
 
 ## 结论先行
@@ -40,7 +40,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 > Storage、RAG、Apps 与 UI 在核心外按需装配。
 
 不得在当前 README 中宣称：已具备 per-user/tenant 或自动抽取的完整语义 Memory、Artifact access grant/版本
-生命周期、通用 DAG/并行/分布式 Workflow、多 Agent、插件沙箱、水平扩展、中央市场或正式签名发布。W0 串行 Workflow 只能在其自身 exact-revision Hosted 门禁通过后晋级。
+生命周期、通用 DAG/并行/分布式 Workflow、多 Agent、插件沙箱、水平扩展、中央市场或正式签名发布。当前只晋级 W0 串行有序 Tool Workflow。
 
 ## 判定口径
 
@@ -66,7 +66,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | Memory | `bc049ec` / Hosted run `31323818961` 已验证核心外 fixed-scope SQLite authority：三类 kind 共用 immutable revision/CAS/source lineage；operation/observation identity、audit-verified replay、SQL scope-first lexical rank、whole-record final-budget merge、exact/source/scope suppression、atomic generation switch；仍仅 local-single-owner，无自动 extractor/vector/rerank/profile quality claim | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 耐久/恢复/删除合同更强；竞品产品与语义检索广度仍胜 |
 | Artifact/FileRef | `94f4d0e` 已托管验证核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 的最小可靠闭环胜；竞品广度仍胜 |
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
-| Workflow | 当前源码候选已实现核心外、定义绑定、串行有序 Tool W0：同一 Harness approval/effect/recovery、catalog step mapping 与现有 reducer 上的 Workbench 检视；无 DAG/并行/分支/Agent node，exact Hosted 待验证 | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 的窄切片恢复语义强；竞品图编排广度仍胜 |
+| Workflow | `af3ecb4` / Hosted run `31355739157` 已验证核心外、定义绑定、串行有序 Tool W0：同一 Harness approval/effect/recovery、catalog step mapping 与现有 reducer 上的 Workbench 检视；无 DAG/并行/分支/Agent node | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 的窄切片恢复语义强；竞品图编排广度仍胜 |
 | 多 Agent/项目协作 | 未交付 | Subagent 与 workflow agent | Swarm、Charter/Board/activity/path soft lease | Sasori 落后 |
 | UI | 独特 Puppet Workbench；真实浏览器覆盖 Incident 与 W0 Workflow 的批准→显式继续→产物→两次重载，并显示 logical/wrapper Tool、当前 durable step 与 serial-only 边界 | React 19、Workflow、GenUI、Desktop，产品面更完整 | 全功能 SPA、真截图、桌面/浏览器/移动端 | Sasori 审美与窄切片可信度有辨识度、产品广度仍落后 |
 | Provider | OpenAI/Anthropic stdlib 适配，共享 conformance；未宣称 live smoke | Provider/路由/降级更多 | OpenAI-compatible 与多 provider/多 key 路由更广 | 竞品广度胜，Sasori 合约胜 |
@@ -74,7 +74,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | 依赖与镜像完整性 | base digest、Python/build hash、国内镜像、SBOM/binding、wheel/sdist matrix | base/apt/pip 未等价锁定，Docker label 版本漂移 | 多 `>=` 无 hash、Docker 未用国内源/digest、Playwright 安装可吞错 | Sasori 明显胜 |
 | 默认沙箱表述 | 明示 full host process privilege；路径限制不冒充沙箱 | README 称 isolation，但当前 inproc/subprocess 实现与宿主同权 | Shell/桌面/浏览器执行主要是主机能力与可选防护，取消 best-effort | Sasori 诚实性胜 |
 | 水平扩展 | 明确单 owner/单 mutation，不声称多 worker | PG 不消除 process-local registry/queue 热状态 | 多用户/PG 功能广，但 task dict/进程执行与恢复边界复杂 | 三者均不能仅凭数据库宣称完整 HA |
-| 测试证据 | 历史功能证据按 `8751b4e`、`bc049ec` 分别绑定 Hosted run；`7fc6511` 是最新 docs-only main 回归。当前 Workflow 候选全量源级为 377 tests 通过、5 个平台相关跳过，并通过真实 Chrome 双应用 34-event/2-effect/2-reload 旅程；本地 no-cache 国内源 container 还通过 approval/resume、共享重启无重放、second-owner、artifact tamper 与 Syft image binding，exact Hosted 仍必须完成 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 证据边界最清晰；Workflow 尚未完成 Hosted 晋级 |
+| 测试证据 | 历史功能证据按 `8751b4e`、`bc049ec` 分别绑定 Hosted run；Workflow 由 `af3ecb4` / run `31355739157` 中五个实际执行并通过的 job families 验证：377-test source matrix、wheel/sdist、真实 Chrome 双应用旅程、国内源 container approval/resume/restart/no-replay、second-owner、artifact tamper、token audit 与 Syft image binding；exact-tag release-bundle 按设计跳过，不构成签名或 provenance 证据 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 的证据边界与 W0 恢复路径更清晰；更广图编排仍待后续 |
 
 ToFu 当前 HEAD 的 hosted jobs 没有获得 GitHub hosted runner，页面显示平台内部
 错误；这意味着“缺少当前绿色托管证据”，**不**意味着源码测试已被证明失败。
@@ -261,7 +261,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 
 | 增量 | 验收定义 |
 |---|---|
-| Workflow W0 | 当前候选为 one-Harness 串行有序 Tool、typed input/result、human gate、effect recovery 与 bounded Workbench inspector；国内源 container 已在本地通过，取得自身 exact Hosted 后才晋级 Current |
+| Workflow W0 | `af3ecb4` / Hosted run `31355739157` 已晋级 one-Harness 串行有序 Tool、typed input/result、human gate、effect recovery 与 bounded Workbench inspector；仍不包含 DAG/并行/分支/Agent node |
 | Workflow W1-W5 | richer serial authoring → bounded parallel ready set → branches/Agent nodes/subflows/editor → lease/fencing/queue/scheduler/distributed execution；每阶段独立 ADR 与 crash/browser/container gate |
 | Project/多 Agent | Charter/Board/lease/ownership；每个 worker 仍走 Harness；预算、取消与故障隔离 |
 | GenUI | versioned safe component schema；无任意 HTML/JS；live/cold reducer parity；导出/Artifact 链 |

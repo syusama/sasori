@@ -1,6 +1,6 @@
 # ADR-0013: Typed ordered Workflow boundary
 
-Status: **accepted for the bounded W0 local candidate; README/public distribution and exact-revision Hosted promotion remain gated**
+Status: **accepted for bounded W0 at `af3ecb4`; exact-revision Hosted promotion passed in run `31355739157`**
 
 Date: 2026-08-10
 
@@ -301,6 +301,12 @@ The implementation commit must pass:
   workflow;
 - browser selection, approval, resume, reload, and no-replay journey;
 - exact-revision Hosted CI before README promotion.
+
+These gates passed for
+[`af3ecb4`](https://github.com/syusama/sasori/commit/af3ecb4e613d6458a56843ce4b7de7bb056b56c2)
+in [Hosted run 31355739157](https://github.com/syusama/sasori/actions/runs/31355739157).
+The ordinary `main` run did not create a release tag, signature, or trusted
+provenance; those remain separate release gates.
 
 Passing deterministic tests does not establish live-provider quality,
 multi-tenant security, publisher provenance, public deployment, or production
