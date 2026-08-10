@@ -32,6 +32,7 @@ from sasori_apps.research import (  # noqa: E402
 )
 from sasori_apps.workflow_incident import (  # noqa: E402
     APP_ID as WORKFLOW_INCIDENT_ID,
+    APP_METADATA as WORKFLOW_INCIDENT_METADATA,
     WORKFLOW_SPEC as INCIDENT_WORKFLOW_SPEC,
     create_harness as create_workflow_harness,
 )
@@ -261,6 +262,15 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(item["description"])
             self.assertTrue(item["worker"]["tool_names"])
             self.assertTrue(item["skills"])
+        workflow = next(item for item in catalog if item["id"] == WORKFLOW_INCIDENT_ID)
+        self.assertEqual(workflow["workflow"], WORKFLOW_INCIDENT_METADATA["workflow"])
+        self.assertEqual(
+            [step["recovery_policy"] for step in workflow["workflow"]["steps"]],
+            [
+                "read_only_replay_allowed",
+                "manual_effect_resolution_on_ambiguity",
+            ],
+        )
         catalog[0]["title"] = "changed"
         self.assertEqual(application_catalog()[0]["title"], "Incident Chamber")
 

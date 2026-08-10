@@ -32,6 +32,7 @@ from sasori.server import (  # noqa: E402
 )
 from sasori_apps.workflow_incident import (  # noqa: E402
     APP_ID as WORKFLOW_INCIDENT_ID,
+    APP_METADATA as WORKFLOW_INCIDENT_METADATA,
     WORKFLOW_SPEC as INCIDENT_WORKFLOW_SPEC,
 )
 from sasori_flow import (  # noqa: E402
@@ -426,13 +427,9 @@ class ServerTests(unittest.TestCase):
             {"status": "unavailable", "reason_code": "not_enabled"},
         )
         self.assertEqual(unavailable_workflow["tools"], [])
-        self.assertTrue(
-            all(
-                step["dispatch_tool_name"] is None
-                and step["dispatch_tool_revision"] is None
-                and step["dispatch_schema_sha256"] is None
-                for step in unavailable_workflow["workflow"]["steps"]
-            )
+        self.assertEqual(
+            unavailable_workflow["workflow"],
+            WORKFLOW_INCIDENT_METADATA["workflow"],
         )
         self.assertNotIn("system_prompt", json.dumps(catalog))
 
@@ -546,6 +543,9 @@ class ServerTests(unittest.TestCase):
                 INCIDENT_WORKFLOW_SPEC.digest,
             )
             self.assertFalse(app["workflow"]["supports_parallel"])
+            self.assertEqual(
+                app["workflow"], WORKFLOW_INCIDENT_METADATA["workflow"]
+            )
             self.assertTrue(
                 all(tool["plugin_id"] == "com.sasori.flow" for tool in app["tools"])
             )
@@ -755,6 +755,7 @@ class ServerTests(unittest.TestCase):
             ("/assets/workflow.0.1.0.css", "text/css"),
             ("/assets/workflow.0.1.0.js", "text/javascript"),
             ("/assets/workflow.0.2.0.js", "text/javascript"),
+            ("/assets/workflow-manifest.0.1.0.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -779,6 +780,10 @@ class ServerTests(unittest.TestCase):
         self.assertLess(
             page.index("/assets/app.0.1.4.js"),
             page.index("/assets/workflow.0.2.0.js"),
+        )
+        self.assertLess(
+            page.index("/assets/workflow.0.2.0.js"),
+            page.index("/assets/workflow-manifest.0.1.0.js"),
         )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
@@ -825,6 +830,14 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("reduceEvent(", workflow_script)
         self.assertNotIn("new Map", workflow_script)
         self.assertNotIn("innerHTML", workflow_script)
+        workflow_manifest_script = assets[
+            "/assets/workflow-manifest.0.1.0.js"
+        ]
+        self.assertIn("function workflowManifestContract(app)", workflow_manifest_script)
+        self.assertIn("workflowContract = workflowManifestContract", workflow_manifest_script)
+        self.assertIn("manual_effect_resolution_on_ambiguity", workflow_manifest_script)
+        self.assertIn("trusted_installed_python", workflow_manifest_script)
+        self.assertNotIn("innerHTML", workflow_manifest_script)
         workflow_styles = assets["/assets/workflow.0.1.0.css"]
         self.assertIn(".workflow-rail", workflow_styles)
 
@@ -837,6 +850,10 @@ class ServerTests(unittest.TestCase):
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.4.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/workflow.0.2.0.js?v=1")
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(
+            server, "GET", "/assets/workflow-manifest.0.1.0.js?v=1"
+        )
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))

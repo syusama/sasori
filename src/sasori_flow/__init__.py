@@ -8,6 +8,7 @@ from .projection import (
     workflow_public_projection,
     workflow_public_run_projection,
 )
+from .manifest import MAX_WORKFLOW_MANIFEST_BYTES
 from .runtime import (
     WorkflowCompileError,
     WorkflowHarness,
@@ -15,6 +16,7 @@ from .runtime import (
     WorkflowModel,
     WorkflowStepFailed,
     compile_workflow,
+    preflight_workflow,
     workflow_app_id,
 )
 from .spec import (
@@ -48,6 +50,7 @@ __all__ = [
     "MAX_WORKFLOW_DEFINITION_BYTES",
     "MAX_WORKFLOW_INPUT_BYTES",
     "MAX_WORKFLOW_INPUT_SLOTS",
+    "MAX_WORKFLOW_MANIFEST_BYTES",
     "MAX_WORKFLOW_PAYLOAD_BYTES",
     "MAX_WORKFLOW_STEP_ARGUMENTS",
     "MAX_WORKFLOW_STEPS",
@@ -66,6 +69,7 @@ __all__ = [
     "compile_workflow",
     "json_sha256",
     "plain_json",
+    "preflight_workflow",
     "resolve_arguments",
     "workflow_app_id",
     "workflow_public_projection",

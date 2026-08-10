@@ -348,6 +348,49 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertEqual(restarted["events_sha256"], completed["events_sha256"])
         self.assertEqual(len(self.action_log.read_text("utf-8").splitlines()), 1)
 
+    def test_workflow_catalog_manifest_step_shape_fails_closed(self) -> None:
+        from sasori import SQLiteStore
+        from sasori_apps.registry import application_surface_catalog
+        from sasori_apps.workflow_incident import APP_ID, create_harness
+
+        store = SQLiteStore()
+        self.addCleanup(store.close)
+        payload = application_surface_catalog(
+            {APP_ID: create_harness(store, app_id=APP_ID)},
+            {},
+        )
+
+        class CatalogClient:
+            def __init__(self, value: dict[str, object]) -> None:
+                self.value = value
+
+            def json(self, method: str, path: str) -> dict[str, object]:
+                if (method, path) != ("GET", "/v1/apps"):
+                    raise AssertionError("unexpected catalog request")
+                return self.value
+
+        self.assertEqual(
+            container_workflow_acceptance._catalog(CatalogClient(payload))["app_id"],
+            APP_ID,
+        )
+        for field, remove in (("unexpected", False), ("recovery_policy", True)):
+            malformed = json.loads(json.dumps(payload))
+            workflow = next(
+                app["workflow"]
+                for app in malformed["apps"]
+                if app["id"] == APP_ID
+            )
+            if remove:
+                del workflow["steps"][0][field]
+            else:
+                workflow["steps"][0][field] = True
+            with self.subTest(field=field, remove=remove):
+                with self.assertRaisesRegex(
+                    container_workflow_acceptance.AcceptanceError,
+                    "step contracts",
+                ):
+                    container_workflow_acceptance._catalog(CatalogClient(malformed))
+
     def test_workflow_public_projection_validation_fails_closed(self) -> None:
         digest = "0" * 64
         app_id = f"flow.incident-mechanism.{digest[:12]}"

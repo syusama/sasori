@@ -39,6 +39,7 @@ WEB_RESOURCES = (
     "workflow.0.1.0.css",
     "workflow.0.1.0.js",
     "workflow.0.2.0.js",
+    "workflow-manifest.0.1.0.js",
     "mark.0.1.0.svg",
 )
 
@@ -92,6 +93,10 @@ def main() -> int:
     workflow_spec_from_json = getattr(
         modules["sasori_flow"], "workflow_spec_from_json", None
     )
+    preflight_workflow = getattr(modules["sasori_flow"], "preflight_workflow", None)
+    workflow_metadata = getattr(workflow_app, "APP_METADATA", None)
+    incident_app = importlib.import_module("sasori_apps.incident")
+    incident_tools = getattr(incident_app, "incident_tools", None)
     if (
         not isinstance(workflow_app_id, str)
         or workflow_spec is None
@@ -100,6 +105,9 @@ def main() -> int:
         or not callable(SerialWorkflowBuilder)
         or not callable(workflow_spec_from_data)
         or not callable(workflow_spec_from_json)
+        or not callable(preflight_workflow)
+        or not callable(incident_tools)
+        or not isinstance(workflow_metadata, dict)
         or workflow_app_id != derive_workflow_app_id(workflow_spec)
     ):
         raise RuntimeError("installed Workflow application identity is invalid")
@@ -121,6 +129,17 @@ def main() -> int:
         for parsed in parsed_workflows
     ):
         raise RuntimeError("installed Workflow authoring identity is invalid")
+    preflight_manifest = preflight_workflow(workflow_spec, incident_tools())
+    if (
+        preflight_manifest != workflow_metadata.get("workflow")
+        or preflight_manifest.get("app_id") != workflow_app_id
+        or [step.get("recovery_policy") for step in preflight_manifest.get("steps", ())]
+        != [
+            "read_only_replay_allowed",
+            "manual_effect_resolution_on_ambiguity",
+        ]
+    ):
+        raise RuntimeError("installed Workflow preflight manifest is invalid")
 
     SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
     RunPaused = getattr(modules["sasori"], "RunPaused", None)
@@ -135,6 +154,8 @@ def main() -> int:
         first_store = SQLiteStore(database)
         try:
             harness = create_workflow_harness(first_store, app_id=workflow_app_id)
+            if harness.definition_manifest() != preflight_manifest:
+                raise RuntimeError("installed compiled Workflow manifest changed")
             approval_request = None
             try:
                 asyncio.run(

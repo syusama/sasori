@@ -89,18 +89,49 @@ def _catalog(client: HTTPClient) -> dict[str, object]:
     availability = _mapping(app.get("availability"), "Workflow availability")
     digest = workflow.get("definition_sha256")
     if (
-        not isinstance(app_id, str)
+        set(workflow)
+        != {
+            "schema_version",
+            "workflow_id",
+            "version",
+            "definition_sha256",
+            "app_id",
+            "execution",
+            "output_step",
+            "step_count",
+            "supports_parallel",
+            "supports_branches",
+            "supports_agent_nodes",
+            "trust",
+            "inputs",
+            "steps",
+        }
+        or workflow.get("schema_version") != 1
+        or not isinstance(app_id, str)
         or re.fullmatch(r"flow\.incident-mechanism\.[0-9a-f]{12}", app_id) is None
+        or workflow.get("app_id") != app_id
         or availability.get("status") != "ready"
         or workflow.get("version") != "1"
         or not isinstance(digest, str)
         or SHA256.fullmatch(digest) is None
         or not app_id.endswith(digest[:12])
         or workflow.get("execution") != "single-harness-ordered-tools-v1"
+        or workflow.get("output_step") != "record"
         or workflow.get("step_count") != 2
         or workflow.get("supports_parallel") is not False
         or workflow.get("supports_branches") is not False
         or workflow.get("supports_agent_nodes") is not False
+        or workflow.get("trust")
+        != {"execution_mode": "trusted_installed_python", "sandboxed": False}
+        or workflow.get("inputs")
+        != [
+            {
+                "key": "incident",
+                "type": "string",
+                "required": True,
+                "max_bytes": 16 * 1024,
+            }
+        ]
     ):
         raise AcceptanceError("Workflow catalog identity or capability is invalid")
     tools = app.get("tools")
@@ -140,13 +171,46 @@ def _catalog(client: HTTPClient) -> dict[str, object]:
     if not isinstance(steps, list) or len(steps) != 2:
         raise AcceptanceError("Workflow ordered step metadata is invalid")
     projected_steps = [_mapping(item, "Workflow ordered step") for item in steps]
+    step_fields = {
+        "position",
+        "step_id",
+        "depends_on",
+        "argument_sources",
+        "logical_tool_name",
+        "dispatch_tool_name",
+        "effect",
+        "requires_approval",
+        "recovery_policy",
+        "logical_tool_revision",
+        "dispatch_tool_revision",
+        "logical_schema_sha256",
+        "dispatch_schema_sha256",
+        "result_type",
+        "max_result_bytes",
+        "is_output",
+    }
     if (
-        [item.get("position") for item in projected_steps] != [1, 2]
+        any(set(item) != step_fields for item in projected_steps)
+        or [item.get("position") for item in projected_steps] != [1, 2]
         or [item.get("step_id") for item in projected_steps] != ["inspect", "record"]
         or [item.get("logical_tool_name") for item in projected_steps] != logical
         or [item.get("dispatch_tool_name") for item in projected_steps] != names
         or [item.get("effect") for item in projected_steps]
         != ["read_only", "side_effecting"]
+        or [item.get("depends_on") for item in projected_steps]
+        != [[], ["inspect"]]
+        or [item.get("argument_sources") for item in projected_steps]
+        != [
+            [{"name": "summary", "kind": "input", "ref": "incident"}],
+            [{"name": "summary", "kind": "step", "ref": "inspect"}],
+        ]
+        or [item.get("requires_approval") for item in projected_steps]
+        != [False, True]
+        or [item.get("recovery_policy") for item in projected_steps]
+        != [
+            "read_only_replay_allowed",
+            "manual_effect_resolution_on_ambiguity",
+        ]
         or [item.get("is_output") for item in projected_steps] != [False, True]
         or [item.get("result_type") for item in projected_steps]
         != ["string", "string"]

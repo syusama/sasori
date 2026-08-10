@@ -132,6 +132,48 @@ does not execute code. Compiling and running an accepted definition is
 authorization-sensitive and invokes explicitly supplied trusted installed
 Tools; those Python handlers are not sandboxed plugins.
 
+## Static compiled manifest preflight (W1.1 candidate)
+
+`preflight_workflow()` validates the definition against the same trusted Tool
+registry and wrapper compiler used by `compile_workflow()`, then returns a
+detached deterministic manifest without constructing a Harness or Store:
+
+```python
+from sasori_flow import preflight_workflow
+
+manifest = preflight_workflow(spec, (inspect_tool, record_tool))
+assert manifest["definition_sha256"] == spec.digest
+assert manifest["steps"][1]["requires_approval"] is True
+assert manifest["steps"][1]["recovery_policy"] == (
+    "manual_effect_resolution_on_ambiguity"
+)
+```
+
+The manifest exposes immutable inputs, dependencies, logical/dispatch Tool
+contracts, result bounds, approval points, and effect-derived recovery policy.
+Literal bindings expose only JSON type, canonical byte count, and SHA-256; the
+literal value is absent. Runtime inputs, outputs, call IDs, approval
+fingerprints, idempotency keys, recovery reasons, and mutable state are absent.
+
+Generating it does not call a model or Tool handler, create a run/checkpoint,
+or emit an event. It imports no handler named by JSON. The supplied `Tool`
+objects are trusted installed Python contracts, not sandboxed or security
+scanned code. A compiled `WorkflowHarness.definition_manifest()` returns the
+same semantics, and the first-party app catalog reuses this composer instead of
+re-deriving its own step contract.
+
+The current Workbench definition preview exact-validates that catalog manifest
+through a new immutable extension while preserving the existing run projection
+and event reducer. It displays dependencies, approval points, recovery policy,
+and the trusted-Python/no-sandbox boundary; it does not execute or persist a
+Workflow definition in the browser.
+
+This W1.1 code remains a candidate until its source, installed-wheel,
+rebuilt-sdist, mainland-source container, browser, and exact-revision Hosted
+gates pass. It is not yet a Workflow Studio, saved user catalog, visual editor,
+branch/parallel executor, Agent node, sandbox, or production-readiness claim.
+See [ADR-0015](ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md).
+
 ## Run, approve, then explicitly resume
 
 ```python
@@ -424,6 +466,7 @@ replace them.
 ```text
 W0  one-Harness ordered Tool proof
 W1  strict static serial authoring and versioned public step projection
+W1.1 static compiled manifest and zero-execution preflight
 W2  bounded Workbench step inspection from the public projection;
     existing reducer retained for timeline/cursor
 W3  bounded parallel ready set
@@ -440,3 +483,8 @@ definitions through the public projection. It is not visual authoring, a DAG
 editor, or a new runtime. Richer authoring and all W3-W5 phases require their
 own contracts, negative architecture controls, recovery decisions, and
 acceptance evidence.
+
+The current W1.1 candidate adds only the ADR-0015 static manifest/preflight
+boundary. It does not change the W0/W1 execution marker, digest, application
+identity, wrapper identity, event trace, recovery semantics, or public run
+projection. README promotion remains blocked on exact-revision Hosted evidence.

@@ -4,6 +4,7 @@ from sasori import Harness, ModelReply, SQLiteStore
 from sasori_flow import (
     SerialWorkflowBuilder,
     compile_workflow,
+    preflight_workflow,
     workflow_app_id,
 )
 
@@ -62,34 +63,7 @@ APP_METADATA = {
             "logical_tool_names": ["inspect_incident", "record_action"],
         }
     ],
-    "workflow": {
-        "schema_version": 1,
-        "workflow_id": WORKFLOW_SPEC.workflow_id,
-        "version": WORKFLOW_SPEC.version,
-        "definition_sha256": WORKFLOW_SPEC.digest,
-        "execution": "single-harness-ordered-tools-v1",
-        "step_count": len(WORKFLOW_SPEC.steps),
-        "supports_parallel": False,
-        "supports_branches": False,
-        "supports_agent_nodes": False,
-        "steps": [
-            {
-                "position": position,
-                "step_id": step.step_id,
-                "logical_tool_name": step.tool_name,
-                "dispatch_tool_name": None,
-                "effect": step.effect,
-                "logical_tool_revision": step.tool_revision,
-                "dispatch_tool_revision": None,
-                "logical_schema_sha256": step.schema_sha256,
-                "dispatch_schema_sha256": None,
-                "result_type": step.result_type,
-                "max_result_bytes": step.max_result_bytes,
-                "is_output": step.step_id == WORKFLOW_SPEC.output_step,
-            }
-            for position, step in enumerate(WORKFLOW_SPEC.steps, start=1)
-        ],
-    },
+    "workflow": preflight_workflow(WORKFLOW_SPEC, _TOOLS),
 }
 
 

@@ -76,19 +76,27 @@
       workflow_id: "fixture-mechanism",
       version: "1",
       definition_sha256: "a".repeat(64),
+      app_id: "flow.fixture.aaaaaaaaaaaa",
       execution: "single-harness-ordered-tools-v1",
+      output_step: "record",
       step_count: 2,
       supports_parallel: false,
       supports_branches: false,
       supports_agent_nodes: false,
+      trust: { execution_mode: "trusted_installed_python", sandboxed: false },
+      inputs: [{ key: "incident", type: "string", required: true, max_bytes: 16384 }],
       steps: [
         {
           position: 1,
           step_id: "inspect",
+          depends_on: [],
+          argument_sources: [{ name: "summary", kind: "input", ref: "incident" }],
           logical_tool_name: "inspect_incident",
           dispatch_tool_name: "wf_inspect_fixture",
           effect: "read_only",
-          logical_tool_revision: null,
+          requires_approval: false,
+          recovery_policy: "read_only_replay_allowed",
+          logical_tool_revision: "fixture-inspect-v1",
           dispatch_tool_revision: null,
           logical_schema_sha256: "b".repeat(64),
           dispatch_schema_sha256: "c".repeat(64),
@@ -99,9 +107,13 @@
         {
           position: 2,
           step_id: "record",
+          depends_on: ["inspect"],
+          argument_sources: [{ name: "summary", kind: "step", ref: "inspect" }],
           logical_tool_name: "record_action",
           dispatch_tool_name: "wf_record_fixture",
           effect: "side_effecting",
+          requires_approval: true,
+          recovery_policy: "manual_effect_resolution_on_ambiguity",
           logical_tool_revision: "fixture-record-v1",
           dispatch_tool_revision: "fixture-wrapper-v1",
           logical_schema_sha256: "d".repeat(64),
@@ -135,7 +147,7 @@
 
   const unavailableWorkflowApplication = {
     ...workflowApplication,
-    id: "flow.unavailable.ffffffffffff",
+    id: "flow.unavailable-mechanism.ffffffffffff",
     title: "Unavailable mechanism",
     description: "Logical Workflow metadata without a loaded Harness binding",
     availability: { status: "unavailable", reason_code: "not_enabled" },
@@ -149,13 +161,13 @@
       ...workflowApplication.workflow,
       workflow_id: "unavailable-mechanism",
       definition_sha256: "f".repeat(64),
-      steps: workflowApplication.workflow.steps.map((step) => ({
-        ...step,
-        dispatch_tool_name: null,
-        dispatch_tool_revision: null,
-        dispatch_schema_sha256: null,
-      })),
+      app_id: "flow.unavailable-mechanism.ffffffffffff",
+      steps: workflowApplication.workflow.steps.map((step) => ({ ...step })),
     },
+    skills: workflowApplication.skills.map((skill) => ({
+      ...skill,
+      tool_names: ["inspect_incident", "record_action"],
+    })),
     tools: [],
   };
 
@@ -792,6 +804,17 @@
     assert(text.includes("wf_inspect_fixture"), "wrapper Tool is not visible");
     assert(text.includes("SERIAL ONLY"), "serial-only boundary is not visible");
     assert(text.includes("NO BRANCHES"), "branch non-goal is not visible");
+    assert(text.includes("depends on") && text.includes("workflow input"),
+      "Workflow dependency disclosure is not visible");
+    assert(text.includes("approval") && text.includes("required"),
+      "Workflow approval disclosure is not visible");
+    assert(text.includes("recovery") &&
+      text.includes("manual_effect_resolution_on_ambiguity"),
+    "Workflow recovery disclosure is not visible");
+    assert(text.includes("TRUSTED PYTHON") && text.includes("NO SANDBOX"),
+      "Workflow trust boundary disclosure is not visible");
+    assert(text.includes("fixture-inspect-v1"),
+      "versioned read-only logical Tool revision is not visible");
     assert(surface.querySelectorAll(".workflow-step").length === 2, "ordered step count is invalid");
     assert(surface.querySelectorAll('[data-step-status="pending"]').length === 2, "definition preview invented durable progress");
     await open("run-workflow");
@@ -810,6 +833,29 @@
     const app = state.apps.find((item) => item.id === "flow.fixture.aaaaaaaaaaaa");
     const contract = workflowContract(app);
     assert(app && contract, "Workflow production contract is unavailable to the fixture");
+    assert(contract.app_id === app.id && contract.output_step === "record",
+      "Workflow static application binding is invalid");
+    assert(contract.trust.execution_mode === "trusted_installed_python" &&
+      contract.trust.sandboxed === false, "Workflow trust boundary is invalid");
+    assert(JSON.stringify(contract.steps.map((step) => step.depends_on)) ===
+      JSON.stringify([[], ["inspect"]]), "Workflow dependencies are invalid");
+    assert(JSON.stringify(contract.steps.map((step) => step.requires_approval)) ===
+      JSON.stringify([false, true]), "Workflow approval points are invalid");
+    assert(JSON.stringify(contract.steps.map((step) => step.recovery_policy)) ===
+      JSON.stringify(["read_only_replay_allowed", "manual_effect_resolution_on_ambiguity"]),
+    "Workflow recovery policy is invalid");
+    for (const mutation of ["missing", "extra"]) {
+      const malformed = structuredClone(app);
+      if (mutation === "missing") delete malformed.workflow.steps[0].recovery_policy;
+      else malformed.workflow.steps[0].unexpected = true;
+      let rejected = false;
+      try {
+        workflowContract(malformed);
+      } catch (error) {
+        rejected = /contract is invalid/.test(String(error && error.message));
+      }
+      assert(rejected, `Workflow manifest ${mutation} field did not fail closed`);
+    }
 
     const requested = workflowRunProjection(
       app,
@@ -964,11 +1010,16 @@
   }
 
   function unavailableWorkflowCase() {
-    const card = document.querySelector('.worker-card[data-app-id="flow.unavailable.ffffffffffff"]');
+    const appId = "flow.unavailable-mechanism.ffffffffffff";
+    const card = document.querySelector(`.worker-card[data-app-id="${appId}"]`);
     assert(card, "unavailable Workflow worker card is not visible");
     assert(card.disabled, "unavailable Workflow worker is selectable");
     assert(card.classList.contains("unavailable"), "unavailable Workflow state is not disclosed");
     assert(!card.querySelector(".workflow-worker-badge"), "unbound Workflow invented a dispatch badge");
+    const unavailable = state.apps.find((item) => item.id === appId);
+    assert(unavailable.workflow.app_id === appId &&
+      unavailable.workflow.steps.every((step) => typeof step.dispatch_tool_name === "string"),
+    "unavailable Workflow erased its immutable preflight manifest");
     assert(document.querySelector("#connection-label").textContent === "运行时就绪", "unavailable Workflow broke catalog readiness");
     const selected = document.querySelector("#selected-worker-label").textContent;
     card.click();

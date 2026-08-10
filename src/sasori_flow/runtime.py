@@ -19,6 +19,7 @@ from sasori import (
     tool_schema_sha256,
 )
 
+from .manifest import compose_workflow_manifest
 from .spec import (
     MAX_WORKFLOW_INPUT_BYTES,
     ToolStep,
@@ -119,7 +120,12 @@ def _wrapper_revision(spec: WorkflowSpec, step: ToolStep) -> str:
 
 
 def _tool_map(tools: Sequence[Tool]) -> dict[str, Tool]:
-    return {tool.name: tool for tool in tools}
+    available: dict[str, Tool] = {}
+    for tool in tools:
+        if tool.name in available:
+            raise WorkflowCompileError(f"duplicate workflow tool name: {tool.name}")
+        available[tool.name] = tool
+    return available
 
 
 def _validate_base_tools(spec: WorkflowSpec, tools: Sequence[Tool]) -> None:
@@ -614,6 +620,9 @@ class WorkflowHarness(Harness):
     def __init__(self, spec: WorkflowSpec, model: WorkflowModel, base: Harness) -> None:
         self.spec = spec
         self.app_id = workflow_app_id(spec)
+        self._definition_manifest_json = canonical_json(
+            compose_workflow_manifest(spec, model.tools, app_id=self.app_id)
+        )
         super().__init__(
             model,
             model.tools,
@@ -629,6 +638,14 @@ class WorkflowHarness(Harness):
     @property
     def harness(self) -> WorkflowHarness:
         return self
+
+    def definition_manifest(self) -> dict[str, object]:
+        """Return detached, zero-runtime-mutation compiled definition metadata."""
+
+        value = json.loads(self._definition_manifest_json)
+        if not isinstance(value, dict):
+            raise WorkflowIntegrityError("workflow definition manifest is invalid")
+        return value
 
     async def run(
         self,
@@ -870,13 +887,11 @@ class WorkflowHarness(Harness):
         )
 
 
-def compile_workflow(spec: WorkflowSpec, base: Harness) -> WorkflowHarness:
-    if not isinstance(spec, WorkflowSpec):
-        raise WorkflowCompileError("spec must be a WorkflowSpec")
-    if not isinstance(base, Harness):
-        raise WorkflowCompileError("base must be a Sasori Harness")
-    _validate_base_tools(spec, base.tools)
-    available = _tool_map(base.tools)
+def _compile_steps(
+    spec: WorkflowSpec, tools: Sequence[Tool]
+) -> tuple[_CompiledStep, ...]:
+    _validate_base_tools(spec, tools)
+    available = _tool_map(tools)
     compiled = tuple(
         _CompiledStep(
             step=step,
@@ -888,6 +903,30 @@ def compile_workflow(spec: WorkflowSpec, base: Harness) -> WorkflowHarness:
     wrapper_names = {item.wrapper_tool.name for item in compiled}
     if len(wrapper_names) != len(compiled):
         raise WorkflowCompileError("workflow wrapper tool names collided")
+    return compiled
+
+
+def preflight_workflow(
+    spec: WorkflowSpec, tools: Sequence[Tool]
+) -> dict[str, object]:
+    """Validate and inspect a Workflow without creating a Harness or run."""
+
+    if not isinstance(spec, WorkflowSpec):
+        raise WorkflowCompileError("spec must be a WorkflowSpec")
+    compiled = _compile_steps(spec, tuple(tools))
+    return compose_workflow_manifest(
+        spec,
+        tuple(item.wrapper_tool for item in compiled),
+        app_id=workflow_app_id(spec),
+    )
+
+
+def compile_workflow(spec: WorkflowSpec, base: Harness) -> WorkflowHarness:
+    if not isinstance(spec, WorkflowSpec):
+        raise WorkflowCompileError("spec must be a WorkflowSpec")
+    if not isinstance(base, Harness):
+        raise WorkflowCompileError("base must be a Sasori Harness")
+    compiled = _compile_steps(spec, base.tools)
     model = WorkflowModel(spec, compiled)
     return WorkflowHarness(spec, model, base)
 
@@ -899,5 +938,6 @@ __all__ = [
     "WorkflowModel",
     "WorkflowStepFailed",
     "compile_workflow",
+    "preflight_workflow",
     "workflow_app_id",
 ]

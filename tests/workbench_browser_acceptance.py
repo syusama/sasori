@@ -89,6 +89,7 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
                 "workflow.0.1.0.css",
                 "workflow.0.1.0.js",
                 "workflow.0.2.0.js",
+                "workflow-manifest.0.1.0.js",
                 "event-reducer.0.1.0.js",
                 "mark.0.1.0.svg",
             }:
@@ -276,6 +277,7 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "app.0.1.3.js",
             "app.0.1.4.js",
             "workflow.0.2.0.js",
+            "workflow-manifest.0.1.0.js",
         ],
     }
 

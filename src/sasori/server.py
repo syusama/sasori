@@ -77,6 +77,7 @@ _WORKBENCH_ASSETS = {
     "/assets/workflow.0.1.0.css": ("workflow.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow.0.1.0.js": ("workflow.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow.0.2.0.js": ("workflow.0.2.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/workflow-manifest.0.1.0.js": ("workflow-manifest.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/mark.0.1.0.svg": ("mark.0.1.0.svg", "image/svg+xml", "public, max-age=31536000, immutable"),
 }
 _WORKBENCH_SECURITY_HEADERS = {

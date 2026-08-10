@@ -422,6 +422,7 @@ def run_acceptance(
                 "app.0.1.3.js",
                 "app.0.1.4.js",
                 "workflow.0.2.0.js",
+                "workflow-manifest.0.1.0.js",
             ],
             "durable": durable,
             "effect": {"count": 2, "summaries": [item["summary"] for item in actions]},

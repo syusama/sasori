@@ -190,25 +190,7 @@ def application_surface_catalog(
             if isinstance(harness, WorkflowHarness):
                 for skill in metadata["skills"]:
                     skill["tool_names"] = [tool.name for tool in tools]
-                metadata["workflow"]["steps"] = [
-                    {
-                        "position": position,
-                        "step_id": step.step_id,
-                        "logical_tool_name": step.tool_name,
-                        "dispatch_tool_name": wrapper.name,
-                        "effect": step.effect,
-                        "logical_tool_revision": step.tool_revision,
-                        "dispatch_tool_revision": wrapper.tool_revision,
-                        "logical_schema_sha256": step.schema_sha256,
-                        "dispatch_schema_sha256": tool_schema_sha256(wrapper),
-                        "result_type": step.result_type,
-                        "max_result_bytes": step.max_result_bytes,
-                        "is_output": step.step_id == harness.spec.output_step,
-                    }
-                    for position, (step, wrapper) in enumerate(
-                        zip(harness.spec.steps, tools, strict=True), start=1
-                    )
-                ]
+                metadata["workflow"] = harness.definition_manifest()
             known_skills = {str(skill["id"]) for skill in metadata["skills"]}
             metadata["skills"].extend(
                 {
