@@ -33,4 +33,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=2).read()"]
 ENTRYPOINT ["sasori-server"]
-CMD ["--host", "0.0.0.0", "--port", "8080", "--app", "incident=sasori_apps.incident:create_harness", "--app", "research=sasori_apps.research:create_harness", "--app", "developer=sasori_apps.developer:create_harness", "--token-file", "/run/secrets/sasori_token"]
+CMD ["--host", "0.0.0.0", "--port", "8080", "--app", "incident=sasori_apps.incident:create_harness", "--app", "research=sasori_apps.research:create_harness", "--app", "developer=sasori_apps.developer:create_harness", "--app", "sasori_apps.workflow_incident:create_harness", "--token-file", "/run/secrets/sasori_token"]

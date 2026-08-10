@@ -22,6 +22,14 @@ SPEC = importlib.util.spec_from_file_location(
 container_acceptance = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = container_acceptance
 SPEC.loader.exec_module(container_acceptance)
+sys.modules.setdefault("container_acceptance", container_acceptance)
+WORKFLOW_SPEC = importlib.util.spec_from_file_location(
+    "sasori_container_workflow_acceptance",
+    ROOT / "scripts" / "container_workflow_acceptance.py",
+)
+container_workflow_acceptance = importlib.util.module_from_spec(WORKFLOW_SPEC)
+sys.modules[WORKFLOW_SPEC.name] = container_workflow_acceptance
+WORKFLOW_SPEC.loader.exec_module(container_workflow_acceptance)
 MEMORY_SPEC = importlib.util.spec_from_file_location(
     "sasori_container_memory_acceptance",
     ROOT / "scripts" / "container_memory_acceptance.py",
@@ -70,6 +78,120 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.assertIn("container Memory restart evidence is inconsistent", workflow)
         self.assertIn("sasori-memory-prepared-${{ github.run_id }}", workflow)
         self.assertIn("sasori-memory-restarted-${{ github.run_id }}", workflow)
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn(
+            '"--app", "sasori_apps.workflow_incident:create_harness"',
+            dockerfile,
+        )
+        self.assertNotRegex(
+            dockerfile,
+            r"flow\.incident-mechanism\.[0-9a-f]{12}",
+        )
+
+    def test_ci_runs_workflow_acceptance_before_shared_restart_gates(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        for name in (
+            "WORKFLOW_EVIDENCE_FILE",
+            "WORKFLOW_RESTARTED_FILE",
+            "WORKFLOW_ACTION_PAUSED_FILE",
+            "WORKFLOW_ACTION_COMPLETE_FILE",
+            "WORKFLOW_ACTION_RESTARTED_FILE",
+            "SASORI_WORKFLOW_RUN_ID",
+        ):
+            self.assertIn(name, workflow)
+        self.assertIn(
+            'action_snapshot 1 0 "$WORKFLOW_ACTION_PAUSED_FILE"', workflow
+        )
+        self.assertIn(
+            'action_snapshot 1 1 "$WORKFLOW_ACTION_COMPLETE_FILE"', workflow
+        )
+        self.assertIn(
+            'action_snapshot 1 1 "$WORKFLOW_ACTION_RESTARTED_FILE"', workflow
+        )
+        self.assertIn('> "$WORKFLOW_RESTARTED_FILE"', workflow)
+        self.assertIn('if [[ ! -f "$path" ]]', workflow)
+        for stem in (
+            "sasori-workflow-evidence-${{ github.run_id }}",
+            "sasori-workflow-restarted-${{ github.run_id }}",
+            "sasori-workflow-action-paused-${{ github.run_id }}",
+            "sasori-workflow-action-complete-${{ github.run_id }}",
+            "sasori-workflow-action-restarted-${{ github.run_id }}",
+        ):
+            self.assertIn(stem, workflow)
+
+        incident_complete = workflow.index(
+            "python scripts/container_acceptance.py complete"
+        )
+        workflow_prepare = workflow.index(
+            "python scripts/container_workflow_acceptance.py prepare"
+        )
+        workflow_complete = workflow.index(
+            "python scripts/container_workflow_acceptance.py complete"
+        )
+        memory_prepare = workflow.index(
+            "< scripts/container_memory_acceptance.py", workflow_complete
+        )
+        restart = workflow.index(
+            'docker compose -p "$COMPOSE_PROJECT_NAME" restart sasori'
+        )
+        incident_restarted = workflow.index(
+            "python scripts/container_acceptance.py after-restart", restart
+        )
+        workflow_restarted = workflow.index(
+            "python scripts/container_workflow_acceptance.py after-restart",
+            incident_restarted,
+        )
+        memory_restarted = workflow.index(
+            "< scripts/container_memory_acceptance.py", workflow_restarted
+        )
+        second_owner = workflow.index(
+            "second owner unexpectedly acquired", memory_restarted
+        )
+        tamper = workflow.index("tampered = bytes", second_owner)
+        sbom = workflow.index("Generate and bind the final image SBOM", tamper)
+        audit = workflow.index("Audit logs and generated reports", sbom)
+        cleanup = workflow.index(
+            "Stop containers and remove sensitive local files", audit
+        )
+        upload = workflow.index("Upload audited container evidence", cleanup)
+        self.assertEqual(
+            [
+                incident_complete,
+                workflow_prepare,
+                workflow_complete,
+                memory_prepare,
+                restart,
+                incident_restarted,
+                workflow_restarted,
+                memory_restarted,
+                second_owner,
+                tamper,
+                sbom,
+                audit,
+                cleanup,
+                upload,
+            ],
+            sorted(
+                [
+                    incident_complete,
+                    workflow_prepare,
+                    workflow_complete,
+                    memory_prepare,
+                    restart,
+                    incident_restarted,
+                    workflow_restarted,
+                    memory_restarted,
+                    second_owner,
+                    tamper,
+                    sbom,
+                    audit,
+                    cleanup,
+                    upload,
+                ]
+            ),
+        )
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -117,6 +239,25 @@ class ContainerAcceptanceTests(unittest.TestCase):
         self.servers.append((server, thread))
         return server, f"http://127.0.0.1:{server.server_port}"
 
+    def _start_workflow_sasori(self) -> tuple[object, str]:
+        from sasori_apps.workflow_incident import APP_ID
+
+        server = create_server(
+            "127.0.0.1",
+            0,
+            database=self.database,
+            artifact_root=self.artifact_root,
+            apps={APP_ID: "sasori_apps.workflow_incident:create_harness"},
+            token=self.TOKEN,
+            publish_final_artifact=True,
+            sse_max_seconds=2,
+            sse_keepalive_seconds=0.05,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.servers.append((server, thread))
+        return server, f"http://127.0.0.1:{server.server_port}"
+
     def _stop_sasori(self, server: object) -> None:
         index = next(
             index for index, (candidate, _) in enumerate(self.servers)
@@ -141,6 +282,71 @@ class ContainerAcceptanceTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             result = container_memory_acceptance.main(arguments)
         return result, stdout.getvalue(), stderr.getvalue()
+
+    def _workflow_main(self, arguments: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = container_workflow_acceptance.main(arguments)
+        return result, stdout.getvalue(), stderr.getvalue()
+
+    def test_workflow_acceptance_approval_resume_and_restart(self) -> None:
+        evidence = self.root / "workflow-evidence.json"
+        run_id = "ContainerWorkflowAcceptance"
+        server, base_url = self._start_workflow_sasori()
+        common = [
+            "--base-url",
+            base_url,
+            "--token-file",
+            str(self.token_file),
+            "--evidence",
+            str(evidence),
+        ]
+
+        code, stdout, stderr = self._workflow_main(
+            ["prepare", *common, "--run-id", run_id]
+        )
+        self.assertEqual((code, stderr), (0, ""))
+        prepared = json.loads(stdout)
+        self.assertEqual(prepared["phase"], "prepare")
+        self.assertFalse(self.action_log.exists())
+
+        code, stdout, stderr = self._workflow_main(["complete", *common])
+        self.assertEqual((code, stderr), (0, ""))
+        completed = json.loads(stdout)
+        self.assertEqual(completed["phase"], "complete")
+        self.assertEqual(
+            [
+                json.loads(line)
+                for line in self.action_log.read_text(encoding="utf-8").splitlines()
+            ],
+            [
+                {
+                    "summary": (
+                        "diagnostic captured for container typed workflow incident"
+                    )
+                }
+            ],
+        )
+
+        self._stop_sasori(server)
+        _, restarted_url = self._start_workflow_sasori()
+        restarted_common = [
+            "--base-url",
+            restarted_url,
+            "--token-file",
+            str(self.token_file),
+            "--evidence",
+            str(evidence),
+        ]
+        code, stdout, stderr = self._workflow_main(
+            ["after-restart", *restarted_common]
+        )
+        self.assertEqual((code, stderr), (0, ""))
+        restarted = json.loads(stdout)
+        self.assertTrue(restarted["verified"])
+        self.assertEqual(restarted["events_sha256"], completed["events_sha256"])
+        self.assertEqual(len(self.action_log.read_text("utf-8").splitlines()), 1)
 
     def test_memory_acceptance_write_search_and_fresh_store_restart(self) -> None:
         database = self.root / "memory-acceptance.sqlite3"

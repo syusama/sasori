@@ -117,12 +117,17 @@ jobs:
           paths = {
               "SASORI_TOKEN_FILE": root / f"sasori-token-{suffix}",
               "CONTAINER_EVIDENCE_FILE": root / f"sasori-container-evidence-{suffix}.json",
+              "WORKFLOW_EVIDENCE_FILE": root / f"sasori-workflow-evidence-{suffix}.json",
+              "WORKFLOW_RESTARTED_FILE": root / f"sasori-workflow-restarted-{suffix}.json",
               "MEMORY_PREPARED_FILE": root / f"sasori-memory-prepared-{suffix}.json",
               "MEMORY_RESTARTED_FILE": root / f"sasori-memory-restarted-{suffix}.json",
               "ARTIFACT_TAMPER_FILE": root / f"sasori-artifact-tamper-{suffix}.json",
               "ACTION_PAUSED_FILE": root / f"sasori-action-paused-{suffix}.json",
               "ACTION_COMPLETE_FILE": root / f"sasori-action-complete-{suffix}.json",
               "ACTION_RESTARTED_FILE": root / f"sasori-action-restarted-{suffix}.json",
+              "WORKFLOW_ACTION_PAUSED_FILE": root / f"sasori-workflow-action-paused-{suffix}.json",
+              "WORKFLOW_ACTION_COMPLETE_FILE": root / f"sasori-workflow-action-complete-{suffix}.json",
+              "WORKFLOW_ACTION_RESTARTED_FILE": root / f"sasori-workflow-action-restarted-{suffix}.json",
               "OWNER_LOG_FILE": root / f"sasori-owner-{suffix}.log",
               "RUNTIME_LOG_FILE": root / f"sasori-runtime-{suffix}.log",
               "IMAGE_SBOM_FILE": root / f"sasori-image-{suffix}.spdx.json",
@@ -156,6 +161,7 @@ jobs:
               "SASORI_PORT": str(port),
               "SASORI_BASE_URL": f"http://127.0.0.1:{port}",
               "SASORI_ACCEPTANCE_RUN_ID": f"container-{suffix}",
+              "SASORI_WORKFLOW_RUN_ID": f"workflow-{suffix}",
               "SASORI_TOKEN_GID": str(token_stat.st_gid),
           }
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
@@ -216,27 +222,37 @@ jobs:
           set -euo pipefail
 
           action_snapshot() {
-            local expected_count="$1"
-            local output="$2"
+            local expected_incident_count="$1"
+            local expected_workflow_count="$2"
+            local output="$3"
             docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
-              python - "$expected_count" > "$output" <<'PY'
+              python - "$expected_incident_count" "$expected_workflow_count" \
+              > "$output" <<'PY'
           import hashlib
           import json
           import sys
           from pathlib import Path
 
-          expected_count = int(sys.argv[1])
-          expected_summary = "Operator review: diagnostic captured for container acceptance incident"
+          expected_incident_count = int(sys.argv[1])
+          expected_workflow_count = int(sys.argv[2])
+          incident_summary = "Operator review: diagnostic captured for container acceptance incident"
+          workflow_summary = "diagnostic captured for container typed workflow incident"
+          if expected_incident_count not in (0, 1) or expected_workflow_count not in (0, 1):
+              raise SystemExit("unsupported expected action count")
+          expected_records = (
+              [{"summary": incident_summary}] * expected_incident_count
+              + [{"summary": workflow_summary}] * expected_workflow_count
+          )
           path = Path("/data/incident-actions.jsonl")
           data = path.read_bytes() if path.exists() else b""
           lines = data.splitlines()
-          if len(lines) != expected_count:
+          if len(lines) != len(expected_records):
               raise SystemExit("incident action count is invalid")
-          if expected_count == 0:
+          if not expected_records:
               if data:
                   raise SystemExit("incident action log must be absent or empty before resume")
-              summary_digest = None
-          elif expected_count == 1:
+              records = []
+          else:
               def strict_object(pairs):
                   value = {}
                   for key, item in pairs:
@@ -245,22 +261,33 @@ jobs:
                       value[key] = item
                   return value
 
-              try:
-                  record = json.loads(lines[0].decode("utf-8"), object_pairs_hook=strict_object)
-              except (UnicodeDecodeError, ValueError):
-                  raise SystemExit("incident action record is invalid") from None
-              if record != {"summary": expected_summary}:
-                  raise SystemExit("incident action summary is invalid")
-              summary_digest = hashlib.sha256(expected_summary.encode("utf-8")).hexdigest()
-          else:
-              raise SystemExit("unsupported expected action count")
+              records = []
+              for line in lines:
+                  try:
+                      records.append(json.loads(line.decode("utf-8"), object_pairs_hook=strict_object))
+                  except (UnicodeDecodeError, ValueError):
+                      raise SystemExit("incident action record is invalid") from None
+              if records != expected_records:
+                  raise SystemExit("incident or Workflow action summary is invalid")
           print(json.dumps({
-              "count": expected_count,
+              "count": len(expected_records),
+              "incident_count": expected_incident_count,
+              "workflow_count": expected_workflow_count,
               "sha256": hashlib.sha256(data).hexdigest(),
-              "summary_sha256": summary_digest,
+              "summary_sha256": {
+                  "incident": (
+                      hashlib.sha256(incident_summary.encode("utf-8")).hexdigest()
+                      if expected_incident_count else None
+                  ),
+                  "workflow": (
+                      hashlib.sha256(workflow_summary.encode("utf-8")).hexdigest()
+                      if expected_workflow_count else None
+                  ),
+              },
           }, sort_keys=True, separators=(",", ":")))
           PY
-            python - "$output" "$expected_count" <<'PY'
+            python - "$output" "$expected_incident_count" \
+              "$expected_workflow_count" <<'PY'
           import hashlib
           import json
           import re
@@ -268,20 +295,35 @@ jobs:
           from pathlib import Path
 
           value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          expected_count = int(sys.argv[2])
-          expected_summary = "Operator review: diagnostic captured for container acceptance incident"
-          expected_summary_digest = (
-              hashlib.sha256(expected_summary.encode("utf-8")).hexdigest()
-              if expected_count == 1 else None
-          )
+          expected_incident_count = int(sys.argv[2])
+          expected_workflow_count = int(sys.argv[3])
+          summaries = {
+              "incident": "Operator review: diagnostic captured for container acceptance incident",
+              "workflow": "diagnostic captured for container typed workflow incident",
+          }
+          expected_summary_digests = {
+              name: (
+                  hashlib.sha256(summary.encode("utf-8")).hexdigest()
+                  if count else None
+              )
+              for (name, summary), count in zip(
+                  summaries.items(),
+                  (expected_incident_count, expected_workflow_count),
+                  strict=True,
+              )
+          }
           valid = (
               isinstance(value, dict)
-              and set(value) == {"count", "sha256", "summary_sha256"}
+              and set(value) == {
+                  "count", "incident_count", "workflow_count", "sha256", "summary_sha256"
+              }
               and type(value["count"]) is int
-              and value["count"] == expected_count
+              and value["count"] == expected_incident_count + expected_workflow_count
+              and value["incident_count"] == expected_incident_count
+              and value["workflow_count"] == expected_workflow_count
               and isinstance(value["sha256"], str)
               and re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is not None
-              and value["summary_sha256"] == expected_summary_digest
+              and value["summary_sha256"] == expected_summary_digests
           )
           if not valid:
               raise SystemExit("invalid action-log evidence")
@@ -294,14 +336,30 @@ jobs:
             --evidence "$CONTAINER_EVIDENCE_FILE" \
             --run-id "$SASORI_ACCEPTANCE_RUN_ID"
 
-          action_snapshot 0 "$ACTION_PAUSED_FILE"
+          action_snapshot 0 0 "$ACTION_PAUSED_FILE"
 
           python scripts/container_acceptance.py complete \
             --base-url "$SASORI_BASE_URL" \
             --token-file "$SASORI_TOKEN_FILE" \
             --evidence "$CONTAINER_EVIDENCE_FILE"
 
-          action_snapshot 1 "$ACTION_COMPLETE_FILE"
+          action_snapshot 1 0 "$ACTION_COMPLETE_FILE"
+
+          python scripts/container_workflow_acceptance.py prepare \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$WORKFLOW_EVIDENCE_FILE" \
+            --run-id "$SASORI_WORKFLOW_RUN_ID"
+
+          action_snapshot 1 0 "$WORKFLOW_ACTION_PAUSED_FILE"
+
+          python scripts/container_workflow_acceptance.py complete \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$WORKFLOW_EVIDENCE_FILE"
+
+          action_snapshot 1 1 "$WORKFLOW_ACTION_COMPLETE_FILE"
+          action_snapshot 1 1 "$ACTION_COMPLETE_FILE"
 
           docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
             python - prepare \
@@ -316,6 +374,12 @@ jobs:
             --base-url "$SASORI_BASE_URL" \
             --token-file "$SASORI_TOKEN_FILE" \
             --evidence "$CONTAINER_EVIDENCE_FILE"
+
+          python scripts/container_workflow_acceptance.py after-restart \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$WORKFLOW_EVIDENCE_FILE" \
+            > "$WORKFLOW_RESTARTED_FILE"
 
           docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
             python - after-restart \
@@ -345,9 +409,15 @@ jobs:
               raise SystemExit("container Memory restart evidence is inconsistent")
           PY
 
-          action_snapshot 1 "$ACTION_RESTARTED_FILE"
+          action_snapshot 1 1 "$WORKFLOW_ACTION_RESTARTED_FILE"
+          action_snapshot 1 1 "$ACTION_RESTARTED_FILE"
+          if ! cmp -s \
+            "$WORKFLOW_ACTION_COMPLETE_FILE" "$WORKFLOW_ACTION_RESTARTED_FILE"; then
+            echo "::error::incident or Workflow action log changed across container restart"
+            exit 1
+          fi
           if ! cmp -s "$ACTION_COMPLETE_FILE" "$ACTION_RESTARTED_FILE"; then
-            echo "::error::incident action log changed across container restart"
+            echo "::error::combined action evidence changed across container restart"
             exit 1
           fi
 
@@ -506,12 +576,17 @@ jobs:
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           token_file="${SASORI_TOKEN_FILE:-$RUNNER_TEMP/sasori-token-$suffix}"
           evidence_file="${CONTAINER_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-container-evidence-$suffix.json}"
+          workflow_evidence="${WORKFLOW_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-workflow-evidence-$suffix.json}"
+          workflow_restarted="${WORKFLOW_RESTARTED_FILE:-$RUNNER_TEMP/sasori-workflow-restarted-$suffix.json}"
           memory_prepared="${MEMORY_PREPARED_FILE:-$RUNNER_TEMP/sasori-memory-prepared-$suffix.json}"
           memory_restarted="${MEMORY_RESTARTED_FILE:-$RUNNER_TEMP/sasori-memory-restarted-$suffix.json}"
           tamper_file="${ARTIFACT_TAMPER_FILE:-$RUNNER_TEMP/sasori-artifact-tamper-$suffix.json}"
           paused_file="${ACTION_PAUSED_FILE:-$RUNNER_TEMP/sasori-action-paused-$suffix.json}"
           complete_file="${ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-action-complete-$suffix.json}"
           restarted_file="${ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-action-restarted-$suffix.json}"
+          workflow_paused="${WORKFLOW_ACTION_PAUSED_FILE:-$RUNNER_TEMP/sasori-workflow-action-paused-$suffix.json}"
+          workflow_complete="${WORKFLOW_ACTION_COMPLETE_FILE:-$RUNNER_TEMP/sasori-workflow-action-complete-$suffix.json}"
+          workflow_action_restarted="${WORKFLOW_ACTION_RESTARTED_FILE:-$RUNNER_TEMP/sasori-workflow-action-restarted-$suffix.json}"
           owner_log="${OWNER_LOG_FILE:-$RUNNER_TEMP/sasori-owner-$suffix.log}"
           runtime_log="${RUNTIME_LOG_FILE:-$RUNNER_TEMP/sasori-runtime-$suffix.log}"
           image_sbom="${IMAGE_SBOM_FILE:-$RUNNER_TEMP/sasori-image-$suffix.spdx.json}"
@@ -540,19 +615,27 @@ jobs:
                 "runtime log:$runtime_log" \
                 "second-owner log:$owner_log" \
                 "acceptance evidence:$evidence_file" \
+                "Workflow completed evidence:$workflow_evidence" \
+                "Workflow restarted evidence:$workflow_restarted" \
                 "Memory prepared evidence:$memory_prepared" \
                 "Memory restarted evidence:$memory_restarted" \
                 "artifact tamper evidence:$tamper_file" \
                 "paused action evidence:$paused_file" \
                 "completed action evidence:$complete_file" \
                 "restarted action evidence:$restarted_file" \
+                "Workflow paused action evidence:$workflow_paused" \
+                "Workflow completed action evidence:$workflow_complete" \
+                "Workflow restarted action evidence:$workflow_action_restarted" \
                 "image SBOM:$image_sbom" \
                 "image catalog:$image_catalog" \
                 "image SBOM binding:$image_binding" \
                 "image inspection:$image_inspect"; do
                 label="${item%%:*}"
                 path="${item#*:}"
-                if [[ -f "$path" ]] && grep -Fq -- "$token" "$path"; then
+                if [[ ! -f "$path" ]]; then
+                  echo "::error::$label is missing"
+                  audit_status=1
+                elif grep -Fq -- "$token" "$path"; then
                   echo "::error::bearer token found in $label"
                   audit_status=1
                 fi
@@ -567,12 +650,17 @@ jobs:
             echo "### Container product gate evidence"
             for item in \
               "acceptance:$evidence_file" \
+              "workflow-completed:$workflow_evidence" \
+              "workflow-restarted:$workflow_restarted" \
               "memory-prepared:$memory_prepared" \
               "memory-restarted:$memory_restarted" \
               "artifact-tamper:$tamper_file" \
               "paused-action:$paused_file" \
               "completed-action:$complete_file" \
               "restarted-action:$restarted_file" \
+              "workflow-paused-action:$workflow_paused" \
+              "workflow-completed-action:$workflow_complete" \
+              "workflow-restarted-action:$workflow_action_restarted" \
               "image-sbom:$image_sbom" \
               "image-catalog:$image_catalog" \
               "image-sbom-binding:$image_binding"; do
@@ -625,12 +713,17 @@ jobs:
           name: sasori-container-${{ github.sha }}
           path: |
             ${{ runner.temp }}/sasori-container-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-memory-prepared-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-memory-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-artifact-tamper-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-action-paused-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-action-complete-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-workflow-action-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 9

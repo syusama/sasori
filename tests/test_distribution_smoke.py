@@ -28,6 +28,9 @@ sdist_smoke = load_script("sdist_consumer_smoke")
 
 
 class InstalledOriginTests(unittest.TestCase):
+    def test_installed_inventory_includes_workflow_package(self):
+        self.assertIn("sasori_flow", installed_smoke.PACKAGES)
+
     def test_origin_must_resolve_under_the_exact_consumer_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

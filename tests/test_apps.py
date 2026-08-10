@@ -30,6 +30,11 @@ from sasori_apps.research import (  # noqa: E402
     SYSTEM_PROMPT as RESEARCH_PROMPT,
     research_harness,
 )
+from sasori_apps.workflow_incident import (  # noqa: E402
+    APP_ID as WORKFLOW_INCIDENT_ID,
+    WORKFLOW_SPEC as INCIDENT_WORKFLOW_SPEC,
+    create_harness as create_workflow_harness,
+)
 
 
 class RecordingModel:
@@ -247,7 +252,10 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         catalog = application_catalog()
         encoded = json.dumps(catalog, ensure_ascii=False)
         self.assertNotIn("system_prompt", encoded)
-        self.assertEqual([item["id"] for item in catalog], ["incident", "research", "developer"])
+        self.assertEqual(
+            [item["id"] for item in catalog],
+            ["incident", "research", "developer", WORKFLOW_INCIDENT_ID],
+        )
         for item in catalog:
             self.assertTrue(item["title"])
             self.assertTrue(item["description"])
@@ -255,6 +263,44 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(item["skills"])
         catalog[0]["title"] = "changed"
         self.assertEqual(application_catalog()[0]["title"], "Incident Chamber")
+
+    async def test_typed_incident_workflow_uses_the_adapter_run_path(self):
+        action_log = self.root / "workflow-actions.jsonl"
+        with patch.dict(
+            os.environ, {"SASORI_ACTION_LOG": str(action_log)}, clear=False
+        ):
+            harness = create_workflow_harness(
+                self.store("typed-workflow.sqlite3"), app_id=WORKFLOW_INCIDENT_ID
+            )
+            with self.assertRaises(RunPaused) as paused:
+                await harness.run(
+                    (Message("user", "checkout latency is high"),),
+                    run_id="TypedWorkflowApp",
+                    app_id=WORKFLOW_INCIDENT_ID,
+                )
+            request = paused.exception.request
+            self.assertIsNotNone(request)
+            assert request is not None
+            self.assertEqual(request.arguments["step_id"], "record")
+            self.assertEqual(
+                request.arguments["definition_sha256"],
+                INCIDENT_WORKFLOW_SPEC.digest,
+            )
+            self.assertFalse(action_log.exists())
+            harness.resolve_approval(
+                "TypedWorkflowApp", request.fingerprint, True
+            )
+            self.assertFalse(action_log.exists())
+            result = await harness.resume("TypedWorkflowApp")
+            self.assertEqual(
+                json.loads(result.final_message.content)["status"], "succeeded"
+            )
+            self.assertEqual(len(action_log.read_text("utf-8").splitlines()), 1)
+            projection = harness.projection("TypedWorkflowApp")
+            self.assertEqual(
+                [step["status"] for step in projection["steps"]],
+                ["completed", "completed"],
+            )
 
     def test_provider_configuration_fails_closed(self):
         with patch.dict(os.environ, {}, clear=True):

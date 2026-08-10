@@ -46,6 +46,113 @@
     }],
   };
 
+  const workflowApplication = {
+    id: "flow.fixture.aaaaaaaaaaaa",
+    title: "Fixture mechanism",
+    description: "Definition-bound serial Workflow fixture",
+    availability: { status: "ready", reason_code: null },
+    worker: {
+      id: "fixture-workflow-v1",
+      title: "Fixture Workflow",
+      model_slot: "deterministic-workflow",
+      tool_names: ["wf_inspect_fixture", "wf_record_fixture"],
+      logical_tool_names: ["inspect_incident", "record_action"],
+    },
+    skills: [{
+      id: "fixture-workflow",
+      title: "Fixture typed workflow",
+      description: "Inspect, then pause before one mutable action.",
+      tool_names: ["wf_inspect_fixture", "wf_record_fixture"],
+      logical_tool_names: ["inspect_incident", "record_action"],
+    }],
+    workflow: {
+      schema_version: 1,
+      workflow_id: "fixture-mechanism",
+      version: "1",
+      definition_sha256: "a".repeat(64),
+      execution: "single-harness-ordered-tools-v1",
+      step_count: 2,
+      supports_parallel: false,
+      supports_branches: false,
+      supports_agent_nodes: false,
+      steps: [
+        {
+          position: 1,
+          step_id: "inspect",
+          logical_tool_name: "inspect_incident",
+          dispatch_tool_name: "wf_inspect_fixture",
+          effect: "read_only",
+          logical_tool_revision: null,
+          dispatch_tool_revision: null,
+          logical_schema_sha256: "b".repeat(64),
+          dispatch_schema_sha256: "c".repeat(64),
+          result_type: "string",
+          max_result_bytes: 32768,
+          is_output: false,
+        },
+        {
+          position: 2,
+          step_id: "record",
+          logical_tool_name: "record_action",
+          dispatch_tool_name: "wf_record_fixture",
+          effect: "side_effecting",
+          logical_tool_revision: "fixture-record-v1",
+          dispatch_tool_revision: "fixture-wrapper-v1",
+          logical_schema_sha256: "d".repeat(64),
+          dispatch_schema_sha256: "e".repeat(64),
+          result_type: "string",
+          max_result_bytes: 32768,
+          is_output: true,
+        },
+      ],
+    },
+    tools: [
+      { name: "wf_inspect_fixture", description: "Inspect", effect: "read_only", tool_revision: null, plugin_id: "com.sasori.flow", input_schema: {}, schema_sha256: "c".repeat(64) },
+      { name: "wf_record_fixture", description: "Record", effect: "side_effecting", tool_revision: "fixture-wrapper-v1", plugin_id: "com.sasori.flow", input_schema: {}, schema_sha256: "e".repeat(64) },
+    ],
+    plugins: [{
+      id: "com.sasori.flow",
+      name: "Sasori Typed Workflow",
+      version: "0.1.0.dev0",
+      execution_mode: "trusted_process",
+      requested_permissions: {
+        filesystem_read: [],
+        filesystem_write: ["configured:incident-action-log"],
+        network_egress: [],
+        host_process: [],
+        secrets: [],
+      },
+      effective_access: "FULL HOST PROCESS PRIVILEGES",
+      enforced: false,
+    }],
+  };
+
+  const unavailableWorkflowApplication = {
+    ...workflowApplication,
+    id: "flow.unavailable.ffffffffffff",
+    title: "Unavailable mechanism",
+    description: "Logical Workflow metadata without a loaded Harness binding",
+    availability: { status: "unavailable", reason_code: "not_enabled" },
+    worker: {
+      ...workflowApplication.worker,
+      id: "fixture-workflow-unavailable",
+      title: "Unavailable Workflow",
+      tool_names: ["inspect_incident", "record_action"],
+    },
+    workflow: {
+      ...workflowApplication.workflow,
+      workflow_id: "unavailable-mechanism",
+      definition_sha256: "f".repeat(64),
+      steps: workflowApplication.workflow.steps.map((step) => ({
+        ...step,
+        dispatch_tool_name: null,
+        dispatch_tool_revision: null,
+        dispatch_schema_sha256: null,
+      })),
+    },
+    tools: [],
+  };
+
   function projection(runId, input, state = "completed", overrides = {}) {
     return {
       run_id: runId,
@@ -155,7 +262,10 @@
     requests.push({ method, path: `${url.pathname}${url.search}`, accept, mode });
 
     if (method === "GET" && url.pathname === "/v1/apps") {
-      return json({ schema_version: 1, apps: [application] });
+      return json({
+        schema_version: 1,
+        apps: [application, workflowApplication, unavailableWorkflowApplication],
+      });
     }
     if (method === "GET" && url.pathname === "/v1/runs") {
       return json({
@@ -476,6 +586,39 @@
     record("memory-skill-surface");
   }
 
+  function workflowSurfaceCase() {
+    const card = document.querySelector('.worker-card[data-app-id="flow.fixture.aaaaaaaaaaaa"]');
+    assert(card, "Workflow worker card is not visible");
+    card.click();
+    document.querySelector("#surface-tab").click();
+    const surface = document.querySelector(".workflow-surface");
+    assert(surface, "Workflow ordered-step surface is not visible");
+    const text = surface.textContent;
+    assert(text.includes("fixture-mechanism"), "Workflow identity is not visible");
+    assert(text.includes("inspect_incident"), "logical Tool is not visible");
+    assert(text.includes("wf_inspect_fixture"), "wrapper Tool is not visible");
+    assert(text.includes("SERIAL ONLY"), "serial-only boundary is not visible");
+    assert(text.includes("NO BRANCHES"), "branch non-goal is not visible");
+    assert(surface.querySelectorAll(".workflow-step").length === 2, "ordered step count is invalid");
+    assert(surface.querySelectorAll('[data-step-state="queued"]').length === 2, "definition preview invented durable progress");
+    document.querySelector('.worker-card[data-app-id="incident-response"]').click();
+    document.querySelector("#timeline-tab").click();
+    record("workflow-surface");
+  }
+
+  function unavailableWorkflowCase() {
+    const card = document.querySelector('.worker-card[data-app-id="flow.unavailable.ffffffffffff"]');
+    assert(card, "unavailable Workflow worker card is not visible");
+    assert(card.disabled, "unavailable Workflow worker is selectable");
+    assert(card.classList.contains("unavailable"), "unavailable Workflow state is not disclosed");
+    assert(!card.querySelector(".workflow-worker-badge"), "unbound Workflow invented a dispatch badge");
+    assert(document.querySelector("#connection-label").textContent === "运行时就绪", "unavailable Workflow broke catalog readiness");
+    const selected = document.querySelector("#selected-worker-label").textContent;
+    card.click();
+    assert(document.querySelector("#selected-worker-label").textContent === selected, "unavailable Workflow changed the selected application");
+    record("unavailable-workflow");
+  }
+
   async function run() {
     const fixture = global.__sasoriFixture;
     await waitFor(
@@ -483,7 +626,9 @@
         !document.querySelector("#run-button").disabled,
       "production Workbench did not finish initial loading",
     );
+    unavailableWorkflowCase();
     memorySkillSurfaceCase();
+    workflowSurfaceCase();
     await staleStatusCase(fixture);
     await sameRunEpochCase(fixture);
     await coldEventsCase(fixture);

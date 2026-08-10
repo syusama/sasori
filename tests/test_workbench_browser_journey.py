@@ -24,14 +24,20 @@ class RealJourneyEvidenceTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "actions.jsonl"
 
-    def test_exact_single_action_is_accepted(self):
+    def test_exact_incident_and_workflow_actions_are_accepted(self):
         self.path.write_text(
-            json.dumps({"summary": journey.EXPECTED_ACTION}) + "\n",
+            json.dumps({"summary": journey.EXPECTED_ACTION})
+            + "\n"
+            + json.dumps({"summary": journey.EXPECTED_WORKFLOW_ACTION})
+            + "\n",
             encoding="utf-8",
         )
         self.assertEqual(
-            journey.strict_action(self.path),
-            {"summary": journey.EXPECTED_ACTION},
+            journey.strict_actions(self.path),
+            [
+                {"summary": journey.EXPECTED_ACTION},
+                {"summary": journey.EXPECTED_WORKFLOW_ACTION},
+            ],
         )
 
     def test_missing_duplicate_tampered_and_non_strict_actions_fail_closed(self):
@@ -39,9 +45,13 @@ class RealJourneyEvidenceTests(unittest.TestCase):
             None,
             "\n",
             json.dumps({"summary": "wrong"}) + "\n",
-            json.dumps({"summary": journey.EXPECTED_ACTION}) + "\n" +
-            json.dumps({"summary": journey.EXPECTED_ACTION}) + "\n",
-            '{"summary":"first","summary":"second"}\n',
+            json.dumps({"summary": journey.EXPECTED_ACTION})
+            + "\n"
+            + json.dumps({"summary": journey.EXPECTED_ACTION})
+            + "\n",
+            '{"summary":"first","summary":"second"}\n'
+            + json.dumps({"summary": journey.EXPECTED_WORKFLOW_ACTION})
+            + "\n",
         )
         for value in cases:
             with self.subTest(value=value):
@@ -50,7 +60,7 @@ class RealJourneyEvidenceTests(unittest.TestCase):
                 if value is not None:
                     self.path.write_text(value, encoding="utf-8")
                 with self.assertRaises(AssertionError):
-                    journey.strict_action(self.path)
+                    journey.strict_actions(self.path)
 
 
 if __name__ == "__main__":

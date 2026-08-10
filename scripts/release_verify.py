@@ -21,8 +21,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "7"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v5"
+VERIFIER_VERSION = "8"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v6"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -57,6 +57,7 @@ RELEASE_DOCS = (
     "docs/ADR-0010-ARTIFACT-REF-BOUNDARY.md",
     "docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md",
     "docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md",
+    "docs/ADR-0013-TYPED-WORKFLOW-BOUNDARY.md",
     "docs/ARTIFACTS.md",
     "docs/BENCHMARK-LEAGENT-TOFU.md",
     "docs/CONTEXT.md",
@@ -65,6 +66,7 @@ RELEASE_DOCS = (
     "docs/MEMORY.md",
     "docs/PROVIDERS.md",
     "docs/RELEASE.md",
+    "docs/WORKFLOWS.md",
 )
 RELEASE_ASSETS = (
     "README_zh.md",
@@ -76,6 +78,7 @@ TOP_LEVEL_PACKAGES = (
     "sasori_apps",
     "sasori_artifacts",
     "sasori_context",
+    "sasori_flow",
     "sasori_market",
     "sasori_memory",
     "sasori_plugins",
@@ -578,6 +581,12 @@ def _build_inputs(source_root: Path) -> dict[str, object]:
     ):
         raise ReleaseVerificationError(
             "Docker context must exclude .secrets without negation", 3
+        )
+    if "/downloads" not in dockerignore_patterns or any(
+        pattern.startswith("!/downloads") for pattern in dockerignore_patterns
+    ):
+        raise ReleaseVerificationError(
+            "Docker context must exclude root downloads without negation", 3
         )
     recursive_cache_exclusions = {
         "**/__pycache__",

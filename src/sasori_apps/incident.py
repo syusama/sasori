@@ -48,26 +48,36 @@ def record_action(summary: str) -> str:
     return summary
 
 
+def incident_tools() -> tuple[Tool, Tool]:
+    return (
+        Tool(
+            "inspect_incident",
+            inspect_incident,
+            "Capture a deterministic diagnostic summary.",
+            effect="read_only",
+        ),
+        Tool(
+            "record_action",
+            record_action,
+            "Append an operator-approved incident action to the local audit log.",
+            effect="side_effecting",
+            tool_revision="1",
+        ),
+    )
+
+
 def create_harness(store: SQLiteStore) -> Harness:
     return Harness(
         IncidentModel(),
-        (
-            Tool(
-                "inspect_incident",
-                inspect_incident,
-                "Capture a deterministic diagnostic summary.",
-                effect="read_only",
-            ),
-            Tool(
-                "record_action",
-                record_action,
-                "Append an operator-approved incident action to the local audit log.",
-                effect="side_effecting",
-                tool_revision="1",
-            ),
-        ),
+        incident_tools(),
         store=store,
     )
 
 
-__all__ = ["IncidentModel", "create_harness", "inspect_incident", "record_action"]
+__all__ = [
+    "IncidentModel",
+    "create_harness",
+    "incident_tools",
+    "inspect_incident",
+    "record_action",
+]

@@ -49,10 +49,10 @@ def metadata(*, dependency=False, extra=""):
 
 
 class ReleaseVerificationTests(unittest.TestCase):
-    def test_release_contract_version_tracks_memory_inventory(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "7")
+    def test_release_contract_version_tracks_workflow_inventory(self):
+        self.assertEqual(release_verify.VERIFIER_VERSION, "8")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v5"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v6"
         )
 
     def setUp(self):
@@ -90,6 +90,22 @@ class ReleaseVerificationTests(unittest.TestCase):
                 with self.assertRaisesRegex(
                     release_verify.ReleaseVerificationError,
                     "Docker context must exclude .secrets without negation",
+                ):
+                    release_verify._build_inputs(self.source)
+        dockerignore.write_text(original, encoding="utf-8")
+
+    def test_docker_context_must_exclude_private_root_downloads(self):
+        dockerignore = self.source / ".dockerignore"
+        original = dockerignore.read_text(encoding="utf-8")
+        for unsafe in (
+            original.replace("/downloads/\n", ""),
+            original + "\n!/downloads/private\n",
+        ):
+            with self.subTest(unsafe=unsafe):
+                dockerignore.write_text(unsafe, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    release_verify.ReleaseVerificationError,
+                    "exclude root downloads without negation",
                 ):
                     release_verify._build_inputs(self.source)
         dockerignore.write_text(original, encoding="utf-8")

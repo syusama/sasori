@@ -20,6 +20,7 @@ PACKAGES = (
     "sasori_apps",
     "sasori_artifacts",
     "sasori_context",
+    "sasori_flow",
     "sasori_market",
     "sasori_memory",
     "sasori_plugins",
@@ -34,6 +35,8 @@ WEB_RESOURCES = (
     "event-reducer.0.1.0.js",
     "app.0.1.2.js",
     "app.0.1.3.js",
+    "workflow.0.1.0.css",
+    "workflow.0.1.0.js",
     "mark.0.1.0.svg",
 )
 
@@ -68,6 +71,118 @@ def main() -> int:
             raise RuntimeError(f"installed package has no origin: {package}")
         _require_under_prefix(module.__file__, prefix, f"package {package}")
         modules[package] = module
+    workflow_app = importlib.import_module("sasori_apps.workflow_incident")
+    if workflow_app.__file__ is None:
+        raise RuntimeError("installed Workflow application has no origin")
+    _require_under_prefix(
+        workflow_app.__file__, prefix, "application sasori_apps.workflow_incident"
+    )
+    workflow_app_id = getattr(workflow_app, "APP_ID", None)
+    workflow_spec = getattr(workflow_app, "WORKFLOW_SPEC", None)
+    create_workflow_harness = getattr(workflow_app, "create_harness", None)
+    derive_workflow_app_id = getattr(modules["sasori_flow"], "workflow_app_id", None)
+    if (
+        not isinstance(workflow_app_id, str)
+        or workflow_spec is None
+        or not callable(create_workflow_harness)
+        or not callable(derive_workflow_app_id)
+        or workflow_app_id != derive_workflow_app_id(workflow_spec)
+    ):
+        raise RuntimeError("installed Workflow application identity is invalid")
+
+    SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
+    RunPaused = getattr(modules["sasori"], "RunPaused", None)
+    if not callable(SQLiteStore) or not isinstance(RunPaused, type):
+        raise RuntimeError("installed Workflow runtime exports are incomplete")
+    with tempfile.TemporaryDirectory(prefix="sasori-installed-workflow-") as directory:
+        root = Path(directory)
+        database = root / "runs.sqlite3"
+        action_log = root / "actions.jsonl"
+        previous_action_log = os.environ.get("SASORI_ACTION_LOG")
+        os.environ["SASORI_ACTION_LOG"] = str(action_log)
+        first_store = SQLiteStore(database)
+        try:
+            harness = create_workflow_harness(first_store, app_id=workflow_app_id)
+            approval_request = None
+            try:
+                asyncio.run(
+                    harness.run(
+                        "installed wheel workflow",
+                        run_id="InstalledWorkflow",
+                        app_id=workflow_app_id,
+                    )
+                )
+            except RunPaused as paused:
+                if paused.reason != "approval_required" or paused.request is None:
+                    raise RuntimeError("installed Workflow paused for the wrong reason")
+                approval_request = paused.request
+            else:
+                raise RuntimeError("installed Workflow did not require approval")
+            if action_log.exists():
+                raise RuntimeError("installed Workflow executed before approval and resume")
+            harness.resolve_approval(
+                "InstalledWorkflow", approval_request.fingerprint, True
+            )
+            if action_log.exists():
+                raise RuntimeError("installed Workflow approval executed the effect")
+            result = asyncio.run(harness.resume("InstalledWorkflow"))
+            final_content = result.final_message.content
+            final = json.loads(final_content)
+            expected_value = "diagnostic captured for installed wheel workflow"
+            if (
+                final_content
+                != json.dumps(
+                    final,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                or final.get("version") != 1
+                or final.get("workflow_id") != workflow_spec.workflow_id
+                or final.get("workflow_version") != workflow_spec.version
+                or final.get("definition_sha256") != workflow_spec.digest
+                or final.get("status") != "succeeded"
+                or final.get("output", {}).get("step_id") != "record"
+                or final.get("output", {}).get("value") != expected_value
+                or final.get("output", {}).get("value_sha256")
+                != hashlib.sha256(
+                    json.dumps(
+                        expected_value,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+            ):
+                raise RuntimeError("installed Workflow typed final is invalid")
+            events = first_store.events("InstalledWorkflow")
+        finally:
+            first_store.close()
+
+        second_store = SQLiteStore(database)
+        try:
+            reopened = create_workflow_harness(
+                second_store, app_id=workflow_app_id
+            )
+            again = asyncio.run(reopened.resume("InstalledWorkflow"))
+            if (
+                again.final_message.content != final_content
+                or second_store.events("InstalledWorkflow") != events
+            ):
+                raise RuntimeError("installed Workflow durable reopen changed the run")
+        finally:
+            second_store.close()
+            if previous_action_log is None:
+                os.environ.pop("SASORI_ACTION_LOG", None)
+            else:
+                os.environ["SASORI_ACTION_LOG"] = previous_action_log
+        actions = [
+            json.loads(line)
+            for line in action_log.read_text(encoding="utf-8").splitlines()
+        ]
+        if actions != [{"summary": expected_value}]:
+            raise RuntimeError("installed Workflow effect was replayed or changed")
     Message = getattr(modules["sasori"], "Message", None)
     ContextBudget = getattr(modules["sasori_context"], "ContextBudget", None)
     ContextProjector = getattr(modules["sasori_context"], "ContextProjector", None)

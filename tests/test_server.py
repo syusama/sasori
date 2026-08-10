@@ -29,6 +29,10 @@ from sasori.server import (  # noqa: E402
     _Owner,
     create_server,
 )
+from sasori_apps.workflow_incident import (  # noqa: E402
+    APP_ID as WORKFLOW_INCIDENT_ID,
+    WORKFLOW_SPEC as INCIDENT_WORKFLOW_SPEC,
+)
 
 
 class ServerTests(unittest.TestCase):
@@ -235,6 +239,20 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(by_id["incident"]["availability"]["status"], "ready")
         self.assertEqual(by_id["research"]["availability"]["status"], "ready")
         self.assertEqual(by_id["developer"]["availability"]["reason_code"], "not_enabled")
+        unavailable_workflow = by_id[WORKFLOW_INCIDENT_ID]
+        self.assertEqual(
+            unavailable_workflow["availability"],
+            {"status": "unavailable", "reason_code": "not_enabled"},
+        )
+        self.assertEqual(unavailable_workflow["tools"], [])
+        self.assertTrue(
+            all(
+                step["dispatch_tool_name"] is None
+                and step["dispatch_tool_revision"] is None
+                and step["dispatch_schema_sha256"] is None
+                for step in unavailable_workflow["workflow"]["steps"]
+            )
+        )
         self.assertNotIn("system_prompt", json.dumps(catalog))
 
         status, error, _ = self.request(
@@ -311,6 +329,116 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(
             (status, error["error"]["code"]), (409, "app_binding_missing")
         )
+
+    def test_first_party_workflow_uses_existing_http_approval_and_resume(self):
+        action_log = Path(self.temp.name) / "workflow-actions.jsonl"
+        with mock.patch.dict(
+            "os.environ", {"SASORI_ACTION_LOG": str(action_log)}, clear=False
+        ):
+            server = create_server(
+                "127.0.0.1",
+                0,
+                database=self.db,
+                apps={
+                    WORKFLOW_INCIDENT_ID: (
+                        "sasori_apps.workflow_incident:create_harness"
+                    )
+                },
+                trusted_loopback_no_auth=True,
+                sse_max_seconds=2,
+                sse_keepalive_seconds=0.1,
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            self.servers.append((server, thread))
+
+            status, catalog, _ = self.request(server, "GET", "/v1/apps")
+            self.assertEqual(status, 200)
+            app = next(
+                item
+                for item in catalog["apps"]
+                if item["id"] == WORKFLOW_INCIDENT_ID
+            )
+            self.assertEqual(app["availability"]["status"], "ready")
+            self.assertEqual(
+                app["workflow"]["definition_sha256"],
+                INCIDENT_WORKFLOW_SPEC.digest,
+            )
+            self.assertFalse(app["workflow"]["supports_parallel"])
+            self.assertTrue(
+                all(tool["plugin_id"] == "com.sasori.flow" for tool in app["tools"])
+            )
+            dispatch_names = [tool["name"] for tool in app["tools"]]
+            self.assertEqual(app["worker"]["tool_names"], dispatch_names)
+            self.assertEqual(app["skills"][0]["tool_names"], dispatch_names)
+            self.assertEqual(
+                app["worker"]["logical_tool_names"],
+                ["inspect_incident", "record_action"],
+            )
+            self.assertEqual(
+                app["skills"][0]["logical_tool_names"],
+                ["inspect_incident", "record_action"],
+            )
+            steps = app["workflow"]["steps"]
+            self.assertEqual(
+                [step["step_id"] for step in steps], ["inspect", "record"]
+            )
+            self.assertEqual(
+                [step["logical_tool_name"] for step in steps],
+                ["inspect_incident", "record_action"],
+            )
+            self.assertEqual(
+                [step["dispatch_tool_name"] for step in steps], dispatch_names
+            )
+            self.assertEqual(
+                [step["effect"] for step in steps],
+                ["read_only", "side_effecting"],
+            )
+            self.assertEqual(
+                [step["is_output"] for step in steps], [False, True]
+            )
+            self.assertTrue(
+                all(
+                    step["dispatch_schema_sha256"]
+                    == app["tools"][index]["schema_sha256"]
+                    for index, step in enumerate(steps)
+                )
+            )
+
+            status, paused, _ = self.request(
+                server,
+                "POST",
+                "/v1/runs",
+                {
+                    "run_id": "HttpTypedWorkflow",
+                    "app_id": WORKFLOW_INCIDENT_ID,
+                    "input": "checkout latency is high",
+                },
+            )
+            self.assertEqual((status, paused["state"]), (202, "paused"))
+            self.assertEqual(paused["input"], "checkout latency is high")
+            self.assertEqual(paused["pending"]["effect"], "side_effecting")
+            self.assertEqual(
+                paused["pending"]["arguments"]["step_id"], "record"
+            )
+            self.assertFalse(action_log.exists())
+            fingerprint = paused["pending"]["fingerprint"]
+            status, decided, _ = self.request(
+                server,
+                "POST",
+                "/v1/runs/HttpTypedWorkflow/approval",
+                {"fingerprint": fingerprint, "approved": True},
+            )
+            self.assertEqual((status, decided["detail"]), (200, "awaiting_resume"))
+            self.assertFalse(action_log.exists())
+            status, completed, _ = self.request(
+                server, "POST", "/v1/runs/HttpTypedWorkflow/resume", {}
+            )
+            self.assertEqual((status, completed["state"]), (200, "completed"))
+            outcome = json.loads(completed["final_message"]["content"])
+            self.assertEqual(outcome["status"], "succeeded")
+            self.assertEqual(outcome["definition_sha256"], INCIDENT_WORKFLOW_SPEC.digest)
+            self.assertEqual(len(action_log.read_text("utf-8").splitlines()), 1)
 
     def test_auth_cursor_and_request_boundary_fail_closed(self):
         server = self.start(
@@ -419,6 +547,8 @@ class ServerTests(unittest.TestCase):
             ("/assets/event-reducer.0.1.0.js", "text/javascript"),
             ("/assets/app.0.1.2.js", "text/javascript"),
             ("/assets/app.0.1.3.js", "text/javascript"),
+            ("/assets/workflow.0.1.0.css", "text/css"),
+            ("/assets/workflow.0.1.0.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -435,6 +565,10 @@ class ServerTests(unittest.TestCase):
         self.assertLess(
             page.index("/assets/app.0.1.2.js"),
             page.index("/assets/app.0.1.3.js"),
+        )
+        self.assertLess(
+            page.index("/assets/app.0.1.3.js"),
+            page.index("/assets/workflow.0.1.0.js"),
         )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
@@ -459,12 +593,22 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("innerHTML", artifact_script)
         artifact_styles = assets["/assets/artifacts.0.1.0.css"]
         self.assertIn(".artifact-card", artifact_styles)
+        workflow_script = assets["/assets/workflow.0.1.0.js"]
+        self.assertIn("state.eventState.events", workflow_script)
+        self.assertIn("function renderWorkflowSurface(app)", workflow_script)
+        self.assertNotIn("reduceEvent(", workflow_script)
+        self.assertNotIn("new Map", workflow_script)
+        self.assertNotIn("innerHTML", workflow_script)
+        workflow_styles = assets["/assets/workflow.0.1.0.css"]
+        self.assertIn(".workflow-rail", workflow_styles)
 
         status, error, _ = self.request(server, "GET", "/assets/../README.md")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.2.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.3.js?v=1")
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(server, "GET", "/assets/workflow.0.1.0.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))

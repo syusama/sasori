@@ -3,7 +3,7 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, three first-party application compositions, curated catalog metadata, and a bundled Workbench exist. Memory is accepted only for a deployment-owned local-single-owner namespace after its deterministic, package, mainland-source container, and [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961) gates passed. Real-provider semantic/Memory quality evaluation, per-request user/tenant identity, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
+Current implementation state: the repository foundation, single Loop/Harness, G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE aggregation, deterministic bounded-context projection, opt-in low-trust semantic compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP entry points, local multi-application HTTP/SSE, domestic-source Docker delivery, trusted local plugins, four first-party application compositions, curated catalog metadata, and a bundled Workbench exist. The fourth composition is a core-external W0 ordered Tool Workflow whose bounded Workbench inspector derives progress from the existing event reducer; DAG scheduling, branches, parallelism, agent nodes, and visual authoring remain later work. Memory is accepted only for a deployment-owned local-single-owner namespace after its deterministic, package, mainland-source container, and [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961) gates passed. The Workflow implementation has passed its source, package, real-browser, and mainland-source container gates locally in the current candidate, but its own exact-revision Hosted evidence is still gated. Real-provider semantic/Memory quality evaluation, per-request user/tenant identity, public token streaming, multi-agent orchestration, untrusted-plugin isolation, and a central marketplace remain incomplete; planned behavior is not described as shipped behavior.
 
 ## 1. Decision
 
@@ -49,7 +49,7 @@ The project must not use official Naruto artwork, character silhouettes, costume
 flowchart TB
     P["Product: bounded Workbench and fixed digital employees (NOW)"]
     A["Adapters: Python / CLI / HTTP / UI (NOW)"]
-    X["Extensions: providers / context / Memory / stores / Web / RAG / Git / MCP (NOW); flows (LATER)"]
+    X["Extensions: providers / context / Memory / stores / Web / RAG / Git / MCP / ordered Workflow (NOW); DAG and multi-agent (LATER)"]
     H["Harness: budgets / approvals / trace / checkpoint boundary (NOW)"]
     K["Kernel: contracts / single-agent loop / tool dispatch / event projection (NOW)"]
     P --> A
@@ -115,8 +115,9 @@ These are boundaries, not directories to scaffold before use:
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
 | MCP adapter | current frozen host adapter; split only after an external package consumer exists | bounded stdio boundary accepted |
-| Graph/flow/multi-agent | extensions | three single-agent applications validated |
-| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product implemented after three applications |
+| Ordered typed Workflow | `sasori_flow` outside core | bounded serial W0 and one-Harness recovery path locally verified; exact-revision Hosted gate open |
+| DAG/graph/multi-agent | later extensions | requires parallel/branch/ownership/recovery ADRs; not current W0 behavior |
+| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product includes definition-bound serial step inspection on the existing reducer |
 | Marketplace | metadata service, not binary host | market gate in section 8 |
 
 ### 3.4 Public events are a projection
@@ -239,7 +240,7 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; Memory-enabled Research/Developer still use that path; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus a real-server Incident create/approve/explicit-resume/final/17-event/history-reload/permission journey pass in a real browser; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
+| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus real-server Incident and typed Workflow create/approve/explicit-resume/final/artifact/history-reload journeys pass in Chrome; Workflow inspection uses the existing reducer; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
 | Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
 
@@ -387,7 +388,7 @@ same public event projection, and Python/CLI/HTTP semantics agree. The bundled
 product imports static contracts only; it does not import private Python runtime
 objects or add an execution path.
 
-### Current bounded workflow
+### Current bounded Workbench journey
 
 The Workbench is a task-control surface, not another chat skin. It currently:
 
@@ -398,13 +399,16 @@ The Workbench is a task-control surface, not another chat skin. It currently:
 5. Resolve an unknown effect and resume from an explicit declared boundary.
 6. Shows actual skills, tools, effects/revisions, application availability,
    and honest trusted-process permission disclosure.
+7. Shows a definition-bound serial Workflow as an ordered logical-Tool to
+   wrapper-Tool mechanism, including current durable step and approval/recovery
+   state derived from the existing run projection and event reducer.
 
 Desktop information architecture: worker/history navigation on the left, task
 conversation and composer in the center, and timeline/approval/evidence/
 capability views on the right. Narrow screens switch these three surfaces with
 a bottom navigation bar without hiding pending approvals.
 
-Structured plans, downloadable artifact provenance, run cancellation, dynamic
+Structured plans, visual Workflow authoring, DAG branches/parallel execution, run cancellation, dynamic
 skill selection, background queues, multi-agent collaboration, sandboxed plugin
 execution, and marketplace installation are not current Workbench capabilities.
 Research citations and Developer file/Git results remain ordinary untrusted

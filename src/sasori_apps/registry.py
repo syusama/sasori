@@ -10,9 +10,12 @@ from sasori_plugins.git import git_manifest
 from sasori_plugins.rag_sqlite import rag_sqlite_manifest
 from sasori_plugins.web_fetch import web_fetch_manifest
 from sasori_plugins.workspace import workspace_manifest
+from sasori_flow import WorkflowHarness
 
 from .developer import APP_METADATA as DEVELOPER
 from .research import APP_METADATA as RESEARCH
+from .workflow_incident import APP_ID as WORKFLOW_INCIDENT_ID
+from .workflow_incident import APP_METADATA as WORKFLOW_INCIDENT
 
 
 INCIDENT = {
@@ -35,11 +38,12 @@ INCIDENT = {
     ],
 }
 
-_APPLICATIONS = (INCIDENT, RESEARCH, DEVELOPER)
+_APPLICATIONS = (INCIDENT, RESEARCH, DEVELOPER, WORKFLOW_INCIDENT)
 _APP_SPECS = {
     "incident": "sasori_apps.incident:create_harness",
     "research": "sasori_apps.research:create_harness",
     "developer": "sasori_apps.developer:create_harness",
+    WORKFLOW_INCIDENT_ID: "sasori_apps.workflow_incident:create_harness",
 }
 _TOOL_ORIGINS = {
     "fetch_url": "com.sasori.web-fetch",
@@ -138,6 +142,24 @@ def _plugins(app_id: str, tool_names: set[str]) -> list[dict[str, object]]:
                 "enforced": False,
             }
         )
+    if app_id == WORKFLOW_INCIDENT_ID:
+        result.append(
+            {
+                "id": "com.sasori.flow",
+                "name": "Sasori Typed Workflow",
+                "version": "0.1.0.dev0",
+                "execution_mode": "trusted_process",
+                "requested_permissions": {
+                    "filesystem_read": [],
+                    "filesystem_write": ["configured:incident-action-log"],
+                    "network_egress": [],
+                    "host_process": [],
+                    "secrets": [],
+                },
+                "effective_access": FULL_HOST_PROCESS_PRIVILEGES,
+                "enforced": False,
+            }
+        )
     if any(name not in _TOOL_ORIGINS for name in tool_names) and app_id == "developer":
         result.append(
             {
@@ -165,6 +187,28 @@ def application_surface_catalog(
         tool_names = {tool.name for tool in tools}
         if harness is not None:
             metadata["worker"]["tool_names"] = [tool.name for tool in tools]
+            if isinstance(harness, WorkflowHarness):
+                for skill in metadata["skills"]:
+                    skill["tool_names"] = [tool.name for tool in tools]
+                metadata["workflow"]["steps"] = [
+                    {
+                        "position": position,
+                        "step_id": step.step_id,
+                        "logical_tool_name": step.tool_name,
+                        "dispatch_tool_name": wrapper.name,
+                        "effect": step.effect,
+                        "logical_tool_revision": step.tool_revision,
+                        "dispatch_tool_revision": wrapper.tool_revision,
+                        "logical_schema_sha256": step.schema_sha256,
+                        "dispatch_schema_sha256": tool_schema_sha256(wrapper),
+                        "result_type": step.result_type,
+                        "max_result_bytes": step.max_result_bytes,
+                        "is_output": step.step_id == harness.spec.output_step,
+                    }
+                    for position, (step, wrapper) in enumerate(
+                        zip(harness.spec.steps, tools, strict=True), start=1
+                    )
+                ]
             known_skills = {str(skill["id"]) for skill in metadata["skills"]}
             metadata["skills"].extend(
                 {
@@ -188,9 +232,15 @@ def application_surface_catalog(
                 "description": tool.description,
                 "effect": tool.effect,
                 "tool_revision": tool.tool_revision,
-                "plugin_id": _TOOL_ORIGINS.get(
-                    tool.name,
-                    "sasori_apps.incident" if app_id == "incident" else "configured-mcp-stdio",
+                "plugin_id": (
+                    "com.sasori.flow"
+                    if isinstance(harness, WorkflowHarness)
+                    else _TOOL_ORIGINS.get(
+                        tool.name,
+                        "sasori_apps.incident"
+                        if app_id == "incident"
+                        else "configured-mcp-stdio",
+                    )
                 ),
                 "input_schema": compile_tool_schema(tool),
                 "schema_sha256": tool_schema_sha256(tool),

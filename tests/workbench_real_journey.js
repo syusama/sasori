@@ -1,7 +1,9 @@
 (function runRealWorkbenchJourney(global) {
   const INPUT = "browser lifecycle incident";
+  const WORKFLOW_INPUT = "browser workflow incident";
   const PHASE_KEY = "sasori.real-journey.phase";
   const RUN_KEY = "sasori.real-journey.run-id";
+  const WORKFLOW_RUN_KEY = "sasori.real-journey.workflow-run-id";
   const nativeAnchorClick = global.HTMLAnchorElement.prototype.click;
   let capturedDownload = null;
   const result = document.createElement("pre");
@@ -127,12 +129,12 @@
       "completed run did not appear in history",
     );
 
-    sessionStorage.setItem(PHASE_KEY, "reopen");
+    sessionStorage.setItem(PHASE_KEY, "incident-reopen");
     sessionStorage.setItem(RUN_KEY, runId);
     global.location.reload();
   }
 
-  async function reopenedJourney(runId) {
+  async function reopenedIncidentJourney(runId) {
     await waitFor(
       () => document.querySelector(`.history-card[data-run-id="${runId}"]`) &&
         !document.querySelector("#run-button").disabled,
@@ -161,32 +163,165 @@
       "cold history artifact preview did not survive reload",
     );
 
+    await workflowJourney(runId);
+  }
+
+  function workflowCard() {
+    return [...document.querySelectorAll(".worker-card")].find((card) =>
+      card.dataset.appId.startsWith("flow.incident-mechanism."));
+  }
+
+  function assertWorkflowSurface(expectedStates) {
+    document.querySelector("#surface-tab").click();
+    const surface = document.querySelector(".workflow-surface");
+    assert(surface, "typed Workflow inspection surface is missing");
+    const text = surface.textContent;
+    assert(text.includes("incident-mechanism"), "Workflow identity is not visible");
+    assert(text.includes("DEFINITION BOUND"), "Workflow definition binding is not visible");
+    assert(text.includes("inspect_incident"), "logical inspect Tool is not visible");
+    assert(text.includes("record_action"), "logical mutable Tool is not visible");
+    assert(text.includes("HARNESS WRAPPER"), "wrapper Tool mapping is not visible");
+    assert(text.includes("SERIAL ONLY"), "serial-only boundary is not visible");
+    assert(text.includes("NO BRANCHES"), "branch non-goal is not visible");
+    const steps = [...surface.querySelectorAll(".workflow-step")];
+    assert(steps.length === 2, "Workflow ordered step count is invalid");
+    assert(
+      JSON.stringify(steps.map((step) => step.dataset.stepState)) === JSON.stringify(expectedStates),
+      `Workflow durable step states are invalid: ${steps.map((step) => step.dataset.stepState)}`,
+    );
+    return surface;
+  }
+
+  async function workflowJourney(incidentRunId) {
+    const card = workflowCard();
+    assert(card, "production Workbench did not load the real typed Workflow application");
+    card.click();
+    assertWorkflowSurface(["queued", "queued"]);
+
+    const input = document.querySelector("#task-input");
+    input.value = WORKFLOW_INPUT;
+    document.querySelector("#task-form").requestSubmit();
+    await waitFor(
+      () => document.querySelector(".approve-action") &&
+        document.querySelector("#run-state").dataset.state === "paused" &&
+        document.querySelector("#operator-action").textContent.includes("side_effecting"),
+      "real typed Workflow did not reach approval_required",
+    );
+    const workflowRunId = document.querySelector("#active-run-label").textContent;
+    assert(/^run-[0-9a-f-]+$/i.test(workflowRunId), "Workflow run ID is invalid");
+    assert(workflowRunId !== incidentRunId, "Workflow reused the Incident run ID");
+    const approvalText = document.querySelector("#operator-action").textContent;
+    assert(approvalText.includes("wf_record_"), "approval does not name the wrapper Tool");
+    assert(approvalText.includes("record"), "approval does not expose the bound Workflow step");
+    assert(await actionCount() === 1, "Workflow effect occurred before approval");
+    const pausedSurface = assertWorkflowSurface(["completed", "approval"]);
+    assert(pausedSurface.textContent.includes("CURRENT DURABLE STEP · 02 / record"), "current durable step is not visible");
+    assert(pausedSurface.textContent.includes("HUMAN GATE"), "Workflow human gate is not visible");
+
+    document.querySelector("#timeline-tab").click();
+    document.querySelector(".approve-action").click();
+    await waitFor(
+      () => document.querySelector("#run-state").textContent === "resume_required" &&
+        document.querySelector("#operator-action .button.brass"),
+      "Workflow approval did not stop at explicit resume",
+    );
+    assert(await actionCount() === 1, "Workflow approval implicitly executed the effect");
+    assertWorkflowSurface(["completed", "ready"]);
+
+    document.querySelector("#timeline-tab").click();
+    document.querySelector("#operator-action .button.brass").click();
+    await waitFor(
+      () => document.querySelector("#run-state").dataset.state === "completed" &&
+        document.querySelector("#message-stack").textContent.includes('"workflow_id":"incident-mechanism"'),
+      "explicit resume did not complete the typed Workflow",
+    );
+    assert(await actionCount() === 2, "typed Workflow did not execute exactly one effect");
+    assert(document.querySelector("#event-count").textContent === "17", "Workflow durable event count is not 17");
+    assertWorkflowSurface(["completed", "completed"]);
+    document.querySelector("#artifacts-tab").click();
+    await waitFor(
+      () => document.querySelector(".artifact-card") &&
+        document.querySelector("#artifact-list").textContent.includes(`${workflowRunId}-result.md`),
+      "typed Workflow final artifact is not visible",
+    );
+    document.querySelector(".artifact-preview-button").click();
+    await waitFor(
+      () => !document.querySelector("#artifact-preview").hidden &&
+        document.querySelector("#artifact-preview-content").textContent.includes('"workflow_id":"incident-mechanism"'),
+      "typed Workflow artifact preview is invalid",
+    );
+    await waitFor(
+      () => document.querySelector(`.history-card[data-run-id="${workflowRunId}"]`),
+      "typed Workflow did not enter durable history",
+    );
+
+    sessionStorage.setItem(PHASE_KEY, "workflow-reopen");
+    sessionStorage.setItem(RUN_KEY, incidentRunId);
+    sessionStorage.setItem(WORKFLOW_RUN_KEY, workflowRunId);
+    global.location.reload();
+  }
+
+  async function reopenedWorkflowJourney(incidentRunId, workflowRunId) {
+    await waitFor(
+      () => document.querySelector(`.history-card[data-run-id="${incidentRunId}"]`) &&
+        document.querySelector(`.history-card[data-run-id="${workflowRunId}"]`) &&
+        workflowCard(),
+      "cold page load did not restore both durable runs",
+    );
+    document.querySelector(`.history-card[data-run-id="${workflowRunId}"]`).click();
+    await waitFor(
+      () => document.querySelector("#active-run-label").textContent === workflowRunId &&
+        document.querySelector("#run-state").dataset.state === "completed" &&
+        document.querySelector("#event-count").textContent === "17" &&
+        document.querySelector("#message-stack").textContent.includes('"workflow_id":"incident-mechanism"'),
+      "cold Workflow reopen did not reconstruct final output and events",
+    );
+    assert(await actionCount() === 2, "cold Workflow reopen replayed a side effect");
+    assertWorkflowSurface(["completed", "completed"]);
+    document.querySelector("#artifacts-tab").click();
+    await waitFor(
+      () => document.querySelector(".artifact-card") &&
+        document.querySelector("#artifact-list").textContent.includes(`${workflowRunId}-result.md`),
+      "cold Workflow reopen did not restore its durable artifact",
+    );
+    assertWorkflowSurface(["completed", "completed"]);
+
     sessionStorage.removeItem(PHASE_KEY);
     sessionStorage.removeItem(RUN_KEY);
+    sessionStorage.removeItem(WORKFLOW_RUN_KEY);
     result.dataset.result = "passed";
-    result.dataset.runId = runId;
-    result.dataset.events = "17";
-    result.dataset.effects = "1";
-    result.textContent = "PASS:real-incident-lifecycle,artifact-preview-download";
+    result.dataset.runId = incidentRunId;
+    result.dataset.workflowRunId = workflowRunId;
+    result.dataset.events = "34";
+    result.dataset.effects = "2";
+    result.textContent = "PASS:real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle";
     document.title = "Sasori real journey passed";
   }
 
   async function run() {
     const phase = sessionStorage.getItem(PHASE_KEY);
     const runId = sessionStorage.getItem(RUN_KEY);
-    if (phase === "reopen") {
+    const workflowRunId = sessionStorage.getItem(WORKFLOW_RUN_KEY);
+    if (phase === "incident-reopen") {
       assert(runId, "real journey reload lost its run ID");
-      await reopenedJourney(runId);
+      await reopenedIncidentJourney(runId);
+      return;
+    }
+    if (phase === "workflow-reopen") {
+      assert(runId && workflowRunId, "Workflow reload lost a durable run ID");
+      await reopenedWorkflowJourney(runId, workflowRunId);
       return;
     }
     sessionStorage.removeItem(PHASE_KEY);
     sessionStorage.removeItem(RUN_KEY);
+    sessionStorage.removeItem(WORKFLOW_RUN_KEY);
     await initialJourney();
   }
 
   function reportFailure(error) {
     sessionStorage.removeItem(PHASE_KEY);
     sessionStorage.removeItem(RUN_KEY);
+    sessionStorage.removeItem(WORKFLOW_RUN_KEY);
     result.dataset.result = "failed";
     result.textContent = `FAIL:${error && error.stack ? error.stack : String(error)}`;
     document.title = "Sasori real journey failed";
