@@ -49,7 +49,7 @@ drive the same single-agent loop.
 | Real side effects | every tool declares `read_only`, `idempotent`, or `side_effecting`; mutable effects require a revision and a human decision |
 | Crash ambiguity | dispatch intent is durable; unknown outcomes stop at `effect_unknown` for explicit operator recovery |
 | One runtime everywhere | Python, CLI, HTTP, first-party apps, and Workbench converge on `Harness.run()` / `resume()` |
-| Static workflows without a second engine | strict data/JSON and a small Python builder produce the same immutable serial `WorkflowSpec`; zero-execution preflight emits a bounded detached manifest; Python, CLI, HTTP, and Workbench still share one runtime and public run projection |
+| Static workflows without a second engine | strict data/JSON and a small Python builder produce the same immutable serial `WorkflowSpec`; zero-execution preflight emits a bounded detached manifest; the transient Studio checks drafts without saving or running them; Python, CLI, HTTP, and Workbench still share one runtime and public run projection |
 | Context under pressure | deterministic structural projection is the default; an opt-in named compactor selects cold history without splitting tool-call/result atoms, while the durable transcript stays unchanged |
 | Memory without mythology | opt-in `sasori_memory` keeps immutable revisions in a separate SQLite authority, filters the complete fixed namespace before ranking, and routes every mutation through Harness approval/idempotency |
 | Durable deliverables | optional `sasori_artifacts` binds immutable bytes, metadata, and a public event to the exact run without enlarging the Loop |
@@ -350,6 +350,8 @@ The no-build UI includes:
 - a live/cold/reconnect-safe timeline driven by one pure reducer;
 - a durable serial Workflow rail consumed from the versioned server projection,
   while the reducer remains responsible only for event timeline/cursor state;
+- a transient strict-JSON Workflow Studio that asks the server for an
+  authoritative detached preflight manifest without saving or running a draft;
 - run-scoped immutable artifact cards, authenticated UTF-8 text/JSON preview,
   verified download, and stale-response isolation;
 - capability, tool effect, plugin identity, and effective host-permission
@@ -369,7 +371,7 @@ The no-build UI includes:
 | `sasori_artifacts` | immutable content-addressed blobs; run/event association; verified list/content/HEAD/Range |
 | `sasori_flow` | definition-bound serial W0 execution; strict data/JSON/builder authoring; zero-execution compiled manifest preflight; versioned redacted Workflow projection; no DAG/parallel/Agent nodes |
 | CLI | run, status, events, approval, explicit resume, manual effect resolution; JSON/JSONL modes |
-| HTTP/SSE | local single-owner service, apps, run history, durable event cursors, readiness, Workbench |
+| HTTP/SSE | local single-owner service, apps, run history, durable event cursors, read-only Workflow preflight, readiness, Workbench |
 | Applications | deterministic Incident; configured Research; configured Developer; definition-bound Incident Mechanism Workflow |
 | Plugins | bounded workspace, allowlisted HTTPS fetch, SQLite/FTS5 RAG, local Git, frozen MCP stdio; first-party Memory registration when configured |
 | Catalog | strict local curated index and manifest checks; no central marketplace yet |
@@ -386,7 +388,9 @@ The four applications are compositions, not four engines:
 - **Incident Mechanism** — a definition-bound, serial `inspect → record` Tool
   Workflow that reuses the same approval, effect, recovery, and event path,
   exposes a bounded public step projection, and previews its immutable compiled
-  manifest without executing the definition.
+  manifest without executing the definition. The Studio may preflight a
+  transient draft against startup-frozen host Tools, but cannot save, activate,
+  deploy, or run it.
 
 Unavailable configuration is reported as unavailable; Sasori does not silently
 replace an app with the demo.
@@ -494,40 +498,38 @@ python tests/workbench_browser_journey.py --require-browser `
 ```
 
 The latest Hosted-verified implementation baseline,
-[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4),
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb),
 completed successfully in
-[Hosted run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778).
+[Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
 All 20 non-tag jobs across five job families passed; the exact-tag-only
-release-bundle job was correctly skipped, and the run published five
-digest-identified evidence artifacts. The executed gates covered:
+release-bundle job was correctly skipped. The executed gates covered:
 
-- the 403-case deterministic source suite across Ubuntu + Windows × Python
-  3.11, 3.12, and 3.13, including strict static authoring, zero-execution
-  preflight, exact manifest/projection semantics, Workflow transcript,
-  approval, effect, cancellation, crash, and no-replay contracts;
+- the 414-case deterministic source suite across Ubuntu + Windows × Python
+  3.11, 3.12, and 3.13; the local Windows baseline was `OK (skipped=5)`, with
+  only documented platform/permission skips;
 - installed-wheel and rebuilt-sdist matrices;
-- package verification, with the exact-tag release bundle correctly skipped on
-  this ordinary `main` push;
-- mainland-source image build and real Compose Incident + Typed Workflow
-  approval/resume/restart/no-replay, single-owner, Memory, run-scoped Artifact,
-  and same-size tamper gates;
+- package verification of the 252,158-byte wheel under the 256,000-byte limit,
+  verifier v11, source-tree algorithm v8, and the ordinary-push tag rejection;
+- a no-cache, locked mainland-source image build and real Compose Incident plus
+  four-stage Workflow `preflight → prepare → complete → after-restart`, proving
+  preflight creates no run or effect and restart does not replay the action;
 - SBOM generation, image binding, and audited evidence upload;
-- delayed-response UI race acceptance and real Incident + Typed Workflow
-  browser journeys on Ubuntu/Python 3.12, including the server-projected serial
-  step rail, immutable definition preview, explicit trusted-Python/no-sandbox
-  disclosure, and terminal cancelled-effect recovery policy.
+- 21 real-Chrome fixture cases at desktop and 390×844 reduced-motion sizes,
+  plus real Studio preflight, Incident, and Typed Workflow journeys on
+  Ubuntu/Python 3.12.
 
 That main-branch run did **not** create a tag, signed attestation, or final release
 bundle. Exact-tag provenance remains a separate release gate.
 
-The run promotes W1.1: strict static data/JSON/builder authoring, a bounded
-detached compiled manifest with zero-execution preflight, a Workbench definition
-preview, and a core-owned versioned redacted public Workflow projection around
-the existing core-external, definition-bound serial W0 runtime. It is **not** a
-saved Workflow catalog, Studio/editor, DAG engine, parallel/branch executor,
-Agent-node graph, subflow system, distributed scheduler, exactly-once runtime,
-sandbox, signed provenance, production-readiness, or real-provider quality
-claim. Those gates remain open.
+The run promotes W1.2: strict static data/JSON/builder authoring, a bounded
+detached compiled manifest, a transient strict-JSON Studio and authoritative
+HTTP preflight, immutable definition preview, and a core-owned versioned
+redacted public Workflow projection around the existing core-external,
+definition-bound serial W0 runtime. It is **not** a saved Workflow catalog or
+durable authoring system, activation/run-from-draft path, visual DAG,
+parallel/branch executor, Agent-node graph, subflow system, distributed
+scheduler, exactly-once runtime, sandbox, signed provenance,
+production-readiness, or real-provider quality claim. Those gates remain open.
 
 ## Current and Next
 
@@ -538,7 +540,7 @@ claim. Those gates remain open.
 | Single-agent loop and one runtime path | Trusted per-request user/tenant identity for multi-user Memory |
 | Local single-owner durable bounded Memory | Automatic low-trust extraction, conflict policy, embeddings/rerank, TTL/export/restore |
 | Versioned durable events and pure UI reducer | Dynamic skill selection and reviewed marketplace |
-| Approval, effect fingerprints, crash ambiguity recovery + strict static serial Workflow authoring, zero-execution manifest preflight, definition preview, and public step projection | Saved Workflow catalog/Studio, then separately gated DAG/branches/parallel ready sets/Agent nodes/subflows |
+| Approval/effect recovery + strict static serial authoring, transient Studio preflight, immutable manifest preview, and public step projection | Saved Workflow catalog and durable authoring, then separately gated activation/run-from-draft, DAG/branches/parallel ready sets/Agent nodes/subflows |
 | OpenAI + Anthropic conformance | More providers after the shared suite passes |
 | Structural projection + opt-in whole-request-bound unverified compaction note | Project Charter/Board and multi-agent orchestration |
 | CLI, local HTTP/SSE, four app compositions, Workbench | Safe versioned GenUI and richer product surfaces |

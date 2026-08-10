@@ -124,6 +124,19 @@ python scripts/release_verify.py `
   --trigger-tag $env:GITHUB_REF_NAME
 ```
 
+The accepted W1.2 implementation snapshot is bound to
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+and [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
+Its exact wheel was 252,158 bytes under the strict 250 KiB (256,000-byte)
+ceiling, leaving 3,842 bytes of nominal headroom; its manifest recorded
+`sasori-release-verify` v11 and `sasori-source-tree-v8`. This is dated evidence
+for that exact artifact, not a promise that later wheels remain below the
+limit, and it is not a reason to raise the limit. Run `31391700342` was an
+ordinary non-tag `main` run: all 20 non-tag jobs passed and the exact-tag-only
+release-candidate job was skipped. It therefore produced no exact-tag bundle,
+GitHub-hosted signed attestation or trusted provenance, GitHub Release, PyPI
+publication, or published container image.
+
 `--trigger-tag` is not inferred from ambient environment state. When supplied,
 it must equal the dynamic project tag exactly and is written into the local
 provenance record. The workflow passes it through a quoted environment value so
@@ -357,21 +370,25 @@ python tests/workbench_browser_acceptance.py --require-browser
 python tests/workbench_browser_journey.py --require-browser
 ```
 
-The first gate freezes delayed-response and same-run view isolation against a
-same-origin HTTP fixture. The second loads the same production assets but
-forwards every product request to a real local `sasori.server` and deterministic
-Incident application. It must prove `approval_required → resume_required →
-explicit resume → completed`, the external action count `0 → 0 → 1`, the exact
-17-event timeline, cold page reload/history reopen, final output, and visible
-trusted-process permission disclosure. Its test-only action-count probe is
-out-of-band evidence, not a Sasori API. These checks do not replace the
+The first gate executes the bundled assets against a same-origin fixture. It
+freezes delayed/stale response isolation and the Studio's exact success,
+controlled rejection, malformed-envelope, invalid-Unicode, keyboard/focus,
+desktop, 390×844 narrow, and reduced-motion behavior. The second forwards every
+product request to a real local `sasori.server`: a transient Studio preflight
+must create no run or action, then independent Incident and typed Workflow
+journeys must pass `approval_required → resume_required → explicit resume →
+completed`, artifact, cold-reopen, and no-replay checks. Its test-only
+action-count probe is out-of-band evidence, not a Sasori API. These checks do
+not establish mobile-device/cross-browser certification and do not replace the
 container restart or credentialed provider gates.
 
 Run a no-cache Compose build through the configured mainland sources, then the
 real workflow rather than health-only checks:
 
 ```text
-POST /v1/runs
+POST /v1/workflows/preflight
+  -> unchanged run/event/action ledger
+  -> POST /v1/runs
   -> approval_required
   -> durable approval
   -> resume_required
@@ -386,7 +403,8 @@ POST /v1/runs
 The repository's `Container product gate` job performs this workflow on
 `ubuntu-24.04` after the source test matrix. It builds the `sasori:local`
 candidate with `--no-cache --pull`, starts that service through Compose, and runs
-the standard-library acceptance driver in three phases:
+the standard-library Incident driver in three phases and the typed Workflow
+driver in four phases (`preflight`, `prepare`, `complete`, `after-restart`):
 
 ```powershell
 $env:SASORI_TOKEN_FILE = "C:\secure-local-path\sasori-token"
@@ -402,6 +420,8 @@ docker compose up -d --wait --wait-timeout 120 sasori
 $baseUrl = "http://127.0.0.1:$env:SASORI_PORT"
 $runId = "container-acceptance-$([guid]::NewGuid().ToString('N'))"
 $evidence = Join-Path $env:TEMP "$runId.json"
+$workflowRunId = "workflow-$([guid]::NewGuid().ToString('N'))"
+$workflowEvidence = Join-Path $env:TEMP "$workflowRunId.json"
 
 python scripts/container_acceptance.py prepare `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
@@ -409,15 +429,40 @@ python scripts/container_acceptance.py prepare `
 python scripts/container_acceptance.py complete `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
   --evidence $evidence
+
+python scripts/container_workflow_acceptance.py preflight `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $workflowEvidence
+python scripts/container_workflow_acceptance.py prepare `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $workflowEvidence --run-id $workflowRunId
+python scripts/container_workflow_acceptance.py complete `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $workflowEvidence
+
 docker compose restart sasori
 docker compose up -d --wait --wait-timeout 120 sasori
 python scripts/container_acceptance.py after-restart `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
   --evidence $evidence
+python scripts/container_workflow_acceptance.py after-restart `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $workflowEvidence
 ```
 
-`prepare` must stop at `resume_required` with 11 exact semantic events and no
-completed `record_action`. `complete` must first prove that prepared durable
+The Workflow `preflight` reconstructs the strict definition from the catalog,
+checks an exact successful manifest and a deliberate Tool-schema-drift
+rejection, and requires before/after run and event snapshots to be identical.
+The CI action snapshots before and after this phase must also be byte-identical.
+It therefore proves static contract inspection and zero mutation, not a dry
+run or Tool-effect truth. Workflow `prepare` stops at `resume_required` without
+the side effect; `complete` explicitly resumes and observes exactly 17 events
+and one Workflow action; `after-restart` repeats read/preflight identity checks
+and rejects any replay. This remains step-boundary recovery, not exactly-once
+execution.
+
+Incident `prepare` must stop at `resume_required` with 11 exact semantic events
+and no completed `record_action`. `complete` must first prove that prepared durable
 state is unchanged, explicitly resume once, then observe 17 exact events, one
 exact action, the expected final, and the exact SSE sequence 11-17 tail.
 `after-restart` performs only GET/SSE reads and requires the projection, event
@@ -437,16 +482,19 @@ factual-quality, or multi-tenant test.
 Do not enable first-party Research/Developer Memory in this Incident workflow
 or introduce a second Loop merely to perform the extension smoke.
 
-The CI job independently snapshots `/data/incident-actions.jsonl` as
-`0 -> 1 -> 1`, verifies its single JSON record exactly, and starts a second
-container against the same named volume. Only an exact `ConcurrentRunError`
-with exit code `2` passes that ownership probe. Before upload it scans the
-acceptance evidence, three action snapshots, runtime log, owner log, image SPDX,
-native Syft catalog, and image binding for the bearer token. The token and raw
-logs are deleted. The seven audited acceptance JSON files (Incident, Memory
-prepared, Memory restarted, artifact tamper, and three action snapshots) are
-retained for seven days, while the image SPDX, native catalog, and unsigned
-binding are uploaded as a separate 30-day artifact. Cleanup deliberately uses `docker compose down
+The CI job independently snapshots `/data/incident-actions.jsonl` across the
+Incident and Workflow boundaries, verifies exact per-composition counts and
+digests, and starts a second container against the same named volume. Only an
+exact `ConcurrentRunError` with exit code `2` passes that ownership probe.
+Before upload it scans the acceptance evidence, action snapshots, runtime log,
+owner log, image SPDX, native Syft catalog, and image binding for the bearer
+token. The token and raw logs are deleted. Fourteen audited JSON files are
+retained for seven days: Incident evidence; Workflow completed/restarted;
+Memory prepared/restarted; artifact tamper; three Incident action snapshots;
+and five Workflow action snapshots spanning before-preflight, preflight,
+paused, completed, and restarted. The image SPDX, native catalog, and unsigned
+binding are uploaded as a separate three-file, 30-day artifact. Cleanup
+deliberately uses `docker compose down
 --remove-orphans --timeout 20` without `-v` or `--volumes`.
 
 On native Linux the token file remains host-private at mode `0640`. Its numeric
@@ -456,12 +504,15 @@ because file-backed Compose secrets are bind mounts and cannot apply secret
 `uid`/`gid`/`mode` remapping. Never weaken this bridge to a world-readable
 token or an inspectable token environment variable.
 
-This job exercises only the deterministic `incident` composition and the
-locally built `sasori:local` candidate. It generates an unsigned image SBOM from
-that tested candidate, but does not run either credentialed provider smoke,
-publish an image, sign an artifact, or create trusted provenance. The presence
-of the workflow definition is not a passing public gate: record the hosted run
-URL and exact commit only after that run succeeds.
+This job exercises the deterministic `incident` composition, first-party typed
+Incident Workflow, zero-execution Workflow preflight, installed-container
+Memory smoke, artifact tamper rejection, second-owner exclusion, and the locally
+built `sasori:local` candidate. It generates an unsigned image SBOM from that
+tested candidate, but does not run either credentialed provider smoke,
+Research/Developer external capabilities, publish an image, sign an artifact,
+or create trusted provenance. A workflow definition or successful local run is
+not a passing public gate: record the Hosted run URL and exact commit only after
+that exact revision succeeds.
 
 Keep the named data volume during restart/owner testing. Do not publish a public
 deployment without the additional TLS, isolation, authentication, limits,

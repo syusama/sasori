@@ -1,6 +1,6 @@
 # ADR-0016: Static Serial Workflow Studio preview boundary
 
-- Status: Accepted for the W1.2 implementation candidate; not Hosted-verified
+- Status: Accepted and Hosted-verified for W1.2
 - Date: 2026-08-10
 - Depends on: [ADR-0014](ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md),
   [ADR-0015](ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md)
@@ -45,7 +45,7 @@ authorization, and deletion semantics.
 
 ### 2. The HTTP request is the exact strict Workflow JSON document
 
-The experimental local adapter adds:
+The local adapter adds:
 
 ```http
 POST /v1/workflows/preflight
@@ -311,7 +311,7 @@ Before W1.2 may be promoted as shipped:
     closed; canonical success configures an ordinary source-Tool Harness, and
     unavailable, ambiguous, or wrapper-only Tools never enter the registry.
 11. Keyboard, focus, reduced-motion, narrow-screen, and empty/error/success
-   states are exercised against the bundled unmodified candidate assets.
+   states are exercised against the exact bundled W1.2 implementation assets.
 12. Source tests, real browser fixture and journey, installed wheel,
    rebuilt-sdist wheel, release inventory, and mainland-source no-cache
    container workflow pass.
@@ -324,3 +324,31 @@ execution from drafts, visual DAG editing, branches, parallelism, Agent nodes,
 subflows, marketplace installation, tenant isolation, plugin honesty, sandbox,
 live-provider quality, signed provenance, public deployment, or production
 readiness.
+
+## Promotion evidence
+
+The W1.2 implementation is bound to
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+and [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
+All 20 non-tag jobs across five job families passed; the exact-tag-only release
+bundle was correctly skipped on the ordinary `main` push. The six-platform
+source matrix covered 414 deterministic tests, with five documented
+platform/permission skips in the local Windows baseline. Installed-wheel and
+rebuilt-sdist matrices passed; the accepted wheel was 252,158 bytes under the
+256,000-byte limit and used release verifier v11 with
+`sasori-source-tree-v8`.
+
+Real Chrome covered 21 fixture cases across desktop and 390×844 reduced-motion
+profiles, including keyboard/focus, stale-response, invalid-Unicode, exact
+rejection, and unverified-transport behavior. Real-server Studio, Incident, and
+typed Workflow journeys passed. The locked mainland-source no-cache Compose
+gate completed Workflow `preflight → prepare → complete → after-restart` and
+proved that preflight changed no durable run/event or action ledger, while the
+approved action executed once and was not replayed after restart.
+
+This evidence promotes only the transient static draft/preflight/manifest
+preview described in this ADR. It is not evidence for a saved catalog, durable
+draft lifecycle, activation, run-from-draft, DAG/parallel execution, Agent
+nodes, subflows, sandboxing, exactly-once effects, signed provenance, public
+deployment, or production readiness. The later documentation-promotion commit
+must complete its own Hosted CI before the promotion process is closed.

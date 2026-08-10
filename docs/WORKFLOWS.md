@@ -177,10 +177,10 @@ executor, Agent node, subflow system, sandbox, signed provenance, or
 production-readiness claim. See
 [ADR-0015](ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md).
 
-## Transient Static Serial Workflow Studio (W1.2 candidate)
+## Transient Static Serial Workflow Studio preflight (W1.2)
 
-The W1.2 implementation candidate adds one browser authoring surface over the
-same W1/W1.1 contracts:
+The Hosted-verified W1.2 implementation adds one browser authoring surface over
+the same W1/W1.1 contracts:
 
 ```text
 transient strict JSON text
@@ -245,13 +245,14 @@ Consequently, submit A then edit B without resubmitting cannot display A's
 manifest next to B. The visible boundary remains `DRAFT ONLY`, `NO EXECUTION`,
 `TRUSTED PYTHON`, and `NO SANDBOX`.
 
-This checkout is still an implementation candidate, not Hosted-verified
-shipped behavior. It does not add a saved Workflow catalog, durable draft,
-activation, run-from-draft, visual DAG, branch, parallel set, Agent node,
-subflow, marketplace, sandbox, second reducer/runtime/checkpoint, exactly-once
-execution, or production-readiness claim. Promotion requires the exact
-implementation SHA to pass source, wheel, rebuilt-sdist, real-browser, release,
-and mainland-source container gates from
+This W1.2 boundary is Hosted-verified at
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+in [run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342):
+all 20 non-tag jobs passed and the exact-tag-only bundle was correctly skipped.
+It does not add a saved Workflow catalog, durable draft, activation,
+run-from-draft, visual DAG, branch, parallel set, Agent node, subflow,
+marketplace, sandbox, second reducer/runtime/checkpoint, exactly-once execution,
+or production-readiness claim. See
 [ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md).
 
 ## Run, approve, then explicitly resume
@@ -547,7 +548,7 @@ replace them.
 W0  one-Harness ordered Tool proof
 W1  strict static serial authoring and versioned public step projection
 W1.1 static compiled manifest and zero-execution preflight
-W1.2 candidate: transient browser draft and authoritative HTTP preflight preview
+W1.2 transient browser draft and authoritative HTTP preflight preview
 W2  bounded Workbench step inspection from the public projection;
     existing reducer retained for timeline/cursor
 W3  bounded parallel ready set
@@ -572,3 +573,12 @@ adds only the ADR-0015 static manifest/preflight and immutable definition-previe
 boundary. It does not change the W0/W1 execution marker, digest, application
 identity, wrapper identity, event trace, recovery semantics, or public run
 projection.
+
+The current W1.2 implementation, Hosted-verified at
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+in [run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342),
+adds only a transient strict-JSON browser draft, the authenticated static
+preflight endpoint over the shared compiler and startup-frozen ordinary Tool
+registry, and exact detached-manifest rendering. It adds no persistence or
+execution authority and changes none of the W0-W1.1 runtime, reducer,
+checkpoint, event, effect, or recovery semantics.

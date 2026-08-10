@@ -10,20 +10,22 @@ compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP
 entry points, local multi-application HTTP/SSE, domestic-source Docker delivery,
 trusted local plugins, four first-party application compositions, curated
 catalog metadata, and a bundled Workbench exist. The fourth composition is a
-core-external W1.1 static serial Tool Workflow: strict data/JSON and a small
+core-external W1.2 static serial Tool Workflow: strict data/JSON and a small
 Python builder produce the existing immutable W0 definition, zero-execution
 preflight returns its bounded detached compiled manifest, and a core-owned
 versioned public run projection supplies the bounded Workbench step rail. The
-Workbench exact-validates and previews immutable definition metadata while the
-event reducer remains responsible for timeline/cursor state; saved authoring,
-DAG scheduling, branches, parallelism, agent nodes, and subflows remain later
-work. Memory is accepted only for a deployment-owned local-single-owner
+Workbench adds a transient strict-JSON draft surface over an authoritative HTTP
+preflight, exact-validates and previews immutable definition metadata, and
+retains the existing event reducer for timeline/cursor state. It cannot save,
+activate, deploy, or run the draft; durable authoring, DAG scheduling, branches,
+parallelism, agent nodes, and subflows remain later work. Memory is accepted
+only for a deployment-owned local-single-owner
 namespace after its deterministic, package, mainland-source container, and
 [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961)
-gates passed. Workflow W1.1 is accepted at
-[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
+gates passed. Workflow W1.2 is accepted at
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
 after its source, package, real-browser, mainland-source container, and
-[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31375975778)
+[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31391700342)
 gates passed. Real-provider semantic/Memory quality evaluation, per-request
 user/tenant identity, public token streaming, multi-agent orchestration,
 untrusted-plugin isolation, and a central marketplace remain incomplete;
@@ -139,9 +141,9 @@ These are boundaries, not directories to scaffold before use:
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
 | MCP adapter | current frozen host adapter; split only after an external package consumer exists | bounded stdio boundary accepted |
-| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, and public projection around serial W0, Hosted-verified at `709200b`; DAG/parallel/Agent-node gates remain open |
+| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, public projection, and transient HTTP/Workbench draft preflight around serial W0, Hosted-verified at `e3bc816`; saved/activated definitions and DAG/parallel/Agent-node gates remain open |
 | DAG/graph/multi-agent | later extensions | requires parallel/branch/ownership/recovery ADRs; not current W0 behavior |
-| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product exact-validates/previews immutable Workflow definition metadata and consumes the versioned run projection for serial step state; the existing reducer remains the event timeline/cursor authority |
+| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product adds a transient strict-JSON Studio preflight, exact-validates/previews immutable Workflow definition metadata, and consumes the versioned run projection for serial step state; it owns no save/execute authority and the existing reducer remains the event timeline/cursor authority |
 | Marketplace | metadata service, not binary host | market gate in section 8 |
 
 ### 3.4 Public events and run views are projections
@@ -273,8 +275,8 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; Memory-enabled Research/Developer still use that path; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | delayed status/cold-event/SSE/create/approval isolation plus real-server Incident and typed Workflow create/approve/explicit-resume/final/artifact/history-reload journeys pass in Chrome; the Workflow rail consumes the core-owned run projection while the existing reducer remains the timeline/cursor authority; server restart, mobile navigation, keyboard and reduced-motion journeys remain required |
-| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
+| UI browser acceptance (`PARTIAL`) | delayed/stale response isolation plus real-server Studio preflight, Incident, and typed Workflow journeys pass in Chrome; desktop, 390×844 narrow, keyboard/focus, and reduced-motion cases pass; the Workflow rail consumes the core-owned run projection while the existing reducer remains the timeline/cursor authority; cross-browser, full mobile-device, and accessibility certification remain open |
+| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; zero-mutation Workflow preflight; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
 | Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
 
 ### Honest determinism
@@ -352,8 +354,8 @@ Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic 
 
 For the current implementation baseline, that exact-revision public CI
 requirement is satisfied by
-[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
-and [Hosted run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778).
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+and [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
 The older paragraph remains a dated record of the narrower 2026-08-08 local
 evidence; it is not the current Hosted baseline.
 
@@ -370,23 +372,26 @@ prompt-injection neutralization, provider usage, billing, or cost savings. The
 exact-tag release bundle was correctly skipped on this ordinary `main` push, so
 signing and trusted provenance remain separate.
 
-Current deterministic Workflow W1.1 evidence on 2026-08-10 is bound to
-[`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
-and [Hosted run 31375975778](https://github.com/syusama/sasori/actions/runs/31375975778).
+Current deterministic Workflow W1.2 evidence on 2026-08-10 is bound to
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+and [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
 The Hosted workflow completed successfully: all 20 non-tag jobs across five
 job families passed, while the exact-tag-only release-bundle job was correctly
-skipped; five digest-identified evidence artifacts were published. The executed
-gates covered the 403-case source matrix, installed-wheel and rebuilt-sdist
-consumers, package verification, real Chrome Incident/Workflow journeys, and
-the mainland-source container
-approval/resume/restart/no-replay, Memory, Artifact, second-owner, tamper,
-token-audit, and image-SBOM gates. This accepts strict static data/JSON/builder
-authoring, zero-execution bounded manifest preflight, immutable Workbench
-definition preview, and a core-owned versioned Workflow projection around only
-the definition-bound serial ordered-Tool W0 runtime; it does not establish a
-saved catalog, Studio/editor, DAGs, branches, parallel ready sets, Agent nodes,
-subflows, distributed execution, exactly-once effects, sandboxing, live-provider
-quality, signing, trusted provenance, or production readiness.
+skipped. The gates covered the 414-case six-platform source matrix (with five
+documented platform/permission skips in the local Windows baseline), installed
+wheel and rebuilt-sdist consumers, the 252,158-byte wheel, release verifier v11
+and source-tree algorithm v8, and 21 real-Chrome fixture cases at desktop and
+390×844 reduced-motion sizes. Real Studio, Incident, and Typed Workflow browser
+journeys passed. The locked mainland-source no-cache container gate covered
+Workflow `preflight → prepare → complete → after-restart`, proving zero
+run/event/action mutation during preflight, explicit approval/resume, stable
+definition identity, restart, and no replay. This accepts only the transient
+strict-JSON draft and authoritative detached-manifest preview on top of the
+existing W0-W1.1 serial runtime. It does not establish a saved catalog, durable
+editor, activation/run-from-draft, DAGs, branches, parallel ready sets, Agent
+nodes, subflows, distributed execution, exactly-once effects, sandboxing,
+live-provider quality, signing, trusted provenance, public deployment, or
+production readiness.
 
 ### Days 56-75: switching-value validation
 
@@ -457,16 +462,20 @@ The Workbench is a task-control surface, not another chat skin. It currently:
    reducer supplies only the timeline and durable cursor.
 8. Previews the exact-validated immutable compiled definition manifest,
    including dependencies, argument sources, approval/recovery policy, Tool
-   revisions, and explicit trusted-Python/no-sandbox disclosure. It does not
-   execute, edit, or persist a definition in the browser.
+   revisions, and explicit trusted-Python/no-sandbox disclosure.
+9. Offers a transient strict-JSON Workflow Studio with server-authoritative
+   contract preflight and browser-side fail-closed stale-response and Unicode
+   gates. It edits only the current page's in-memory draft and has no save,
+   activation, deployment, scheduling, or run control.
 
 Desktop information architecture: worker/history navigation on the left, task
 conversation and composer in the center, and timeline/approval/evidence/
 capability views on the right. Narrow screens switch these three surfaces with
 a bottom navigation bar without hiding pending approvals.
 
-Structured plans, saved Workflow authoring, visual editing, DAG
-branches/parallel execution, Agent nodes/subflows, run cancellation, dynamic
+Structured plans, saved/durable Workflow authoring, activation/run-from-draft,
+visual DAG editing, branches/parallel execution, Agent nodes/subflows, run
+cancellation, dynamic
 skill selection, background queues, multi-agent collaboration, sandboxed plugin
 execution, and marketplace installation are not current Workbench capabilities.
 Research citations and Developer file/Git results remain ordinary untrusted
@@ -491,22 +500,27 @@ over the current view. Workflow rail state comes from the core-owned run
 projection and is protected by equal inner/outer cursors, single-flight status
 refresh, and run/epoch stale-response isolation; it is not reverse-engineered
 from the timeline. A dependency-free headless-browser fixture executes the
-production HTML/assets and deterministically releases late status, cold history,
-SSE, create, approval, Workflow refresh, and cancelled-effect recovery responses
-after a newer view is selected; the wider product/browser matrix remains
-partial. See
+bundled HTML/assets and deterministically releases late status, cold history,
+SSE, create, approval, Workflow refresh, Studio preflight, and cancelled-effect
+recovery responses after a newer view is selected. The Studio fixture also
+covers exact rejection versus unverified transport taxonomy and stale/invalid
+Unicode fail-closed behavior; the wider product/browser matrix remains partial.
+See
 [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 
-An independent same-origin test proxy now injects a real-browser journey while
-forwarding all product APIs to `sasori.server`. That journey uses the production
-Workbench and deterministic Incident composition, verifies approval does not
-execute `record_action`, requires the explicit resume control, proves the
-external action log changes exactly `0 → 0 → 1`, observes the exact 17-event
-completed timeline, cold-reloads and reopens history, and rechecks final output
-plus the visible `FULL HOST PROCESS PRIVILEGES` / `enforced=false` disclosure.
+An independent same-origin test proxy now injects real-browser journeys while
+forwarding all product APIs to `sasori.server`. The bundled Workbench first
+preflights a transient Studio draft and proves zero durable run/effect mutation,
+then completes independent Incident and typed Workflow approval/explicit-resume
+lifecycles. The two approved effects execute exactly once, the typed Workflow
+retains its 17-event projection and definition digest, and cold reload/history
+reopen preserves finals, artifacts, and the visible `FULL HOST PROCESS
+PRIVILEGES` / `enforced=false` disclosure without replay.
 The proxy's action-count endpoint is out-of-band test evidence, not a shipped
-Sasori API. Browser coverage is still not a server-restart, mobile, keyboard,
-or reduced-motion claim.
+Sasori API. A real Chrome matrix also covers desktop, 390×844 narrow layout,
+keyboard/focus, and reduced-motion behavior. This is not mobile-device or full
+accessibility certification, and browser evidence does not replace the
+container restart gate.
 
 This smaller native implementation met the current product contract, so
 `assistant-ui`, CopilotKit, AG-UI, and Lobe UI were not added. Re-evaluate one

@@ -148,7 +148,7 @@ environment values, system prompts, MCP snapshots, or internal paths.
 also states `effective_access: "FULL HOST PROCESS PRIVILEGES"` and
 `enforced: false`; the server does not claim a plugin sandbox.
 
-### `POST /v1/workflows/preflight` (W1.2 implementation candidate)
+### `POST /v1/workflows/preflight` (Hosted-verified W1.2 static preflight)
 
 This read-only endpoint accepts the complete strict Workflow definition as the
 request body. There is no outer `{definition: ...}` envelope and no Tool/app
@@ -252,9 +252,11 @@ gate, construct a Harness/Store, call a model/provider/Tool/idempotency hook,
 or create/change any run, call, message, event, checkpoint, approval, recovery,
 artifact, catalog, or execution identity. There is no save, activate, deploy,
 schedule, or run-from-draft operation. The bundled Studio keeps only transient
-page text; reload discards it. This candidate is not promoted as shipped until
-its exact implementation revision completes the Hosted gates in
-[ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md).
+page text; reload discards it. This bounded endpoint is Hosted-verified at
+[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+in [run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
+See [ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md) for its exact
+acceptance evidence and non-goals.
 
 ### `GET /v1/runs`
 
