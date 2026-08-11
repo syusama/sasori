@@ -245,12 +245,12 @@ epoch checks prevent an old response from updating a newer rail. There is no
 Workflow reducer, client checkpoint, or second durable store.
 
 Because Workflow JavaScript is immutable-cached, the server publishes this
-consumer as `workflow.0.2.0.js` and continues serving the existing
-`workflow.0.1.0.js` URL without overwriting it.
-The general Workbench cancelled-recovery policy is published separately as
-`app.0.1.4.js`; earlier immutable application assets remain byte-stable. It
-keeps `record_result` and `fail` visible for cancelled ambiguity, removes
-`retry`, and never adds an automatic resume path.
+consumer as `workflow.0.2.0.js`. During the pre-0.1.0 product consolidation,
+unreferenced `workflow.0.1.0.js`, `app.0.1.1.js`, and `app.0.1.4.js` assets were
+retired before any stable release instead of being carried in every wheel.
+Their source remains recoverable from Git history; no released asset URL was
+overwritten. The active Workbench keeps `record_result` and `fail` visible for
+cancelled ambiguity, removes `retry`, and never adds an automatic resume path.
 
 ## Preserved invariants
 

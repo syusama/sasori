@@ -272,7 +272,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         catalog[0]["title"] = "changed"
-        self.assertEqual(application_catalog()[0]["title"], "Incident Chamber")
+        self.assertEqual(application_catalog()[0]["title"], "Incident Response")
 
     async def test_typed_incident_workflow_uses_the_adapter_run_path(self):
         action_log = self.root / "workflow-actions.jsonl"

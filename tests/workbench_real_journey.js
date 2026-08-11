@@ -291,9 +291,13 @@
     document.querySelector("#operator-action .button.brass").click();
     await waitFor(
       () => document.querySelector("#run-state").dataset.state === "completed" &&
-        document.querySelector("#message-stack").textContent.includes('"workflow_id":"incident-mechanism"'),
+        document.querySelector("#message-stack .result-overview") &&
+        document.querySelector("#message-stack").textContent.includes("incident-mechanism") &&
+        document.querySelector("#message-stack").textContent.includes("VERIFIED OUTPUT"),
       "explicit resume did not complete the typed Workflow",
     );
+    const rawResult = JSON.parse(document.querySelector("#message-stack .result-raw pre").textContent);
+    assert(rawResult.workflow_id === "incident-mechanism", "structured result lost the raw Workflow identity");
     assert(await actionCount() === 2, "typed Workflow did not execute exactly one effect");
     assert(document.querySelector("#event-count").textContent === "17", "Workflow durable event count is not 17");
     assertWorkflowSurface(["completed", "completed"]);
@@ -332,7 +336,8 @@
       () => document.querySelector("#active-run-label").textContent === workflowRunId &&
         document.querySelector("#run-state").dataset.state === "completed" &&
         document.querySelector("#event-count").textContent === "17" &&
-        document.querySelector("#message-stack").textContent.includes('"workflow_id":"incident-mechanism"'),
+        document.querySelector("#message-stack .result-overview") &&
+        document.querySelector("#message-stack").textContent.includes("incident-mechanism"),
       "cold Workflow reopen did not reconstruct final output and events",
     );
     assert(await actionCount() === 2, "cold Workflow reopen replayed a side effect");

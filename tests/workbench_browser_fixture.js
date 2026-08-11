@@ -1057,12 +1057,12 @@
     assert(!document.querySelector("#timeline-list").textContent.includes("fixture.stale"), `${caseName}: stale SSE event reached the timeline`);
   }
 
-  function atelierShellCase() {
+  function workbenchShellCase() {
     const destinations = [...document.querySelectorAll("[data-workbench-destination]")];
-    assert(destinations.length === 5, "Atelier command navigation is incomplete");
+    assert(destinations.length === 5, "Workbench command navigation is incomplete");
     assert(JSON.stringify(destinations.map((item) => item.dataset.workbenchDestination)) ===
       JSON.stringify(["command", "workflows", "capabilities", "artifacts", "trace"]),
-    "Atelier command navigation order drifted");
+    "Workbench command navigation order drifted");
 
     for (const side of ["left", "right"]) {
       const separator = document.querySelector(`#${side}-separator`);
@@ -1153,7 +1153,7 @@
     assert(document.body.dataset.mobileView === "stage" &&
       document.activeElement === document.querySelector("#workbench-main"),
     "Command Center navigation did not restore the Run surface and focus");
-    record("atelier-shell");
+    record("workbench-shell");
   }
 
   function assertFreshSameRunView(caseName, input) {
@@ -2055,7 +2055,7 @@
         !document.querySelector("#run-button").disabled,
       "production Workbench did not finish initial loading",
     );
-    atelierShellCase();
+    workbenchShellCase();
     unavailableWorkflowCase();
     await workflowStudioCase(fixture);
     await workflowStudioStaleEditCase(fixture);

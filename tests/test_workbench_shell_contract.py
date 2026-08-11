@@ -24,7 +24,7 @@ class WorkbenchShellContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.html = (WEB / "index.html").read_text(encoding="utf-8")
-        cls.css = (WEB / "app.0.2.0.css").read_text(encoding="utf-8")
+        cls.css = (WEB / "app.0.3.0.css").read_text(encoding="utf-8")
         script = (WEB / "app.0.2.0.js").read_text(encoding="utf-8")
         cls.shell_script = script.split("Red Sand Atelier shell.", 1)[1]
         cls.document = _Document()

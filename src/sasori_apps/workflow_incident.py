@@ -40,7 +40,7 @@ APP_ID = workflow_app_id(WORKFLOW_SPEC)
 
 APP_METADATA = {
     "id": APP_ID,
-    "title": "Incident Mechanism",
+    "title": "Incident Workflow",
     "description": (
         "A version-bound typed tool sequence using the same Harness approval "
         "and recovery path."

@@ -20,8 +20,8 @@ from .workflow_incident import APP_METADATA as WORKFLOW_INCIDENT
 
 INCIDENT = {
     "id": "incident",
-    "title": "Incident Chamber",
-    "description": "Deterministic diagnosis and an operator-approved audit action.",
+    "title": "Incident Response",
+    "description": "Deterministic diagnosis with an operator-approved audit action.",
     "worker": {
         "id": "incident-responder",
         "title": "Incident Responder",

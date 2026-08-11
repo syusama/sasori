@@ -409,7 +409,7 @@ asyncio.run(main())
 A second `resume()` on the completed run returns the same committed final and
 does not replay the source Tools.
 
-## First-party Incident Mechanism
+## First-party Incident Workflow
 
 The installed first-party example is:
 

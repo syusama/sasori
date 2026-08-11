@@ -36,8 +36,9 @@ class InstalledOriginTests(unittest.TestCase):
         )
         self.assertIn("workflow-studio.0.2.0.css", installed_smoke.WEB_RESOURCES)
         self.assertIn("workflow-studio.0.2.0.js", installed_smoke.WEB_RESOURCES)
-        self.assertIn("app.0.2.0.css", installed_smoke.WEB_RESOURCES)
+        self.assertIn("app.0.3.0.css", installed_smoke.WEB_RESOURCES)
         self.assertIn("app.0.2.0.js", installed_smoke.WEB_RESOURCES)
+        self.assertIn("app.0.3.0.js", installed_smoke.WEB_RESOURCES)
 
     def test_origin_must_resolve_under_the_exact_consumer_prefix(self):
         with tempfile.TemporaryDirectory() as directory:

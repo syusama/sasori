@@ -148,7 +148,8 @@ recovery handle while state remains `cancelled`, with no Loop re-entry.
 ### `GET /v1/apps`
 
 Returns schema-versioned application metadata for the first-party catalog
-entries, currently Incident, Research, Developer, and Incident Mechanism
+entries, currently Incident Response, Research Assistant, Developer Workspace,
+and Incident Workflow
 Workflow. Each item contains fixed worker and skill metadata, runtime
 availability, actual loaded tool schemas/effects/revisions, and plugin
 permission disclosure. Configuration affects availability, not whether a

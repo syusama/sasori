@@ -25,7 +25,7 @@ is present in this run."""
 
 APP_METADATA = {
     "id": "research",
-    "title": "Research Atelier",
+    "title": "Research Assistant",
     "description": "Allowlisted web evidence and citation-preserving local retrieval.",
     "worker": {
         "id": "researcher",

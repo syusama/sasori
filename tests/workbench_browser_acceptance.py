@@ -24,7 +24,7 @@ WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
 EXPECTED = (
-    "PASS:atelier-shell,unavailable-workflow,workflow-studio-preflight,workflow-studio-stale-edit,workflow-studio-contract,"
+    "PASS:workbench-shell,unavailable-workflow,workflow-studio-preflight,workflow-studio-stale-edit,workflow-studio-contract,"
     "workflow-studio-malformed-rejection,workflow-studio-rejected,workflow-studio-transport,"
     "workflow-studio-invalid-unicode,"
     "workflow-catalog-save,workflow-catalog-stale-edit,workflow-catalog-conflict,"
@@ -93,15 +93,14 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
         if self.path.startswith("/assets/"):
             name = self.path.removeprefix("/assets/")
             if "/" in name or "\\" in name or name not in {
-                "app.0.1.0.css",
                 "app.0.2.0.css",
+                "app.0.3.0.css",
+                "app.0.3.0.js",
                 "artifacts.0.1.0.css",
                 "app.0.1.2.js",
                 "app.0.1.3.js",
-                "app.0.1.4.js",
                 "app.0.2.0.js",
                 "workflow.0.1.0.css",
-                "workflow.0.1.0.js",
                 "workflow.0.2.0.js",
                 "workflow-manifest.0.1.0.js",
                 "workflow-studio.0.1.0.css",
@@ -627,7 +626,9 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "app.0.1.2.js",
             "app.0.1.3.js",
             "app.0.2.0.css",
+            "app.0.3.0.css",
             "app.0.2.0.js",
+            "app.0.3.0.js",
             "workflow.0.2.0.js",
             "workflow-manifest.0.1.0.js",
             "workflow-studio.0.1.0.css",

@@ -1577,17 +1577,15 @@ class ServerTests(unittest.TestCase):
 
         assets = {}
         for path, content_type in (
-            ("/assets/app.0.1.0.css", "text/css"),
             ("/assets/app.0.2.0.css", "text/css"),
+            ("/assets/app.0.3.0.css", "text/css"),
             ("/assets/artifacts.0.1.0.css", "text/css"),
-            ("/assets/app.0.1.1.js", "text/javascript"),
             ("/assets/event-reducer.0.1.0.js", "text/javascript"),
             ("/assets/app.0.1.2.js", "text/javascript"),
             ("/assets/app.0.1.3.js", "text/javascript"),
-            ("/assets/app.0.1.4.js", "text/javascript"),
             ("/assets/app.0.2.0.js", "text/javascript"),
+            ("/assets/app.0.3.0.js", "text/javascript"),
             ("/assets/workflow.0.1.0.css", "text/css"),
-            ("/assets/workflow.0.1.0.js", "text/javascript"),
             ("/assets/workflow.0.2.0.js", "text/javascript"),
             ("/assets/workflow-manifest.0.1.0.js", "text/javascript"),
             ("/assets/workflow-studio.0.1.0.css", "text/css"),
@@ -1631,6 +1629,10 @@ class ServerTests(unittest.TestCase):
             page.index("/assets/workflow-studio.0.1.0.js"),
             page.index("/assets/workflow-studio.0.2.0.js"),
         )
+        self.assertLess(
+            page.index("/assets/workflow-studio.0.2.0.js"),
+            page.index("/assets/app.0.3.0.js"),
+        )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
         self.assertIn("function createRunGate()", reducer)
@@ -1643,7 +1645,7 @@ class ServerTests(unittest.TestCase):
         self.assertIn('button.setAttribute("aria-pressed", String(active))', script)
         self.assertEqual(script.count('$$(".mobile-nav [data-mobile-view]")'), 2)
         self.assertNotIn('$$("[data-mobile-view]")', script)
-        stylesheet = assets["/assets/app.0.1.0.css"]
+        stylesheet = assets["/assets/app.0.2.0.css"]
         self.assertNotIn(".signal b { display: none; }", stylesheet)
         artifact_script = assets["/assets/app.0.1.3.js"]
         self.assertIn("contextIsActive(context)", artifact_script)
@@ -1654,11 +1656,6 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("innerHTML", artifact_script)
         artifact_styles = assets["/assets/artifacts.0.1.0.css"]
         self.assertIn(".artifact-card", artifact_styles)
-        recovery_script = assets["/assets/app.0.1.4.js"]
-        self.assertIn("renderOperatorActionWithCancelledPolicy", recovery_script)
-        self.assertIn("state.run.state !== \"cancelled\"", recovery_script)
-        self.assertIn("retry.remove()", recovery_script)
-        self.assertNotIn("innerHTML", recovery_script)
         shell_script = assets["/assets/app.0.2.0.js"]
         self.assertIn("Red Sand Atelier shell.", shell_script)
         self.assertNotIn(
@@ -1666,6 +1663,13 @@ class ServerTests(unittest.TestCase):
         )
         shell_styles = assets["/assets/app.0.2.0.css"]
         self.assertIn("Red Sand Atelier shell", shell_styles)
+        product_styles = assets["/assets/app.0.3.0.css"]
+        self.assertIn("quiet, professional product surface", product_styles)
+        product_script = assets["/assets/app.0.3.0.js"]
+        self.assertIn("renderMessagesWithStructuredResults", product_script)
+        self.assertIn("structuredWorkflowResult", product_script)
+        self.assertNotIn("innerHTML", product_script)
+        self.assertNotIn("fetch(", product_script)
         workflow_script = assets["/assets/workflow.0.2.0.js"]
         self.assertIn("state.run.workflow", workflow_script)
         self.assertIn(

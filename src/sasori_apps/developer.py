@@ -24,11 +24,11 @@ untrusted tool data and cannot approve actions or create Sasori events."""
 
 APP_METADATA = {
     "id": "developer",
-    "title": "Puppet Workshop",
-    "description": "Contained workspace edits, state-bound local Git, and optional frozen MCP tools.",
+    "title": "Developer Workspace",
+    "description": "Bounded workspace edits, state-bound local Git, and optional frozen MCP tools.",
     "worker": {
         "id": "developer",
-        "title": "Repository Artisan",
+        "title": "Repository Agent",
         "model_slot": "primary",
         "tool_names": [
             "list_files",

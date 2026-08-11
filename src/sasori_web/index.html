@@ -3,42 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#09090b">
-  <title>Sasori · Red Sand Agent Workbench</title>
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f7f6f2">
+  <title>Sasori · Agent Workbench</title>
   <link rel="icon" href="/assets/mark.0.1.0.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/app.0.2.0.css">
   <link rel="stylesheet" href="/assets/artifacts.0.1.0.css">
   <link rel="stylesheet" href="/assets/workflow.0.1.0.css">
   <link rel="stylesheet" href="/assets/workflow-studio.0.1.0.css">
   <link rel="stylesheet" href="/assets/workflow-studio.0.2.0.css">
+  <link rel="stylesheet" href="/assets/app.0.3.0.css">
 </head>
 <body>
-  <a class="skip-link" href="#workbench-main">跳到指挥中心</a>
-  <div class="grain" aria-hidden="true"></div>
-  <div class="puppet-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <a class="skip-link" href="#workbench-main">跳到工作区</a>
 
   <header class="topbar">
-    <a class="brand" href="#/" aria-label="Sasori 指挥中心">
+    <a class="brand" href="#/" aria-label="Sasori 工作台">
       <img src="/assets/mark.0.1.0.svg" alt="" width="42" height="42">
-      <span><strong>SASORI</strong><small>RED SAND ATELIER / 赤砂机关工房</small></span>
+      <span><strong>SASORI</strong><small>PYTHON AGENT FRAMEWORK</small></span>
     </a>
 
     <nav class="command-nav" id="command-nav" aria-label="工作台主导航">
       <button type="button" class="command-nav-item active" data-workbench-destination="command" aria-current="page">
-        <i aria-hidden="true">01</i><span><b>指挥中心</b><small>COMMAND</small></span>
+        <i aria-hidden="true">01</i><span><b>运行</b><small>RUN</small></span>
       </button>
-      <button class="command-nav-item studio-launch" id="studio-button" type="button" data-workbench-destination="workflows" aria-label="打开工作流机关制图台" aria-controls="workflow-studio" aria-expanded="false">
+      <button class="command-nav-item studio-launch" id="studio-button" type="button" data-workbench-destination="workflows" aria-label="打开 Workflow Studio" aria-controls="workflow-studio" aria-expanded="false">
         <i aria-hidden="true">02</i><span><b>工作流</b><small>WORKFLOWS</small></span>
       </button>
       <button type="button" class="command-nav-item" data-workbench-destination="capabilities">
-        <i aria-hidden="true">03</i><span><b>能力中心</b><small>CAPABILITIES</small></span>
+        <i aria-hidden="true">03</i><span><b>能力</b><small>CAPABILITIES</small></span>
       </button>
       <button type="button" class="command-nav-item" data-workbench-destination="artifacts">
-        <i aria-hidden="true">04</i><span><b>产物</b><small>ARTIFACTS</small></span>
+        <i aria-hidden="true">04</i><span><b>产物</b><small>OUTPUTS</small></span>
       </button>
       <button type="button" class="command-nav-item" data-workbench-destination="trace">
-        <i aria-hidden="true">05</i><span><b>追踪</b><small>TRACE</small></span>
+        <i aria-hidden="true">05</i><span><b>事件</b><small>EVENTS</small></span>
       </button>
     </nav>
 
@@ -46,7 +45,7 @@
       <span class="signal" id="connection-signal" data-state="idle" role="status" aria-live="polite" aria-atomic="true"><i></i><b id="connection-label">等待连接</b></span>
       <span class="runtime-stat"><small>RUN</small><b id="active-run-label">—</b></span>
       <span class="runtime-stat"><small>SEQ</small><b id="sequence-label">0</b></span>
-      <button class="icon-button" id="settings-button" type="button" aria-label="连接设置" aria-controls="connection-panel" aria-expanded="false" title="连接设置">⌁</button>
+      <button class="icon-button" id="settings-button" type="button" aria-label="运行时连接设置" aria-controls="connection-panel" aria-expanded="false" title="运行时连接设置">⌁</button>
     </div>
   </header>
 
@@ -62,13 +61,13 @@
   <section class="workflow-studio" id="workflow-studio" hidden role="dialog" aria-modal="true" aria-labelledby="studio-title" tabindex="-1">
     <header class="studio-masthead">
       <div class="studio-title-lockup">
-        <span class="studio-kicker">SASORI / DURABLE MECHANISM ARCHIVE · W1.3 CANDIDATE</span>
-        <h1 id="studio-title">工作流铸造台 <em>机关藏经阁</em></h1>
-        <p>严格图纸沿同一编译边界预检并保存为不可变 revision；可留存、可追溯，但不可激活、不可执行。</p>
+        <span class="studio-kicker">WORKFLOW STUDIO · SAVED DEFINITIONS</span>
+        <h1 id="studio-title">Workflow Studio <em>可审计的定义管理</em></h1>
+        <p>创建、预检和保存严格的串行 Workflow 定义。此界面只管理定义，不会激活 Workflow 或执行工具。</p>
       </div>
       <div class="studio-mast-actions">
         <span class="studio-status" id="studio-status" data-state="idle" role="status" aria-live="polite"><i></i><b>等待草稿</b></span>
-        <button class="studio-close" id="studio-close" type="button" aria-label="关闭机关制图台">×</button>
+        <button class="studio-close" id="studio-close" type="button" aria-label="关闭 Workflow Studio">×</button>
       </div>
     </header>
 
@@ -79,88 +78,88 @@
       <span data-tone="lacquer">NO EXECUTION</span>
       <span data-tone="brass">TRUSTED PYTHON</span>
       <span data-tone="danger">NO SANDBOX</span>
-      <p>浏览器只保管当前草稿与 CAS 凭据；服务端 Catalog 与冻结 Tool 合同分别拥有保存和预检权威。</p>
+      <p>浏览器只保管当前草稿和 CAS 凭据；服务端 Catalog 与冻结的 Tool 合同分别拥有保存和预检权威。</p>
     </div>
 
     <div class="studio-grid">
       <aside class="studio-catalog-panel" aria-labelledby="studio-catalog-title">
         <header class="studio-panel-heading">
-          <span><small>00 / DURABLE ARCHIVE</small><h2 id="studio-catalog-title">机关卷宗</h2></span>
-          <button class="studio-catalog-refresh" id="studio-catalog-refresh" type="button" aria-label="刷新已保存的机关卷宗">↻</button>
+          <span><small>00 / SAVED WORKFLOWS</small><h2 id="studio-catalog-title">已保存</h2></span>
+          <button class="studio-catalog-refresh" id="studio-catalog-refresh" type="button" aria-label="刷新已保存的 Workflow">↻</button>
         </header>
         <div class="studio-catalog-command">
-          <button class="button brass wide" id="studio-new" type="button"><span>新建图纸</span><i aria-hidden="true">＋</i></button>
-          <p>按不可复用的 Catalog UUID 定位；Workflow 名称与作者版本不会覆盖身份。</p>
+          <button class="button brass wide" id="studio-new" type="button"><span>新建 Workflow</span><i aria-hidden="true">＋</i></button>
+          <p>每个定义使用独立 Catalog UUID；名称和作者版本不会替代稳定身份。</p>
         </div>
         <div class="studio-catalog-list" id="studio-catalog-list" aria-live="polite">
-          <p class="studio-catalog-empty">等待耐久目录…</p>
+          <p class="studio-catalog-empty">正在加载已保存的 Workflow…</p>
         </div>
         <section class="studio-save-ledger" id="studio-save-ledger" data-state="idle" aria-live="polite">
-          <small>CATALOG LEDGER</small>
-          <b>尚未选择卷宗</b>
-          <p>新图纸将在首次保存时获得独立 Catalog ID。</p>
-          <button class="text-button" id="studio-reconcile" type="button" hidden>核验落库结果</button>
+          <small>SAVE STATUS</small>
+          <b>尚未选择 Workflow</b>
+          <p>新定义将在首次保存时获得独立 Catalog ID。</p>
+          <button class="text-button" id="studio-reconcile" type="button" hidden>核验保存结果</button>
         </section>
       </aside>
 
       <section class="studio-editor-panel" aria-labelledby="studio-editor-title">
         <header class="studio-panel-heading">
-          <span><small>01 / DEFINITION SOURCE</small><h2 id="studio-editor-title">机关图纸</h2></span>
+          <span><small>01 / DEFINITION</small><h2 id="studio-editor-title">Workflow 定义</h2></span>
           <span class="studio-counter"><b id="studio-record-label">UNSAVED</b><i id="studio-byte-count">0 B / 1 MiB</i></span>
         </header>
 
         <div class="studio-tool-shelf">
-          <div><small>HOST-OWNED TOOL CONTRACTS</small><p>选择一个已加载的应用 Tool 生成起始草稿；最终仍由服务端复核。</p></div>
-          <div class="studio-tool-list" id="studio-tool-list" aria-live="polite"><span class="studio-tool-empty">等待应用目录…</span></div>
+          <div><small>AVAILABLE TOOL CONTRACTS</small><p>选择一个已加载的应用 Tool 生成起始草稿；服务端仍会执行最终校验。</p></div>
+          <div class="studio-tool-list" id="studio-tool-list" aria-live="polite"><span class="studio-tool-empty">正在加载工具…</span></div>
         </div>
 
         <label class="studio-editor-wrap" for="studio-editor">
           <span class="studio-gutter" id="studio-gutter" aria-hidden="true"></span>
           <textarea id="studio-editor" spellcheck="false" autocomplete="off" aria-describedby="studio-editor-help" maxlength="1048576"></textarea>
         </label>
-        <p class="studio-editor-help" id="studio-editor-help">仅接受 schema v1 严格 UTF-8 JSON。重复键、未知字段、动态导入、表达式、YAML 与非有限数字都会失败关闭。</p>
+        <p class="studio-editor-help" id="studio-editor-help">仅接受 schema v1 严格 UTF-8 JSON。重复键、未知字段、动态导入、表达式、YAML 和非有限数字都会被拒绝。</p>
 
         <footer class="studio-editor-actions">
-          <button class="button ghost" id="studio-reset" type="button">重置草稿</button>
+          <button class="button ghost" id="studio-reset" type="button">重置</button>
           <span><kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 服务端预检</span>
-          <button class="button studio-preflight" id="studio-preflight" type="button"><span>校验机关</span><i aria-hidden="true">PRE-FLIGHT →</i></button>
-          <button class="button studio-save" id="studio-save" type="button"><span>封存图纸</span><i aria-hidden="true">CAS SAVE →</i></button>
+          <button class="button studio-preflight" id="studio-preflight" type="button"><span>运行预检</span><i aria-hidden="true">VALIDATE →</i></button>
+          <button class="button studio-save" id="studio-save" type="button"><span>保存版本</span><i aria-hidden="true">CAS SAVE →</i></button>
         </footer>
       </section>
 
       <section class="studio-preview-panel" aria-labelledby="studio-preview-title">
         <header class="studio-panel-heading">
-          <span><small>02 / AUTHORITATIVE MANIFEST</small><h2 id="studio-preview-title">显影台</h2></span>
+          <span><small>02 / VALIDATION RESULT</small><h2 id="studio-preview-title">预检结果</h2></span>
           <span class="studio-revision" id="studio-revision">UNVERIFIED</span>
         </header>
         <div class="studio-preview" id="studio-preview" aria-live="polite">
           <div class="studio-empty-state">
             <i aria-hidden="true"><b></b><b></b><b></b></i>
-            <small>NO SERVER VERDICT</small>
-            <h3>图纸尚未显影</h3>
-            <p>提交后，服务端会返回 detached manifest：定义指纹、依赖、Tool 合同、审批点与恢复策略会在这里逐层展开。</p>
+            <small>NO VALIDATION RESULT</small>
+            <h3>尚未运行预检</h3>
+            <p>服务端会返回 detached manifest，并在这里展示定义指纹、依赖、Tool 合同、审批点和恢复策略。</p>
           </div>
         </div>
       </section>
     </div>
 
     <footer class="studio-footnote">
-      <span><b>ZERO</b> model calls</span><span><b>ZERO</b> Tool dispatches</span><span><b>ONE</b> catalog CAS transaction per changed save</span>
-      <p>保存不等于激活或运行；网络中断后的写入结果必须按已知 Catalog ID 核验。</p>
+      <span><b>ZERO</b> model calls</span><span><b>ZERO</b> Tool dispatches</span><span><b>ONE</b> CAS transaction per changed save</span>
+      <p>保存不等于激活或运行；网络中断后的写入结果必须使用已知 Catalog ID 核验。</p>
     </footer>
   </section>
 
   <div class="workbench-shell" id="workbench-shell">
-    <aside class="left-rail" id="left-rail" aria-label="数字员工与运行档案">
+    <aside class="left-rail" id="left-rail" aria-label="Agent 应用与最近运行">
       <div class="rail-masthead">
-        <span class="rail-coordinate">ATELIER / 01</span>
-        <strong>机关库</strong>
-        <p>选择一具数字傀儡，把能力装到同一条轻量 Loop 上。</p>
+        <span class="rail-coordinate">APPLICATIONS</span>
+        <strong>Agent 应用</strong>
+        <p>选择一个已配置的应用，查看能力并开始任务。</p>
       </div>
       <section class="rail-section workers-section">
         <div class="section-heading">
-          <span><small>01 / PUPPETS</small><h2>数字员工</h2></span>
-          <button class="text-button" id="reload-apps" type="button">校准</button>
+          <span><small>AVAILABLE</small><h2>应用</h2></span>
+          <button class="text-button" id="reload-apps" type="button">刷新</button>
         </div>
         <div class="worker-list" id="worker-list" aria-live="polite">
           <div class="skeleton worker-skeleton"></div><div class="skeleton worker-skeleton"></div>
@@ -169,38 +168,38 @@
 
       <section class="rail-section history-section">
         <div class="section-heading">
-          <span><small>02 / ARCHIVE</small><h2>运行档案</h2></span>
+          <span><small>RECENT</small><h2>最近运行</h2></span>
           <button class="text-button" id="reload-history" type="button">刷新</button>
         </div>
         <div class="history-list" id="history-list" aria-live="polite">
-          <p class="empty-copy">尚未装入档案。</p>
+          <p class="empty-copy">还没有运行记录。</p>
         </div>
-        <button class="button ghost wide" id="load-more" type="button" hidden>继续展开卷轴</button>
+        <button class="button ghost wide" id="load-more" type="button" hidden>加载更多</button>
       </section>
     </aside>
 
-    <button class="panel-separator left-separator" id="left-separator" type="button" role="separator" aria-label="调整机关库宽度" aria-controls="left-rail" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="380" aria-valuenow="286" tabindex="0"><span aria-hidden="true"></span></button>
+    <button class="panel-separator left-separator" id="left-separator" type="button" role="separator" aria-label="调整应用列表宽度" aria-controls="left-rail" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="380" aria-valuenow="286" tabindex="0"><span aria-hidden="true"></span></button>
 
     <main class="main-stage" id="workbench-main" tabindex="-1">
       <section class="stage-intro" id="stage-intro">
-        <div class="eyebrow"><span></span> COMMAND CENTER · ONE LOOP / MANY MECHANISMS</div>
-        <h1>一线牵百机，<br><em>让智能成为永恒的艺术。</em></h1>
-        <p>Sasori 把模型、技能、工具、审批与恢复编排成可拆卸的机关。轻装时像一柄精准的工具，展开后就是完整的 Agent 工房。</p>
-        <div class="atelier-metrics" aria-label="当前能力概览">
-          <span><small>RUNTIME</small><b>ONE LOOP</b><i>唯一运行路径</i></span>
-          <span><small>CONTROL</small><b>HUMAN GATE</b><i>关键动作可审计</i></span>
-          <span><small>OUTPUT</small><b>SHA-256</b><i>产物可验证</i></span>
+        <div class="eyebrow"><span></span> PYTHON AGENT FRAMEWORK · ONE RUNTIME PATH</div>
+        <h1>从一个可靠的<br><em>Agent 运行时</em>开始。</h1>
+        <p>Sasori 提供可读的 Python 核心、按需加载的能力，以及一套能看清运行状态的工作台。先完成一个 Agent，再按需要扩展 Provider、工具、存储和产品界面。</p>
+        <div class="core-metrics" aria-label="当前能力概览">
+          <span><small>CORE</small><b>sasori-core</b><i>零运行依赖</i></span>
+          <span><small>RUNTIME</small><b>SINGLE LOOP</b><i>所有入口共用</i></span>
+          <span><small>CONTROL</small><b>AUDITABLE</b><i>审批、恢复与证据</i></span>
         </div>
         <div class="quick-command" aria-labelledby="quick-command-title">
-          <div><small>QUICK CAST</small><h2 id="quick-command-title">从一条清晰指令开始</h2></div>
+          <div><small>QUICK START</small><h2 id="quick-command-title">从一个常见任务开始</h2></div>
           <div class="quick-command-list">
-            <button type="button" data-prompt="分析当前任务，列出风险、执行步骤和验收标准。"><span>01</span>规划并执行复杂任务</button>
-            <button type="button" data-prompt="检查可用工具与权限，选择最小能力组合完成目标。"><span>02</span>按需装配工具与技能</button>
-            <button type="button" data-prompt="生成可核验产物，并说明来源、摘要和完整性信息。"><span>03</span>交付可验证的产物</button>
+            <button type="button" data-prompt="分析当前任务，列出风险、执行步骤和验收标准。"><span>01</span>制定执行计划</button>
+            <button type="button" data-prompt="检查可用工具与权限，选择最小能力组合完成目标。"><span>02</span>检查能力与权限</button>
+            <button type="button" data-prompt="生成可核验产物，并说明来源、摘要和完整性信息。"><span>03</span>生成可验证产物</button>
           </div>
         </div>
         <div class="principle-row" aria-label="Sasori 核心原则">
-          <span>01 <b>轻量内核</b></span><span>02 <b>随拆随用</b></span><span>03 <b>人控机关</b></span><span>04 <b>耐久证据</b></span>
+          <span>01 <b>Python 优先</b></span><span>02 <b>轻量核心</b></span><span>03 <b>按需扩展</b></span><span>04 <b>完整审计</b></span>
         </div>
       </section>
 
@@ -214,13 +213,13 @@
 
       <form class="composer" id="task-form">
         <div class="composer-topline">
-          <label for="task-input">下达任务</label>
-          <span id="selected-worker-label">请选择数字员工</span>
+          <label for="task-input">任务说明</label>
+          <span id="selected-worker-label">请选择 Agent 应用</span>
         </div>
         <textarea id="task-input" rows="3" maxlength="20000" placeholder="描述目标、约束与验收标准……" required></textarea>
         <div class="composer-footer">
           <span class="shortcut"><kbd>/</kbd> 聚焦 · <kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 发起</span>
-          <button class="button lacquer" id="run-button" type="submit" disabled><span>启动机关</span><i aria-hidden="true">→</i></button>
+          <button class="button lacquer" id="run-button" type="submit" disabled><span>开始运行</span><i aria-hidden="true">→</i></button>
         </div>
       </form>
     </main>
@@ -229,31 +228,31 @@
 
     <aside class="right-rail" id="right-rail" aria-label="追踪检查器">
       <div class="inspector-masthead">
-        <span><small>ATELIER / 03</small><b>追踪检查器</b></span>
-        <i aria-hidden="true">TRACE</i>
+        <span><small>RUN INSPECTOR</small><b>运行详情</b></span>
+        <i aria-hidden="true">LIVE</i>
       </div>
       <div class="inspector-tabs" role="tablist" aria-label="检查器视图">
-        <button id="timeline-tab" role="tab" aria-controls="timeline-panel" aria-selected="true" tabindex="0" type="button">追踪</button>
+        <button id="timeline-tab" role="tab" aria-controls="timeline-panel" aria-selected="true" tabindex="0" type="button">事件</button>
         <button id="artifacts-tab" role="tab" aria-controls="artifacts-panel" aria-selected="false" tabindex="-1" type="button">产物</button>
         <button id="surface-tab" role="tab" aria-controls="surface-panel" aria-selected="false" tabindex="-1" type="button">能力</button>
       </div>
 
       <section class="inspector-panel timeline-panel" id="timeline-panel" role="tabpanel" aria-labelledby="timeline-tab">
-        <div class="inspector-heading"><span><small>TRACE / DURABLE</small><h2>机关行程</h2></span><b id="event-count">0</b></div>
+        <div class="inspector-heading"><span><small>DURABLE EVENTS</small><h2>事件记录</h2></span><b id="event-count">0</b></div>
         <div class="operator-action" id="operator-action" hidden></div>
         <ol class="timeline" id="timeline-list">
-          <li class="timeline-empty"><i></i><p>启动任务后，耐久事件会沿这条时间线逐格显现。</p></li>
+          <li class="timeline-empty"><i></i><p>运行开始后，版本化事件会按顺序显示在这里。</p></li>
         </ol>
       </section>
 
       <section class="inspector-panel artifacts-panel" id="artifacts-panel" role="tabpanel" aria-labelledby="artifacts-tab" hidden>
         <div class="inspector-heading artifact-heading">
-          <span><small>ARTIFACTS / IMMUTABLE</small><h2>永恒档案匣</h2></span>
-          <button class="text-button" id="reload-artifacts" type="button">校验</button>
+          <span><small>RUN OUTPUTS</small><h2>运行产物</h2></span>
+          <button class="text-button" id="reload-artifacts" type="button">刷新</button>
         </div>
-        <p class="artifact-boundary">实例认证 · 精确运行关联 · SHA-256 完整性</p>
+        <p class="artifact-boundary">运行绑定 · SHA-256 完整性 · 安全预览</p>
         <div class="artifact-list" id="artifact-list" aria-live="polite">
-          <p class="empty-copy">装入运行后，已注册产物会在这里显现。</p>
+          <p class="empty-copy">当前运行还没有注册产物。</p>
         </div>
         <section class="artifact-preview" id="artifact-preview" hidden aria-live="polite">
           <header><span><small>SAFE TEXT PREVIEW</small><strong id="artifact-preview-title">产物预览</strong></span><button class="icon-button" id="close-artifact-preview" type="button" aria-label="关闭产物预览">×</button></header>
@@ -262,7 +261,7 @@
       </section>
 
       <section class="inspector-panel surface-panel" id="surface-panel" role="tabpanel" aria-labelledby="surface-tab" hidden>
-        <div class="inspector-heading"><span><small>CAPABILITY / LOADED CONTRACT</small><h2>能力中心</h2></span></div>
+        <div class="inspector-heading"><span><small>LOADED CONTRACTS</small><h2>能力</h2></span></div>
         <div class="capability-filters" role="toolbar" aria-label="能力类型筛选">
           <button type="button" data-capability-filter="all" aria-pressed="true">全部</button>
           <button type="button" data-capability-filter="skills" aria-pressed="false">Skills</button>
@@ -271,24 +270,24 @@
           <button type="button" data-capability-filter="providers" aria-pressed="false">Providers</button>
           <button type="button" data-capability-filter="plugins" aria-pressed="false">Plugins</button>
         </div>
-        <p class="capability-boundary">只展示应用目录实际投影的已加载能力；宿主未公开的配置不会被猜测。</p>
-        <div id="surface-content"><p class="empty-copy">选择数字员工查看其 skills、tools、模型槽位与宿主权限披露。</p></div>
+        <p class="capability-boundary">只展示应用目录实际投影的已加载能力；不会推测宿主未公开的配置。</p>
+        <div id="surface-content"><p class="empty-copy">选择 Agent 应用，查看其 Skills、Tools、模型槽位和宿主权限。</p></div>
       </section>
     </aside>
   </div>
 
   <nav class="mobile-nav" aria-label="移动端工作台视图">
-    <button type="button" data-mobile-view="workers" aria-pressed="false"><i aria-hidden="true">01</i><span>机关库</span></button>
-    <button type="button" data-mobile-view="stage" class="active" aria-pressed="true"><i aria-hidden="true">02</i><span>指挥</span></button>
-    <button type="button" data-mobile-view="inspector" aria-pressed="false"><i aria-hidden="true">03</i><span>检查器</span></button>
+    <button type="button" data-mobile-view="workers" aria-pressed="false"><i aria-hidden="true">01</i><span>应用</span></button>
+    <button type="button" data-mobile-view="stage" class="active" aria-pressed="true"><i aria-hidden="true">02</i><span>工作区</span></button>
+    <button type="button" data-mobile-view="inspector" aria-pressed="false"><i aria-hidden="true">03</i><span>详情</span></button>
   </nav>
 
   <div class="toast-region" id="toast-region" aria-live="assertive" aria-atomic="true"></div>
 
   <template id="approval-template">
     <div class="action-card approval-card">
-      <div class="action-title"><span>HUMAN GATE</span><b>等待操作者定夺</b></div>
-      <p>这项工具动作不会在批准前执行。</p>
+      <div class="action-title"><span>APPROVAL REQUIRED</span><b>需要人工批准</b></div>
+      <p>确认之前，这项工具调用不会执行。</p>
       <dl class="action-facts"></dl>
       <pre class="arguments"></pre>
       <div class="action-buttons">
@@ -300,8 +299,8 @@
 
   <template id="recovery-template">
     <form class="action-card recovery-card">
-      <div class="action-title"><span>UNCERTAIN EFFECT</span><b>外部效果状态不明</b></div>
-      <p>操作可能已经发生，也可能没有发生。请核验外部系统后再选择恢复方式。</p>
+      <div class="action-title"><span>MANUAL VERIFICATION</span><b>外部系统状态不确定</b></div>
+      <p>操作可能已经发生。请先核验外部系统，再选择恢复方式。</p>
       <dl class="action-facts"></dl>
       <label>恢复动作<select class="recovery-action"><option value="record_result">记录已核验结果</option><option value="fail">标记失败</option><option value="retry">重试（可能重复副作用）</option></select></label>
       <label>审计原因<textarea class="recovery-reason" rows="2" required></textarea></label>
@@ -318,5 +317,6 @@
   <script src="/assets/workflow-manifest.0.1.0.js" defer></script>
   <script src="/assets/workflow-studio.0.1.0.js" defer></script>
   <script src="/assets/workflow-studio.0.2.0.js" defer></script>
+  <script src="/assets/app.0.3.0.js" defer></script>
 </body>
 </html>
