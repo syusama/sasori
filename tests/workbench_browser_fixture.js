@@ -2080,6 +2080,9 @@
         "narrow Run composer obscures the structured Workflow result");
       assert(document.documentElement.scrollWidth <= global.innerWidth,
         "structured Workflow result creates horizontal page overflow");
+      const stage = document.querySelector("#workbench-main");
+      assert(stage.scrollWidth <= stage.clientWidth,
+        "structured Workflow result creates horizontal Workbench overflow");
     }
     record("structured-result");
   }

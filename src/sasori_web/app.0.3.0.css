@@ -1165,6 +1165,7 @@ kbd { min-width: 20px; display: inline-grid; place-items: center; padding: 2px 5
   .conversation,
   .message-stack { width: 100%; min-width: 0; }
   .message { min-width: 0; max-width: 88%; }
+  .message.user { width: fit-content; margin-left: 0; justify-self: end; }
   .message.structured-result { width: 100%; max-width: 100%; }
   .result-heading { flex-wrap: wrap; padding: 16px; }
   .result-heading > span { flex: 1 1 210px; }
@@ -1175,6 +1176,9 @@ kbd { min-width: 20px; display: inline-grid; place-items: center; padding: 2px 5
   .result-raw summary { padding-inline: 16px; }
   .result-raw pre { padding-inline: 16px; }
   .composer { margin-inline: 0; padding: 12px; }
+  .composer-topline span { min-width: 0; text-align: right; }
+  .run-heading > div { min-width: 0; }
+  .state-seal { flex: none; }
   .main-stage:has(#run-heading:not([hidden])) .composer {
     position: relative;
     bottom: auto;
