@@ -109,6 +109,17 @@ def jpeg_dimensions(payload: bytes) -> tuple[int, int]:
     raise ValueError("JPEG dimensions not found")
 
 
+def png_dimensions(payload: bytes) -> tuple[int, int]:
+    expected_header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    if len(payload) < 24 or payload[:16] != expected_header:
+        raise ValueError("not a PNG stream with an IHDR header")
+    width = int.from_bytes(payload[16:20], "big")
+    height = int.from_bytes(payload[20:24], "big")
+    if width < 1 or height < 1:
+        raise ValueError("invalid PNG dimensions")
+    return width, height
+
+
 class ReleaseVerificationTests(unittest.TestCase):
     def test_release_contract_version_tracks_every_decision_record(self):
         self.assertEqual(release_verify.VERIFIER_VERSION, "15")
@@ -165,10 +176,18 @@ class ReleaseVerificationTests(unittest.TestCase):
 
     def test_multilingual_readmes_and_real_screenshot_inventory_are_bound(self):
         readmes = {
-            "README.md": "One kernel. Many puppets.",
-            "README_zh.md": "一核牵万机",
-            "README_ja.md": "一つの核、多彩な傀儡。",
-            "README_ko.md": "하나의 핵, 수많은 꼭두각시.",
+            "README.md": (
+                "A small Python agent runtime. A complete framework when you need one."
+            ),
+            "README_zh.md": "从轻量 Python Agent 核心开始，按需要扩展成完整框架。",
+            "README_ja.md": (
+                "小さな Python Agent ランタイムから始め、"
+                "必要なときだけ完全なフレームワークへ。"
+            ),
+            "README_ko.md": (
+                "작은 Python Agent 런타임으로 시작해, "
+                "필요할 때 완전한 프레임워크로 확장합니다."
+            ),
         }
         screenshot_references = {}
         for name, marker in readmes.items():
@@ -177,6 +196,7 @@ class ReleaseVerificationTests(unittest.TestCase):
             for peer in readmes:
                 if peer != name:
                     self.assertIn(peer, text)
+            self.assertIn("docs/assets/sasori-banner.png", text)
             screenshot_references[name] = set(
                 re.findall(r"docs/assets/screenshots/([^\"') ]+\.jpg)", text)
             )
@@ -197,6 +217,9 @@ class ReleaseVerificationTests(unittest.TestCase):
         }
         self.assertTrue(
             {f"include {name}" for name in readmes} <= manifest_lines
+        )
+        self.assertIn(
+            "recursive-include docs *.md *.jpg *.json *.png", manifest_lines
         )
         for relative, expected_count in (
             ("Dockerfile", 1),
@@ -219,6 +242,21 @@ class ReleaseVerificationTests(unittest.TestCase):
         self.assertTrue(manifest["real_server_journey"])
         self.assertEqual(manifest["browser"]["console_entries_after_journey"], 0)
 
+        banner = manifest["brand_banner"]
+        banner_path = ROOT / banner["path"]
+        banner_payload = banner_path.read_bytes()
+        self.assertEqual(banner["path"], "docs/assets/sasori-banner.png")
+        self.assertEqual(banner["placement"], "README brand section only")
+        self.assertEqual(banner["media_type"], "image/png")
+        self.assertEqual(banner["bytes"], len(banner_payload))
+        self.assertEqual(
+            banner["sha256"], hashlib.sha256(banner_payload).hexdigest()
+        )
+        self.assertEqual(
+            banner["actual_pixels"],
+            dict(zip(("width", "height"), png_dimensions(banner_payload))),
+        )
+
         commit = manifest["runtime_source_commit"]
         self.assertRegex(commit, r"\A[0-9a-f]{40}\Z")
         self.assertEqual(manifest["run"]["durable_event_count"], 17)
@@ -240,7 +278,7 @@ class ReleaseVerificationTests(unittest.TestCase):
                 "README_zh.md",
                 "README_ja.md",
                 "README_ko.md",
-                "docs/assets/readme-hero.svg",
+                "docs/assets/sasori-banner.png",
                 "docs/assets/screenshots-manifest.json",
                 *expected_paths,
             },

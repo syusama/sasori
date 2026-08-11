@@ -28,6 +28,7 @@ from sasori_flow import WorkflowCatalogStore  # noqa: E402
 from workbench_browser_acceptance import (  # noqa: E402
     browser_candidates,
     browser_version,
+    run_emulated_browser_process,
     run_browser_process,
 )
 
@@ -312,8 +313,15 @@ def validate_store(
 
 
 def run_acceptance(
-    binary: Path, *, screenshot: Path | None = None
+    binary: Path,
+    *,
+    screenshot: Path | None = None,
+    viewport: tuple[int, int] | None = None,
+    reduced_motion: bool = False,
+    capture_view: str = "stage",
 ) -> dict[str, object]:
+    if capture_view not in {"stage", "inspector"}:
+        raise ValueError("capture_view must be stage or inspector")
     with tempfile.TemporaryDirectory(prefix="sasori-real-journey-") as directory:
         root = Path(directory)
         database = root / "runs.sqlite3"
@@ -355,14 +363,49 @@ def run_acceptance(
                 daemon=True,
             )
             proxy_thread.start()
-            completed = run_browser_process(
-                binary,
-                proxy.server_address[1],
-                virtual_time_budget=20000,
-                screenshot=screenshot,
-                attempts=1,
-                timeout_seconds=JOURNEY_BROWSER_TIMEOUT_SECONDS,
-            )
+            if viewport is None:
+                completed = run_browser_process(
+                    binary,
+                    proxy.server_address[1],
+                    virtual_time_budget=20000,
+                    screenshot=screenshot,
+                    attempts=1,
+                    timeout_seconds=JOURNEY_BROWSER_TIMEOUT_SECONDS,
+                )
+            else:
+                mobile_selector = (
+                    '[data-workbench-destination="capabilities"]'
+                    if capture_view == "inspector"
+                    else '[data-mobile-view="stage"]'
+                )
+                panel_selector = (
+                    ".right-rail" if capture_view == "inspector" else ".main-stage"
+                )
+                post_result_expression = f"""
+                    new Promise((resolve) => {{
+                      document.querySelector({json.dumps(mobile_selector)}).click();
+                      document.documentElement.scrollTop = 0;
+                      document.body.scrollTop = 0;
+                      const panel = document.querySelector(
+                        {json.dumps(panel_selector)}
+                      );
+                      if (panel) panel.scrollTop = 0;
+                      requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    }})
+                """
+                completed = run_emulated_browser_process(
+                    binary,
+                    proxy.server_address[1],
+                    viewport=viewport,
+                    extra_arguments=("--force-prefers-reduced-motion",)
+                    if reduced_motion
+                    else (),
+                    screenshot=screenshot,
+                    attempts=1,
+                    timeout_seconds=JOURNEY_BROWSER_TIMEOUT_SECONDS,
+                    result_selector="#sasori-real-journey-result",
+                    post_result_expression=post_result_expression,
+                )
         finally:
             try:
                 if proxy is not None:
@@ -441,6 +484,9 @@ def run_acceptance(
             catalog_store.close()
         return {
             "browser": browser_version(binary),
+            "viewport": list(viewport) if viewport is not None else [1600, 1000],
+            "reduced_motion": reduced_motion,
+            "capture_view": capture_view,
             "cases": [
                 "durable-workflow-studio-save",
                 "real-incident-lifecycle",
@@ -487,6 +533,22 @@ def main() -> int:
         type=Path,
         help="capture the completed cold-history Workbench view to this PNG",
     )
+    parser.add_argument(
+        "--viewport",
+        metavar="WIDTHxHEIGHT",
+        help="use exact CSS viewport emulation, for example 390x844",
+    )
+    parser.add_argument(
+        "--reduced-motion",
+        action="store_true",
+        help="request reduced motion for an emulated viewport capture",
+    )
+    parser.add_argument(
+        "--capture-view",
+        choices=("stage", "inspector"),
+        default="stage",
+        help="select the mobile Workbench surface captured after the journey",
+    )
     arguments = parser.parse_args()
     candidates = browser_candidates()
     if not candidates:
@@ -497,7 +559,25 @@ def main() -> int:
     screenshot = arguments.screenshot.resolve() if arguments.screenshot else None
     if screenshot is not None and not screenshot.parent.is_dir():
         raise SystemExit("screenshot parent directory must already exist")
-    evidence = run_acceptance(candidates[0], screenshot=screenshot)
+    viewport = None
+    if arguments.viewport:
+        match = re.fullmatch(
+            r"([1-9][0-9]{1,3})x([1-9][0-9]{1,3})", arguments.viewport
+        )
+        if match is None:
+            raise SystemExit(
+                "viewport must use WIDTHxHEIGHT with positive integer dimensions"
+            )
+        viewport = (int(match.group(1)), int(match.group(2)))
+    elif arguments.reduced_motion or arguments.capture_view != "stage":
+        raise SystemExit("--reduced-motion and --capture-view require --viewport")
+    evidence = run_acceptance(
+        candidates[0],
+        screenshot=screenshot,
+        viewport=viewport,
+        reduced_motion=arguments.reduced_motion,
+        capture_view=arguments.capture_view,
+    )
     if screenshot is not None:
         evidence["screenshot"] = str(screenshot)
     print(json.dumps(evidence, ensure_ascii=True, sort_keys=True))

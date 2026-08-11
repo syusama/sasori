@@ -37,8 +37,8 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 
 因此，Sasori 当前可准确定位为：
 
-> **One kernel. Many puppets.** 一个标准库轻核，把 Python、CLI、HTTP 与
-> Workbench 牵引到同一条可恢复、可审计的单 Agent 路径；Provider、Context、
+> **从轻量核心开始，按需要扩展成完整框架。** 一个标准库轻核，把 Python、CLI、HTTP 与
+> Workbench 汇入同一条可恢复、可审计的单 Agent 路径；Provider、Context、
 > Storage、RAG、Apps 与 UI 在核心外按需装配。
 
 不得在当前 README 中宣称：已具备 per-user/tenant 或自动抽取的完整语义 Memory、Artifact access grant/版本
@@ -70,7 +70,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
 | Workflow | `a3c4870` / Hosted run `31468469213` 已验证核心外 W1.3：既有 strict data/JSON/builder、one-Harness 串行 approval/effect/recovery、compiled manifest 与 public projection 不变；新增 deployment-owner saved catalog、immutable revisions/head、strong-ETag CAS、exact history、current-Tool verdict、stable pagination、canonical digest binding 与 non-retryable 504/GET-only recovery；无 activate/run-from-saved/DAG/并行/分支/Agent node/subflow | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 的定义耐久性、并发覆盖保护、mutation ambiguity 与证据边界更强；竞品 visual graph authoring、编排与产品广度仍胜 |
 | 多 Agent/项目协作 | 未交付 | Subagent 与 workflow agent | Swarm、Charter/Board/activity/path soft lease | Sasori 落后 |
-| UI | 独特 Puppet Workbench；真实 Chrome 覆盖 desktop、390×844 reduced-motion、keyboard/focus、invalid-Unicode no-fetch、stale response、exact 422/412/504 taxonomy、save/list/open/revision/conflict/outcome recovery、per-record stale-response isolation 与 canonical SHA-256 binding；真实 saved Studio、Incident、typed Workflow 生命周期通过，并持续明示 DRAFT ONLY / NO EXECUTION / TRUSTED PYTHON / NO SANDBOX；不是 visual DAG editor，也没有 execution authority | React 19、Workflow、GenUI、Desktop，产品面更完整 | 全功能 SPA、真截图、桌面/浏览器/移动端 | Sasori 审美、状态可信度与故障恢复有辨识度；竞品可视编排和产品广度仍领先 |
+| UI | 专业浅色三栏 Workbench；真实 Chrome 覆盖 desktop、390×844、360×800、reduced-motion、keyboard/focus、窄屏结构化结果、invalid-Unicode no-fetch、stale response、exact 422/412/504 taxonomy、save/list/open/revision/conflict/outcome recovery、per-record stale-response isolation 与 canonical SHA-256 binding；真实 saved Studio、Incident、typed Workflow 生命周期通过，并持续明示 SAVED AUTHORING / IMMUTABLE REVISIONS / NO ACTIVATION / NO EXECUTION / TRUSTED PYTHON / NO SANDBOX；不是 visual DAG editor，也没有 execution authority | React 19、Workflow、GenUI、Desktop，产品面更完整 | 全功能 SPA、真截图、桌面/浏览器/移动端 | Sasori 的信息密度、状态可信度与故障恢复有辨识度；竞品可视编排和产品广度仍领先 |
 | Provider | OpenAI/Anthropic stdlib 适配，共享 conformance；未宣称 live smoke | Provider/路由/降级更多 | OpenAI-compatible 与多 provider/多 key 路由更广 | 竞品广度胜，Sasori 合约胜 |
 | 本地交付 | Python/CLI/HTTP、no-build UI、国内源 Compose | dev/Docker/Desktop 安装路径丰富 | 一键安装、Docker/Desktop/Agents/SDK 丰富 | 竞品易用性胜 |
 | 依赖与镜像完整性 | base digest、Python/build hash、国内镜像、SBOM/binding、wheel/sdist matrix | base/apt/pip 未等价锁定，Docker label 版本漂移 | 多 `>=` 无 hash、Docker 未用国内源/digest、Playwright 安装可吞错 | Sasori 明显胜 |
@@ -219,7 +219,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 
 ### 必须保留
 
-- 有辨识度的蠍/傀儡品牌，而不是通用渐变 AI 图标。
+- 有辨识度但克制的专业品牌：排版、信息密度、状态表达和审计证据优先；名称来源只放在简短介绍或 Logo，不把动漫设定变成产品主题。
 - 一句话说明“Python-first、小内核、一条运行路径”。
 - 30 秒可复制 Quick Start。
 - 真 Workbench 图、真实架构图、真实失败/恢复路径。

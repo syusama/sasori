@@ -66,13 +66,14 @@ If these fail, retain the useful Loop/Harness as a testing and trace library rat
 
 ## 2. Brand without copyright debt
 
-The useful Sasori character ideas are precision control, modular mechanisms, many configurations, decisive execution, and durable art. They become product principles:
+The name suggests precision, modularity, and durable work. Those ideas become
+ordinary product principles rather than an anime-themed interface:
 
 - **Control lines are visible:** every model and tool transition is inspectable.
 - **Mechanisms detach:** providers, storage, servers, skills, and UI are optional.
-- **One puppet, one controller:** all adapters use the same runtime path.
+- **One runtime, many adapters:** all adapters use the same runtime path.
 - **Durability is earned:** a run is complete only after its stable result is committed.
-- **Spectacle serves control:** later visual design may be expressive, but never hides state or evidence.
+- **Presentation serves control:** visual design may be distinctive, but never hides state or evidence.
 
 The project must not use official Naruto artwork, character silhouettes, costumes, dialogue, logos, or imply endorsement. Public technical APIs use ordinary industry terms, not anime lore. A trademark/name review is required before a major public launch. As of 2026-08-07, the PyPI JSON endpoint for `sasori` returned 404; the npm name was already occupied, so future frontend packages need a scope such as `@sasori-ai/*`.
 
@@ -523,14 +524,20 @@ execution, and marketplace installation are not current Workbench capabilities.
 Research citations and Developer file/Git results remain ordinary untrusted
 tool/final text until a separate artifact contract is justified.
 
-### Preliminary visual language
+### Current visual language
 
-- background `#0B0D10`, raised surface `#14181D`, paper `#F2EEE6`;
-- lacquer accent `#B52A32`, brass accent `#C69A52`, status colors chosen to pass WCAG contrast independently of red/green;
-- typography prioritizes readable system sans and a restrained display face only for brand headings;
-- motion explains state transitions, lasts roughly 120-240 ms, uses transform/opacity, and respects `prefers-reduced-motion`;
-- modular seams, fine control lines, and precision joints are acceptable motifs;
-- anime portraits, parchment cosplay, constant particles, ornamental kanji, unreadable glow, and motion that masks latency are prohibited.
+- warm neutral paper and white working surfaces establish a quiet, professional
+  environment; cinnabar red is reserved for focus, calls to action, and
+  important status;
+- editorial typography, restrained rules, precise alignment, and controlled
+  density provide identity without generic AI gradients or decorative noise;
+- motion explains state transitions, lasts roughly 120-240 ms, uses
+  transform/opacity, and respects `prefers-reduced-motion`;
+- responsive layouts preserve task results and trust disclosures at exact
+  360px and 390px CSS viewports;
+- anime portraits, puppet strings, parchment cosplay, constant particles,
+  ornamental kanji, unreadable glow, and motion that masks latency are
+  prohibited in the product UI.
 
 The current UI is dependency-free static HTML/CSS/JavaScript served from an
 exact asset allowlist. Authenticated SSE uses `fetch()` plus `ReadableStream`;

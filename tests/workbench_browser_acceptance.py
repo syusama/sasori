@@ -394,8 +394,16 @@ def run_emulated_browser_process(
     screenshot: Path | None = None,
     attempts: int = BROWSER_ATTEMPTS,
     timeout_seconds: int = BROWSER_TIMEOUT_SECONDS,
+    result_selector: str = "#sasori-browser-result",
+    post_result_expression: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run acceptance at an exact CSS viewport below Chromium's 500px floor."""
+    """Run a journey at an exact CSS viewport below Chromium's 500px floor."""
+
+    valid_id = result_selector.startswith("#") and result_selector[1:].replace(
+        "-", ""
+    ).isalnum()
+    if not valid_id:
+        raise ValueError("result_selector must be a simple ID selector")
 
     last_error: Exception | None = None
     for _ in range(attempts):
@@ -453,7 +461,7 @@ def run_emulated_browser_process(
                     try:
                         result = _evaluated_value(
                             client,
-                            "document.querySelector('#sasori-browser-result')?.dataset.result || null",
+                            f"document.querySelector('{result_selector}')?.dataset.result || null",
                         )
                     except RuntimeError:
                         result = None
@@ -462,6 +470,8 @@ def run_emulated_browser_process(
                     time.sleep(0.025)
                 if result not in {"passed", "failed"}:
                     raise subprocess.TimeoutExpired(command, timeout_seconds)
+                if post_result_expression is not None:
+                    _evaluated_value(client, post_result_expression)
                 dom = _evaluated_value(client, "document.documentElement.outerHTML")
                 if not isinstance(dom, str):
                     raise RuntimeError("Chrome DevTools did not return the accepted DOM")

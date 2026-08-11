@@ -1,84 +1,107 @@
 # Sasori benchmark: Pi core and Proma product surface
 
-This document records source-grounded design inputs. It is not a claim that an
-upstream README feature is shipped by Sasori, nor permission to copy upstream
-code or media.
+This document records source-grounded design inputs. It does not imply that an
+upstream README feature is shipped by Sasori, and it is not permission to copy
+upstream code or media.
 
 ## Locked research snapshots
 
 | Project | Snapshot | License | How Sasori uses it |
 |---|---|---|---|
 | Pi | [`452923b`](https://github.com/earendil-works/pi/tree/452923b54a6c8b2f95b80157a8f6c7963f183101), 2026-08-11, packages 0.84.1 | MIT | Core boundaries, Loop/event/tool/session behavior; no TypeScript port |
-| Proma | [`4cbde97`](https://github.com/proma-ai/Proma/tree/4cbde97d6361db1948fc738d1177b9be413b3295), 2026-08-11 | AGPL-3.0-only | Abstract product IA and interaction benchmark only; no source, style, copy, logo, or screenshot reuse |
+| Proma | [`73e9d01`](https://github.com/proma-ai/Proma/tree/73e9d014b56dfda7554011bc02cf8ee5af2c5493), 2026-08-12 | AGPL-3.0-only | Information architecture and interaction benchmark only; no source, CSS, copy, logo, screenshot, or asset reuse |
 
-Both upstream branches moved during the audit. These immutable commits, not a
-floating `main`, define the comparison below.
+Both upstream branches can move. These immutable commits, not a floating
+`main`, define the comparison below.
 
 ## Core gap matrix
 
-| Capability | Pi evidence | Sasori current baseline | Sasori target / acceptance |
+| Capability | Pi evidence | Sasori current baseline | Sasori acceptance rule |
 |---|---|---|---|
-| Canonical Loop | `packages/agent/src/agent-loop.ts` is the low-level path | Shipped: one exported `run_agent_loop()` under the executable Harness; core store is injected | Retain one path across Python, CLI, HTTP and Workbench adapters |
-| Model stream | Unified provider stream protocol with deltas and terminal outcomes | Shipped in core: bounded `start -> deltas* -> done/error/aborted -> end`; current bundled providers may still aggregate upstream SSE | Add adapter-native transient deltas only with the shared terminal conformance; partial calls never execute |
-| Incomplete calls | `stopReason=length` calls fail and do not execute | Already fail-closed | Retain regression for truncated and structurally invalid calls |
-| Tool order | lookup → prepare → validate → before → abort → execute → after → result | Lookup/validation/effect/recovery exists | Add explicit hook contract; replacement args must be revalidated and immutable to observers |
-| Tool failure | Most tool failures become error results | Already explicit | Preserve cancellation as a separate BaseException boundary |
-| Tool parallelism | Completion events may finish out of order; result messages preserve source order | Serial, deterministic | Remain serial until approval/effect/cancel semantics for a mixed batch have an ADR |
-| Steering/follow-up | Separate FIFO queues and insertion points | Not shipped | Add only after persistence scope and races are specified and tested |
-| Finish/settle | Product session distinguishes `agent_end` and `agent_settled` | Shipped process boundary: durable terminal means finished; drive unwind means settled; `wait_for_idle()` observes no admitted drives | Keep transient idle separate from durable event truth; never claim forced remote cancellation |
-| Harness truth | New Pi Harness exposes 22 operations that still raise `HarnessNotImplemented`; production uses old AgentSession | Sasori Harness is executable | Stable exports must never contain placeholder operations |
-| Session backend | Memory/JSONL/SQLite conformance; SQLite lease/fencing; JSONL cross-process claim is weaker than comments | Shipped: storage-neutral port, non-durable ephemeral default, external SQLite lock and step recovery | Expand the same conformance over stale revision, call identity, effect ambiguity, cancellation and ownership |
-| Core size | `pi-agent-core` 49 TS / ~12.4k lines; install closure includes provider SDKs through `pi-ai` | Independent zero-dependency `sasori-core` wheel; bundle depends on the exact same version | Keep the verified wheel below the provisional 128 KiB ceiling; no provider SDK/DB/HTTP/UI/RAG dependency |
-| Offline tests | Large suite, but complete Windows run depends on hydrated model JSON and POSIX assumptions | Deterministic Python fakes; 488-test prior baseline | Offline core tests on Windows/Linux/macOS; provider/live tests remain supplemental |
+| Canonical Loop | `packages/agent/src/agent-loop.ts` is the low-level path | One exported `run_agent_loop()` under an executable Harness; storage is injected | Retain one path across Python, CLI, HTTP, Workflow, and Workbench |
+| Model stream | Unified provider stream with deltas and terminal outcomes | Bounded `start -> deltas* -> done/error/aborted -> end`; bundle providers may aggregate upstream SSE | Partial calls never execute; every stream reaches exactly one terminal outcome |
+| Incomplete calls | Length-truncated calls fail and do not execute | Fail-closed parser and Tool dispatch | Keep malformed, truncated, oversized, duplicate, interrupted, and cancelled conformance cases |
+| Tool order | Lookup, prepare, validate, hooks, execute, result | Lookup, validation, effect, approval, and recovery are explicit | Replacement arguments must be revalidated and immutable to observers |
+| Tool failure | Most Tool failures become error results | Explicit Tool-result errors | Cancellation remains a separate `BaseException` boundary |
+| Parallel Tool calls | Completion may finish out of order while results preserve source order | Serial and deterministic | Remain serial until mixed effect/approval/cancellation semantics have an ADR and acceptance suite |
+| Steering/follow-up | Separate queues and insertion points | Not shipped | Add only after persistence scope and race behavior are specified |
+| Finish/settle | Product session distinguishes agent end and settlement | Durable terminal means finished; drive unwind means settled; `wait_for_idle()` observes no admitted drives | Never confuse transient idle with durable event truth or forced remote cancellation |
+| Harness truth | The audited Pi Harness surface still exposed placeholder operations while the product used another session layer | Sasori Harness is executable | Stable exports never contain placeholder operations |
+| Session backend | Memory/JSONL/SQLite variants with different ownership strength | Storage-neutral port, ephemeral default, external SQLite lock, step recovery | Share conformance for revision, call identity, effect ambiguity, cancellation, and ownership |
+| Core size | `pi-agent-core` is a larger TypeScript package with provider closure through `pi-ai` | Independent zero-dependency `sasori-core` wheel; bundle pins the exact same version | No Provider SDK, DB, HTTP, UI, RAG, or marketplace dependency in Core |
+| Offline tests | Broad suite, with environment-dependent catalog/POSIX cases | Deterministic Python fakes and platform-specific skips | Core gates stay offline across Windows, Linux, and macOS; live providers supplement them |
 
-Pi validation performed during the audit:
-
-- focused agent loop/event/reducer/compaction/memory/JSONL suites: 293 tests
-  passed at the core-equivalent snapshot;
-- SQLite backend suites: 82 tests passed;
-- the broader Windows checkout was not fully green because model catalog
-  hydration was unavailable and several execution-environment tests assumed
-  `/bin/bash` or symlink privileges. Sasori must not turn provider catalog
-  hydration into a prerequisite for deterministic core tests.
+Pi validation during the audit found strong Loop/event/reducer/session coverage,
+plus broader tests whose Windows result depended on model-catalog hydration,
+`/bin/bash`, or symlink privileges. Sasori treats those as portability lessons:
+provider discovery must not be a prerequisite for deterministic Core tests.
 
 ## Product surface gap matrix
 
-Proma's exact snapshot implements a dense desktop shell with project/session
-navigation, central tabs, Chat and Agent workspaces, file/diff/preview panels,
-Planning, Skills/MCP/Memory management, Settings, and a newly source-present
-managed browser. The strengths are contextual density and keeping background
-work visible beside conversation.
+Proma's locked snapshot implements a dense desktop shell with project/session
+navigation, Chat and Agent workspaces, files/diff/preview, Planning,
+Skills/MCP/Memory management, Settings, and a managed-browser surface. Its main
+strength is contextual density: background work remains visible beside the
+conversation.
 
-| Surface | Proma source reality | Sasori direction | Sasori acceptance advantage |
+| Surface | Proma source reality | Sasori current direction | Sasori acceptance advantage |
 |---|---|---|---|
-| Shell | Resizable three-column Electron desktop shell | Shipped candidate: original Red Sand Atelier three-column Web command center | Exact 360/390px responsive mode, keyboard/pointer separators, focus restoration and reduced-motion acceptance |
-| Chat/Agent | Attachments, files, tools, models, task process in context | One conversation canvas backed by Sasori public events | Approval/recovery/effect-unknown visible from live and cold history through one reducer |
-| Capability center | Skills, MCP, Memory are a full-screen view | Shipped read-only Workbench surface over the real app catalog for skills, tools, providers, plugins and evidenced MCP | Add install/update/revoke only after real Marketplace APIs, permissions and provenance exist |
-| Planning | Todo, calendar and automation surfaces | Workflow Studio and durable saved workflow catalog | Saved/reopen/run/recover evidence, not only local UI state |
-| Files/diff/preview | Side panel and split previews | Artifacts, evidence, workflow and trace inspectors | Immutable hashes, media/type verification and run binding |
-| Managed browser | Source-present with URL policy, profiles, CDP actions and trace; no new tests | Future adapter, not a current claim | No shipped label before deterministic policy tests and real browser acceptance |
-| Marketplace | Community marketplace is explicitly “coming soon” | Curated local metadata exists; public marketplace is planned | No marketplace claim until install/update/revoke/signature/provenance paths work |
-| Accessibility | Reduced motion is partial; narrow-screen strategy is weak | WCAG 2.2 AA target | Keyboard flow, focus visibility, 360px layout and reduced-motion browser tests |
-| E2E/screenshots | 68 test files found, no Playwright/Cypress E2E; README screenshots are partly older UI | Automated browser journey already exists | Exact-commit seeded captures plus screenshot provenance and visual regression |
+| Shell | Resizable three-column Electron desktop shell | Independent professional-light three-column Web Workbench | Exact 360/390px responsive mode, keyboard/pointer separators, focus restoration, reduced-motion acceptance |
+| Chat/Agent | Attachments, files, tools, models, task process in context | One task/conversation canvas backed by Sasori public events | Approval, recovery, and effect ambiguity remain visible in live and cold history through one reducer |
+| Capability center | Skills, MCP, and Memory form a broad management surface | Read-only projection of loaded Skills, Tools, MCP transports, Providers, Plugins, and effective trust | Install/update/revoke waits for real market APIs, permissions, and provenance |
+| Planning | Todo, calendar, and automation surfaces | Workflow Studio and durable saved Workflow Catalog | Save, reopen, conflict, reconciliation, and recovery evidence—not browser-local state |
+| Files/diff/preview | Side panels and split preview | Artifact, evidence, Workflow, and trace inspectors | Immutable digest, media/type validation, and run binding |
+| Managed browser | Source-present browser capabilities and policy | Future adapter, not a current claim | No shipped label before deterministic policy tests and real browser acceptance |
+| Marketplace | Community marketplace remains planned | Curated local metadata and scaffolding | No public-market claim before install/update/revoke/signature/provenance work |
+| Accessibility | Desktop-first product with limited narrow strategy | WCAG 2.2 AA target | Keyboard flow, focus visibility, exact 360px layout, reduced motion, no horizontal result overflow |
+| E2E/screenshots | Real screenshots exist but some drift from the locked source | Automated browser acceptance and real server journey | Runtime-commit-bound captures with pixels, hashes, browser, scenario, and semantic checks |
+
+## What Sasori takes from Proma
+
+Sasori adopts the product lessons, not the implementation:
+
+1. keep application/history navigation, active work, and evidence visible at
+   the same time on desktop;
+2. make task progress, output, files, and capabilities discoverable without
+   forcing users through modal stacks;
+3. switch the same three surfaces through explicit bottom navigation on narrow
+   screens;
+4. distinguish authoring, validation, execution, and history instead of
+   presenting every action as chat;
+5. keep the design dense enough for professional use while retaining a clear
+   reading hierarchy.
+
+The current implementation is dependency-free static HTML/CSS/JavaScript. It
+uses warm neutral surfaces, editorial typography, restrained cinnabar focus,
+precise rules, and explicit trust/status language. It intentionally avoids
+purple gradients, cyber glow, anime scenes, puppet strings, particle fields,
+and theatrical feature copy.
 
 ## Screenshot evidence policy
 
-Proma's repository contains real PNG screenshots, but several show older tab
-and Skills/MCP layouts than the locked source. Sasori therefore treats a README
-screenshot as evidence only when all of the following are recorded:
+A README screenshot is accepted only when all of the following are recorded:
 
-1. exact Sasori commit;
-2. deterministic seed scenario and application binding;
-3. actual local server and browser journey, never a static mock API;
-4. viewport, theme and reduced-motion state;
-5. capture script and browser acceptance result;
-6. no third-party character art, logo, screenshot, or unlicensed font.
+1. exact Sasori runtime commit;
+2. deterministic scenario and application binding;
+3. actual local server and browser journey, never a static mock result;
+4. requested viewport, actual pixels, theme, and reduced-motion state;
+5. browser identity plus acceptance result;
+6. content bytes and SHA-256;
+7. no third-party character art or branding inside the product UI.
 
-## Brand boundary
+Separately supplied README brand media is inventoried with dimensions, bytes,
+digest, placement, and an independent-project disclaimer. It is not accepted
+as product UI evidence.
 
-“Red Sand”, puppet threads, modular mechanisms and enduring art are original
-metaphors for a composable Agent framework. Sasori is an independent open-source
-project and is not affiliated with, endorsed by, or licensed by Naruto,
-Masashi Kishimoto, Shueisha, TV Tokyo, Studio Pierrot, or their owners. The UI
-and documentation use original mechanical-scorpion geometry and do not use
-official character art, anime frames, logos or fonts.
+## Brand and license boundary
+
+The Sasori name origin may appear in a short project introduction or Logo, but
+anime lore, character imagery, puppet-thread decoration, and theatrical copy
+are not product-interface themes. The owner-supplied README banner is confined
+to the repository brand section and is not used as a Workbench background,
+login screen, screenshot, icon, or application asset.
+
+Proma is AGPL-3.0-only at the locked snapshot. Sasori reuses no Proma source,
+CSS, wording, Logo, screenshots, or assets. Sasori is an independent open-source
+project and does not claim affiliation with or endorsement by Naruto or its
+rights holders.
