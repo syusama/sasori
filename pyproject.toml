@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sasori"
 version = "0.1.0.dev0"
 description = "A small, inspectable Python runtime for tool-using agents"
-readme = "README.md"
+readme = { text = "[Sasori](https://github.com/syusama/sasori) is a small, dependency-free Python Agent runtime. Plugins are trusted code.", content-type = "text/markdown" }
 requires-python = ">=3.11,<3.14"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*"]

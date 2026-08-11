@@ -24,6 +24,7 @@ from sasori_apps.workflow_incident import (  # noqa: E402
     WORKFLOW_SPEC,
 )
 from sasori_artifacts import ArtifactStore  # noqa: E402
+from sasori_flow import WorkflowCatalogStore  # noqa: E402
 from workbench_browser_acceptance import (  # noqa: E402
     browser_candidates,
     browser_version,
@@ -33,7 +34,7 @@ from workbench_browser_acceptance import (  # noqa: E402
 
 JOURNEY = Path(__file__).with_name("workbench_real_journey.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
-EXPECTED = "PASS:static-workflow-studio-preflight,real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle"
+EXPECTED = "PASS:durable-workflow-studio-save,real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle"
 EXPECTED_INPUT = "browser lifecycle incident"
 EXPECTED_ACTION = f"Operator review: diagnostic captured for {EXPECTED_INPUT}"
 EXPECTED_WORKFLOW_INPUT = "browser workflow incident"
@@ -80,6 +81,9 @@ class JourneyProxyHandler(http.server.BaseHTTPRequestHandler):
         self._forward()
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
+        self._forward()
+
+    def do_PUT(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
         self._forward()
 
     def _forward(self) -> None:
@@ -313,6 +317,7 @@ def run_acceptance(
     with tempfile.TemporaryDirectory(prefix="sasori-real-journey-") as directory:
         root = Path(directory)
         database = root / "runs.sqlite3"
+        workflow_database = root / "saved.sqlite3"
         action_log = root / "actions.jsonl"
         artifact_root = root / "artifacts"
         previous_action_log = os.environ.get("SASORI_ACTION_LOG")
@@ -326,6 +331,7 @@ def run_acceptance(
                 "127.0.0.1",
                 0,
                 database=str(database),
+                workflow_database=str(workflow_database),
                 artifact_root=artifact_root,
                 apps={
                     "incident": "sasori_apps.incident:create_harness",
@@ -397,8 +403,8 @@ def run_acceptance(
         )
         if result_tag is None:
             raise AssertionError("real Workbench journey did not expose its result tag")
-        if 'data-studio="preflight-passed"' not in result_tag.group(0):
-            raise AssertionError("real Workbench journey did not pass Studio preflight")
+        if 'data-studio="catalog-saved"' not in result_tag.group(0):
+            raise AssertionError("real Workbench journey did not save its Studio catalog record")
         match = re.search(
             r'data-run-id="([A-Za-z0-9._-]+)"', result_tag.group(0)
         )
@@ -413,10 +419,30 @@ def run_acceptance(
         workflow_run_id = workflow_match.group(1)
         actions = strict_actions(action_log)
         durable = validate_store(database, artifact_root, run_id, workflow_run_id)
+        catalog_store = WorkflowCatalogStore(workflow_database)
+        try:
+            catalog_page = catalog_store.list(10, None)
+            if len(catalog_page.items) != 1:
+                raise AssertionError(
+                    "real Workbench journey did not persist exactly one saved Workflow"
+                )
+            saved_record, head_revision = catalog_store.load(
+                catalog_page.items[0].catalog_id
+            )
+            if (
+                head_revision != 1
+                or saved_record.definition["workflow_id"]
+                != "studio-inspect_incident"
+            ):
+                raise AssertionError(
+                    "real Workbench saved Workflow identity or revision is invalid"
+                )
+        finally:
+            catalog_store.close()
         return {
             "browser": browser_version(binary),
             "cases": [
-                "static-workflow-studio-preflight",
+                "durable-workflow-studio-save",
                 "real-incident-lifecycle",
                 "typed-workflow-lifecycle",
             ],
@@ -431,6 +457,8 @@ def run_acceptance(
                 "workflow-manifest.0.1.0.js",
                 "workflow-studio.0.1.0.css",
                 "workflow-studio.0.1.0.js",
+                "workflow-studio.0.2.0.css",
+                "workflow-studio.0.2.0.js",
             ],
             "durable": durable,
             "effect": {"count": 2, "summaries": [item["summary"] for item in actions]},
@@ -438,7 +466,7 @@ def run_acceptance(
             "permission_disclosure_visible": True,
             "artifact_preview_download": True,
             "workflow_step_inspection_visible": True,
-            "static_workflow_studio_preflight_passed": True,
+            "durable_workflow_studio_save_passed": True,
         }
 
 

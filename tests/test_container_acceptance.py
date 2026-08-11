@@ -30,6 +30,15 @@ WORKFLOW_SPEC = importlib.util.spec_from_file_location(
 container_workflow_acceptance = importlib.util.module_from_spec(WORKFLOW_SPEC)
 sys.modules[WORKFLOW_SPEC.name] = container_workflow_acceptance
 WORKFLOW_SPEC.loader.exec_module(container_workflow_acceptance)
+SAVED_WORKFLOW_SPEC = importlib.util.spec_from_file_location(
+    "sasori_container_saved_workflow_acceptance",
+    ROOT / "scripts" / "container_saved_workflow_acceptance.py",
+)
+container_saved_workflow_acceptance = importlib.util.module_from_spec(
+    SAVED_WORKFLOW_SPEC
+)
+sys.modules[SAVED_WORKFLOW_SPEC.name] = container_saved_workflow_acceptance
+SAVED_WORKFLOW_SPEC.loader.exec_module(container_saved_workflow_acceptance)
 MEMORY_SPEC = importlib.util.spec_from_file_location(
     "sasori_container_memory_acceptance",
     ROOT / "scripts" / "container_memory_acceptance.py",
@@ -53,6 +62,7 @@ class ContainerAcceptanceTests(unittest.TestCase):
             'group_add:\n      - "${SASORI_TOKEN_GID:-10001}"', compose
         )
         self.assertIn("SASORI_ARTIFACT_ROOT: /data/artifacts", compose)
+        self.assertIn("SASORI_WORKFLOW_DB: /data/sasori.workflows.sqlite3", compose)
         self.assertIn('SASORI_PUBLISH_FINAL_ARTIFACT: "1"', compose)
         self.assertIn("os.O_WRONLY | os.O_CREAT | os.O_EXCL", workflow)
         self.assertIn(
@@ -87,6 +97,7 @@ class ContainerAcceptanceTests(unittest.TestCase):
             dockerfile,
             r"flow\.incident-mechanism\.[0-9a-f]{12}",
         )
+        self.assertIn("SASORI_WORKFLOW_DB=/data/sasori.workflows.sqlite3", dockerfile)
 
     def test_ci_runs_workflow_acceptance_before_shared_restart_gates(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
@@ -101,11 +112,23 @@ class ContainerAcceptanceTests(unittest.TestCase):
             "WORKFLOW_ACTION_COMPLETE_FILE",
             "WORKFLOW_ACTION_RESTARTED_FILE",
             "SASORI_WORKFLOW_RUN_ID",
+            "SAVED_WORKFLOW_EVIDENCE_FILE",
+            "SAVED_WORKFLOW_RESTARTED_FILE",
+            "SAVED_WORKFLOW_ACTION_BEFORE_FILE",
+            "SAVED_WORKFLOW_ACTION_AFTER_FILE",
         ):
             self.assertIn(name, workflow)
         self.assertIn(
             'action_snapshot 1 0 "$WORKFLOW_ACTION_BEFORE_FILE"', workflow
         )
+        self.assertIn(
+            "python scripts/container_saved_workflow_acceptance.py prepare", workflow
+        )
+        self.assertIn(
+            "python scripts/container_saved_workflow_acceptance.py after-restart",
+            workflow,
+        )
+        self.assertIn("WorkflowCatalogConfigurationError", workflow)
         self.assertIn(
             'action_snapshot 1 0 "$WORKFLOW_ACTION_PREFLIGHT_FILE"', workflow
         )
@@ -311,6 +334,58 @@ class ContainerAcceptanceTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             result = container_workflow_acceptance.main(arguments)
         return result, stdout.getvalue(), stderr.getvalue()
+
+    def _saved_workflow_main(self, arguments: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = container_saved_workflow_acceptance.main(arguments)
+        return result, stdout.getvalue(), stderr.getvalue()
+
+    def test_saved_workflow_catalog_create_update_stale_and_restart(self) -> None:
+        evidence = self.root / "saved-workflow-evidence.json"
+        server, base_url = self._start_workflow_sasori()
+        common = [
+            "--base-url",
+            base_url,
+            "--token-file",
+            str(self.token_file),
+            "--evidence",
+            str(evidence),
+        ]
+        code, stdout, stderr = self._saved_workflow_main(["prepare", *common])
+        self.assertEqual((code, stderr), (0, ""))
+        prepared = json.loads(stdout)
+        self.assertEqual(prepared["catalog_id"], container_saved_workflow_acceptance.CATALOG_ID)
+        self.assertEqual(prepared["runtime_before"], prepared["runtime_after"])
+        self.assertEqual(prepared["runtime_before"]["run_count"], 0)
+        self.assertEqual(prepared["runtime_before"]["event_count"], 0)
+        self.assertEqual(prepared["stale_writer"]["status"], 412)
+        self.assertFalse(self.action_log.exists())
+
+        self._stop_sasori(server)
+        _, restarted_url = self._start_workflow_sasori()
+        code, stdout, stderr = self._saved_workflow_main(
+            [
+                "after-restart",
+                "--base-url",
+                restarted_url,
+                "--token-file",
+                str(self.token_file),
+                "--evidence",
+                str(evidence),
+            ]
+        )
+        self.assertEqual((code, stderr), (0, ""))
+        restarted = json.loads(stdout)
+        self.assertTrue(restarted["verified"])
+        self.assertTrue(restarted["runtime_unchanged"])
+        self.assertEqual(restarted["head_revision"], 2)
+        self.assertEqual(restarted["current_sha256"], prepared["current_sha256"])
+        self.assertEqual(
+            restarted["historical_sha256"], prepared["historical_sha256"]
+        )
+        self.assertFalse(self.action_log.exists())
 
     def test_workflow_acceptance_approval_resume_and_restart(self) -> None:
         evidence = self.root / "workflow-evidence.json"

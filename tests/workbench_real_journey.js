@@ -72,7 +72,9 @@
       "real Static Serial Workflow Studio did not expose a Tool-bound draft",
     );
     const studio = document.querySelector("#workflow-studio");
-    assert(studio.textContent.includes("DRAFT ONLY") &&
+    assert(studio.textContent.includes("SAVED AUTHORING") &&
+      studio.textContent.includes("IMMUTABLE REVISIONS") &&
+      studio.textContent.includes("NO ACTIVATION") &&
       studio.textContent.includes("NO EXECUTION") &&
       studio.textContent.includes("TRUSTED PYTHON") &&
       studio.textContent.includes("NO SANDBOX"),
@@ -93,6 +95,24 @@
     assert(await actionCount() === 0, "Studio preflight executed a Tool side effect");
     assert(document.querySelectorAll(".history-card").length === 0,
       "Studio preflight created a durable run");
+    document.querySelector("#studio-save").click();
+    await waitFor(
+      () => document.querySelector("#studio-save-ledger").dataset.state !== "saving",
+      "real Studio catalog mutation did not settle",
+    );
+    const saveLedger = document.querySelector("#studio-save-ledger");
+    const recordLabel = document.querySelector("#studio-record-label");
+    assert(saveLedger.dataset.state === "saved" && recordLabel.textContent.includes("r1"),
+      `real Studio did not persist its first CAS-protected catalog revision; ` +
+      `state=${saveLedger.dataset.state}; ledger=${saveLedger.textContent}; ` +
+      `label=${recordLabel.textContent}`);
+    await waitFor(
+      () => document.querySelectorAll(".studio-catalog-card").length === 1,
+      "real Studio durable catalog rail did not refresh after save",
+    );
+    assert(await actionCount() === 0, "saved Workflow catalog executed a Tool side effect");
+    assert(document.querySelectorAll(".history-card").length === 0,
+      "saved Workflow catalog created a durable run");
     document.querySelector("#studio-close").click();
     assert(document.querySelector("#workflow-studio").hidden,
       "real Studio did not return to the Workbench");
@@ -333,8 +353,8 @@
     result.dataset.workflowRunId = workflowRunId;
     result.dataset.events = "34";
     result.dataset.effects = "2";
-    result.dataset.studio = "preflight-passed";
-    result.textContent = "PASS:static-workflow-studio-preflight,real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle";
+    result.dataset.studio = "catalog-saved";
+    result.textContent = "PASS:durable-workflow-studio-save,real-incident-lifecycle,artifact-preview-download,typed-workflow-lifecycle";
     document.title = "Sasori real journey passed";
   }
 

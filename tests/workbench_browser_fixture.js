@@ -17,6 +17,14 @@
   let cancelledRecoveryResolved = false;
   let studioPreflightCount = 0;
   let lastStudioBody = null;
+  let workflowCatalogRecord = null;
+  let workflowCatalogPutCount = 0;
+  let workflowCatalogGetCount = 0;
+  let lastWorkflowCatalogBody = null;
+  let lastWorkflowCatalogId = null;
+  let workflowCatalogExtraRecord = null;
+  let workflowCatalogDetailDelay = null;
+  let workflowCatalogPutBehavior = null;
 
   const application = {
     id: "incident-response",
@@ -324,10 +332,10 @@
     };
   }
 
-  function json(payload, status = 200) {
+  function json(payload, status = 200, extraHeaders = {}) {
     return new Response(JSON.stringify(payload), {
       status,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: { "Content-Type": "application/json; charset=utf-8", ...extraHeaders },
     });
   }
 
@@ -416,6 +424,51 @@
     };
   }
 
+  async function definitionDigest(definition) {
+    const canonical = JSON.stringify(canonicalValue(definition));
+    const digest = await crypto.subtle.digest(
+      "SHA-256", new TextEncoder().encode(canonical),
+    );
+    return [...new Uint8Array(digest)]
+      .map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
+  function canonicalValue(value) {
+    if (Array.isArray(value)) return value.map(canonicalValue);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.keys(value).sort().map(
+        (key) => [key, canonicalValue(value[key])],
+      ));
+    }
+    return value;
+  }
+
+  async function workflowCatalogValue(catalogId, definition, revision = 1) {
+    const manifest = studioManifest(definition);
+    const digest = await definitionDigest(definition);
+    manifest.definition_sha256 = digest;
+    manifest.app_id = `flow.${definition.workflow_id}.${digest.slice(0, 12)}`;
+    const record = {
+      catalog_id: catalogId,
+      catalog_revision: revision,
+      parent_revision: revision === 1 ? null : revision - 1,
+      definition_sha256: digest,
+      definition: structuredClone(definition),
+      saved_manifest: manifest,
+      head_revision: revision,
+      is_head: true,
+      current_contract: { status: "compatible", reason_code: null },
+    };
+    const etag = `"sasori-wfcat-${catalogId.slice(6)}-r${revision}-${digest}"`;
+    return { record, etag };
+  }
+
+  function workflowCatalogResponse(value = workflowCatalogRecord) {
+    return json({ ok: true, schema_version: 1, record: value.record }, 200, {
+      ETag: value.etag,
+    });
+  }
+
   function eventBatch(runId, events = [], afterSeq = 0, latestSeq = events.length) {
     return json({
       run_id: runId,
@@ -490,6 +543,131 @@
         schema_version: 1,
         apps: [application, workflowApplication, unavailableWorkflowApplication],
       });
+    }
+    if (method === "GET" && url.pathname === "/v1/workflows") {
+      if (mode === "workflow-catalog-pagination") {
+        const before = url.searchParams.get("before");
+        const start = before === null ? 1 : 101;
+        const end = before === null ? 100 : 101;
+        const items = Array.from({ length: end - start + 1 }, (_, offset) => {
+          const sequence = start + offset;
+          return {
+            catalog_id: `wfcat_000000000000400080000000${String(sequence).padStart(8, "0")}`,
+            catalog_revision: 1,
+            workflow_id: `paged-${sequence}`,
+            definition_version: "1",
+            definition_sha256: "a".repeat(64),
+          };
+        });
+        return json({
+          ok: true,
+          schema_version: 1,
+          items,
+          next_before: before === null ? 101 : null,
+        });
+      }
+      if (mode === "workflow-catalog-record-switch" && !workflowCatalogExtraRecord) {
+        const definition = structuredClone(workflowCatalogRecord.record.definition);
+        definition.version = "switch-b";
+        workflowCatalogExtraRecord = await workflowCatalogValue(
+          "wfcat_123e4567e89b42d3a456426614174001", definition,
+        );
+      }
+      const records = [workflowCatalogRecord, workflowCatalogExtraRecord].filter(Boolean);
+      const items = records.map((value) => ({
+        catalog_id: value.record.catalog_id,
+        catalog_revision: value.record.catalog_revision,
+        workflow_id: value.record.definition.workflow_id,
+        definition_version: value.record.definition.version,
+        definition_sha256: value.record.definition_sha256,
+      }));
+      return json({ ok: true, schema_version: 1, items, next_before: null });
+    }
+    const savedWorkflow = url.pathname.match(/^\/v1\/workflows\/(wfcat_[0-9a-f]{32})$/);
+    if (method === "GET" && savedWorkflow) {
+      workflowCatalogGetCount += 1;
+      const value = [workflowCatalogRecord, workflowCatalogExtraRecord]
+        .find((candidate) => candidate && candidate.record.catalog_id === savedWorkflow[1]);
+      if (!value) {
+        return json({
+          ok: false,
+          error: {
+            code: "workflow_catalog_not_found",
+            message: "saved Workflow or revision was not found",
+            retryable: false,
+          },
+        }, 404);
+      }
+      if (mode === "workflow-catalog-digest-mismatch") {
+        const tampered = structuredClone(value);
+        tampered.record.definition.steps[0].result.max_bytes += 1;
+        return workflowCatalogResponse(tampered);
+      }
+      if (workflowCatalogDetailDelay === savedWorkflow[1]) {
+        workflowCatalogDetailDelay = null;
+        return defer(`workflow-catalog-detail-${savedWorkflow[1]}`);
+      }
+      return workflowCatalogResponse(value);
+    }
+    if (method === "PUT" && savedWorkflow) {
+      workflowCatalogPutCount += 1;
+      lastWorkflowCatalogId = savedWorkflow[1];
+      lastWorkflowCatalogBody = JSON.parse(await bodyFor(input, options));
+      const previousRevision = workflowCatalogRecord &&
+        workflowCatalogRecord.record.catalog_id === lastWorkflowCatalogId
+        ? workflowCatalogRecord.record.catalog_revision : 0;
+      if (mode === "workflow-catalog-conflict") {
+        const serverDefinition = structuredClone(lastWorkflowCatalogBody);
+        serverDefinition.version = "server-head";
+        workflowCatalogRecord = await workflowCatalogValue(
+          lastWorkflowCatalogId, serverDefinition, previousRevision + 1,
+        );
+        return json({
+          ok: false,
+          error: {
+            code: "workflow_catalog_revision_mismatch",
+            message: "saved Workflow precondition did not match durable state",
+            retryable: false,
+          },
+        }, 412);
+      }
+      workflowCatalogRecord = await workflowCatalogValue(
+        lastWorkflowCatalogId,
+        lastWorkflowCatalogBody,
+        Math.max(1, previousRevision + (previousRevision ? 1 : 0)),
+      );
+      if (mode === "workflow-catalog-stale-edit") {
+        return defer("workflow-catalog-save");
+      }
+      if (mode === "workflow-catalog-outcome-unknown" ||
+          workflowCatalogPutBehavior === "outcome-unknown") {
+        workflowCatalogPutBehavior = null;
+        workflowCatalogDetailDelay = lastWorkflowCatalogId;
+        return json({
+          ok: false,
+          error: {
+            code: "workflow_catalog_outcome_unknown",
+            message: "saved Workflow mutation outcome is unknown; reconcile with a read-only GET",
+            retryable: false,
+            catalog_id: lastWorkflowCatalogId,
+          },
+        }, 504);
+      }
+      if (mode === "workflow-catalog-malformed-success") {
+        return json({ ok: true }, 200, { ETag: workflowCatalogRecord.etag });
+      }
+      if (workflowCatalogPutBehavior === "delay-success") {
+        workflowCatalogPutBehavior = null;
+        return defer("workflow-catalog-put");
+      }
+      return json(
+        { ok: true, schema_version: 1, record: workflowCatalogRecord.record },
+        workflowCatalogRecord.record.catalog_revision === 1 ? 201 : 200,
+        {
+          ETag: workflowCatalogRecord.etag,
+          Location: `/v1/workflows/${lastWorkflowCatalogId}`,
+        },
+      );
     }
     if (method === "POST" && url.pathname === "/v1/workflows/preflight") {
       lastStudioBody = JSON.parse(await bodyFor(input, options));
@@ -768,6 +946,12 @@
     get cancelledRecoveryBody() { return cancelledRecoveryBody; },
     get studioPreflightCount() { return studioPreflightCount; },
     get lastStudioBody() { return lastStudioBody; },
+    get workflowCatalogPutCount() { return workflowCatalogPutCount; },
+    get workflowCatalogGetCount() { return workflowCatalogGetCount; },
+    get lastWorkflowCatalogBody() { return lastWorkflowCatalogBody; },
+    get lastWorkflowCatalogId() { return lastWorkflowCatalogId; },
+    get workflowCatalogRecord() { return workflowCatalogRecord; },
+    get workflowCatalogExtraRecord() { return workflowCatalogExtraRecord; },
     pendingCount,
     projection,
     workflowProjection,
@@ -789,8 +973,25 @@
       cancelledRecoveryResolved = false;
       studioPreflightCount = 0;
       lastStudioBody = null;
+      workflowCatalogPutCount = 0;
+      workflowCatalogGetCount = 0;
+      lastWorkflowCatalogBody = null;
+      lastWorkflowCatalogId = null;
+      workflowCatalogExtraRecord = null;
+      workflowCatalogDetailDelay = null;
+      workflowCatalogPutBehavior = null;
+    },
+    delayWorkflowCatalogDetail(catalogId) {
+      workflowCatalogDetailDelay = catalogId;
+    },
+    delayNextWorkflowCatalogPut() {
+      workflowCatalogPutBehavior = "delay-success";
+    },
+    outcomeUnknownNextWorkflowCatalogPut() {
+      workflowCatalogPutBehavior = "outcome-unknown";
     },
     resolveNext,
+    workflowCatalogResponse,
   };
 })(window);
 
@@ -1256,13 +1457,15 @@
         document.querySelector(".studio-grid"),
       ).gridTemplateColumns.split(" ");
       assert(columns.length === 1, "narrow Workflow Studio did not collapse to one column");
-      for (const selector of ["#studio-close", "#studio-preflight"]) {
+      for (const selector of ["#studio-close", "#studio-preflight", "#studio-save"]) {
         const bounds = document.querySelector(selector).getBoundingClientRect();
         assert(bounds.left >= 0 && bounds.right <= global.innerWidth,
           `${selector} is clipped in the narrow Workflow Studio`);
       }
     }
-    assert(studio.textContent.includes("DRAFT ONLY") &&
+    assert(studio.textContent.includes("SAVED AUTHORING") &&
+      studio.textContent.includes("IMMUTABLE REVISIONS") &&
+      studio.textContent.includes("NO ACTIVATION") &&
       studio.textContent.includes("NO EXECUTION") &&
       studio.textContent.includes("TRUSTED PYTHON") &&
       studio.textContent.includes("NO SANDBOX"),
@@ -1446,6 +1649,271 @@
     record("workflow-studio-invalid-unicode");
   }
 
+  async function workflowCatalogSaveCase(fixture) {
+    fixture.reset("workflow-catalog-save");
+    document.querySelector("#studio-button").click();
+    document.querySelector("#studio-new").click();
+    const editor = document.querySelector("#studio-editor");
+    await waitFor(() => editor.value.includes('"schema_version": 1'),
+      "new durable Workflow draft was not prepared");
+    document.querySelector("#studio-save").click();
+    await waitFor(
+      () => fixture.workflowCatalogPutCount === 1,
+      `Workflow catalog PUT did not fire; disabled=${document.querySelector("#studio-save").disabled}`,
+    );
+    await waitFor(
+      () => document.querySelector("#studio-save-ledger").dataset.state !== "saving",
+      `Workflow catalog save did not settle; GETs=${fixture.workflowCatalogGetCount}`,
+    );
+    const saveLedger = document.querySelector("#studio-save-ledger");
+    const savedLabel = document.querySelector("#studio-record-label");
+    assert(saveLedger.dataset.state === "saved" && savedLabel.textContent.includes("r1"),
+      `Workflow catalog create did not become a durable saved head; state=${saveLedger.dataset.state}; ` +
+      `ledger=${saveLedger.textContent}; label=${savedLabel.textContent}; ` +
+      `catalog=${fixture.lastWorkflowCatalogId}; GETs=${fixture.workflowCatalogGetCount}`);
+    assert(/^wfcat_[0-9a-f]{32}$/.test(fixture.lastWorkflowCatalogId),
+      "Workflow catalog create did not use a collision-resistant catalog identity");
+    assert(fixture.lastWorkflowCatalogBody.schema_version === 1,
+      "Workflow catalog create did not submit the exact strict definition");
+    assert(document.querySelectorAll(".studio-catalog-card").length === 1,
+      "saved Workflow did not appear in the durable catalog rail");
+    assert(!fixture.requests.some((request) => request.method === "POST" &&
+      /\/v1\/runs(?:\/|$)/.test(request.path)),
+    "saving a Workflow triggered a run mutation");
+    record("workflow-catalog-save");
+  }
+
+  async function workflowCatalogStaleEditCase(fixture) {
+    fixture.reset("workflow-catalog-stale-edit");
+    const editor = document.querySelector("#studio-editor");
+    editor.value = editor.value.replace('"version": "1"', '"version": "saved-a"');
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("#studio-save").click();
+    await waitFor(() => fixture.pendingCount("workflow-catalog-save") === 1,
+      "Workflow catalog save was not delayed");
+    editor.value = editor.value.replace('"version": "saved-a"', '"version": "draft-b"');
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    const durable = fixture.workflowCatalogRecord;
+    fixture.resolveNext("workflow-catalog-save", fixture.json({
+      ok: true,
+      schema_version: 1,
+      record: durable.record,
+    }, 200, { ETag: durable.etag }));
+    await waitFor(
+      () => document.querySelector("#studio-save-ledger").dataset.state === "saved" &&
+        document.querySelector("#studio-record-label").textContent.includes("DIRTY ON r2"),
+      "stale save response did not retain a durable base under the newer draft",
+    );
+    assert(editor.value.includes('"version": "draft-b"'),
+      "stale save response replaced the newer local draft");
+    assert(!document.querySelector(".studio-manifest-hero"),
+      "stale save response exposed the old manifest beside the newer draft");
+    record("workflow-catalog-stale-edit");
+  }
+
+  async function workflowCatalogConflictCase(fixture) {
+    fixture.reset("workflow-catalog-conflict");
+    const editor = document.querySelector("#studio-editor");
+    document.querySelector("#studio-save").click();
+    await waitFor(
+      () => fixture.workflowCatalogPutCount === 1 && fixture.workflowCatalogGetCount === 1 &&
+        document.querySelector("#studio-save-ledger").dataset.state === "conflict" &&
+        !document.querySelector("#studio-reconcile").hidden,
+      "stale ETag did not produce a reconciled CAS conflict",
+    );
+    assert(editor.value.includes('"version": "draft-b"'),
+      "CAS conflict overwrote the local draft with the server head");
+    assert(fixture.workflowCatalogPutCount === 1,
+      "CAS conflict automatically retried the mutation");
+    document.querySelector("#studio-reconcile").click();
+    assert(document.querySelector("#studio-save-ledger").dataset.state === "idle" &&
+      document.querySelector("#studio-record-label").textContent.includes("DIRTY ON r3"),
+    "explicit conflict rebase did not adopt only the server CAS head");
+    assert(editor.value.includes('"version": "draft-b"'),
+      "explicit conflict rebase replaced the local draft");
+    record("workflow-catalog-conflict");
+  }
+
+  async function workflowCatalogUnknownRecoveryCase(fixture) {
+    document.querySelector("#studio-new").click();
+    fixture.reset("workflow-catalog-outcome-unknown");
+    document.querySelector("#studio-save").click();
+    await waitFor(
+      () => fixture.lastWorkflowCatalogId &&
+        fixture.pendingCount(`workflow-catalog-detail-${fixture.lastWorkflowCatalogId}`) === 1,
+      "exact outcome-unknown response did not start read-only reconciliation",
+    );
+    fixture.resolveNext(
+      `workflow-catalog-detail-${fixture.lastWorkflowCatalogId}`,
+      fixture.workflowCatalogResponse(fixture.workflowCatalogRecord),
+    );
+    await waitFor(
+      () => fixture.workflowCatalogPutCount === 1 && fixture.workflowCatalogGetCount >= 1 &&
+        document.querySelector("#studio-save-ledger").dataset.state === "saved" &&
+        document.querySelector("#studio-record-label").textContent.includes("SAVED · r1"),
+      "exact outcome-unknown response was not recovered through read-only GET",
+    );
+    assert(fixture.workflowCatalogPutCount === 1,
+      "outcome-unknown recovery repeated the Workflow mutation");
+    assert(fixture.requests.some((request) => request.method === "GET" &&
+      request.path === `/v1/workflows/${fixture.lastWorkflowCatalogId}`),
+    "outcome-unknown recovery did not use the known catalog identity");
+    document.querySelector("#studio-close").click();
+    record("workflow-catalog-unknown-recovery");
+  }
+
+  async function workflowCatalogMalformedSuccessCase(fixture) {
+    fixture.reset("workflow-catalog-malformed-success");
+    document.querySelector("#studio-button").click();
+    document.querySelector("#studio-new").click();
+    document.querySelector("#studio-save").click();
+    await waitFor(
+      () => fixture.workflowCatalogPutCount === 1 && fixture.workflowCatalogGetCount >= 1 &&
+        document.querySelector("#studio-save-ledger").dataset.state === "saved",
+      "malformed save success was not recovered through read-only GET",
+    );
+    assert(fixture.workflowCatalogPutCount === 1,
+      "malformed save success recovery repeated the Workflow mutation");
+    document.querySelector("#studio-close").click();
+    record("workflow-catalog-malformed-success");
+  }
+
+  async function workflowCatalogPaginationCase(fixture) {
+    fixture.reset("workflow-catalog-pagination");
+    document.querySelector("#studio-button").click();
+    await waitFor(
+      () => document.querySelectorAll(".studio-catalog-card[data-catalog-id]").length === 100 &&
+        document.querySelector("[data-catalog-more]"),
+      "valid first catalog page and cursor were not rendered",
+    );
+    document.querySelector("[data-catalog-more]").click();
+    await waitFor(
+      () => document.querySelectorAll(".studio-catalog-card[data-catalog-id]").length === 101 &&
+        !document.querySelector("[data-catalog-more]"),
+      "second catalog page was not merged",
+    );
+    const identities = [...document.querySelectorAll(".studio-catalog-card[data-catalog-id]")]
+      .map((card) => card.dataset.catalogId);
+    assert(new Set(identities).size === 101,
+      "catalog pages introduced duplicate record identities");
+    assert(fixture.requests.some((request) =>
+      request.path === "/v1/workflows?limit=100&before=101"),
+    "catalog pagination did not use the stable server cursor");
+    document.querySelector("#studio-close").click();
+    record("workflow-catalog-pagination");
+  }
+
+  async function workflowCatalogDigestMismatchCase(fixture) {
+    fixture.reset("workflow-catalog-digest-mismatch");
+    document.querySelector("#studio-button").click();
+    await waitFor(() => document.querySelector(".studio-catalog-card[data-catalog-id]"),
+      "saved Workflow card was unavailable for digest mismatch case");
+    const editor = document.querySelector("#studio-editor");
+    const before = editor.value;
+    document.querySelector(".studio-catalog-card[data-catalog-id]").click();
+    await waitFor(
+      () => document.querySelector("#studio-save-ledger").dataset.state === "unknown",
+      "definition bytes not bound to the stored SHA-256 were accepted",
+    );
+    assert(editor.value === before && !editor.value.includes("tampered-without-new-digest"),
+      "digest-mismatched definition replaced the editor");
+    document.querySelector("#studio-close").click();
+    record("workflow-catalog-digest-mismatch");
+  }
+
+  async function workflowCatalogRecordSwitchCase(fixture) {
+    fixture.reset("workflow-catalog-record-switch");
+    document.querySelector("#studio-button").click();
+    await waitFor(
+      () => document.querySelectorAll(".studio-catalog-card[data-catalog-id]").length === 2,
+      "record-switch fixture did not expose two durable records",
+    );
+    const recordA = fixture.workflowCatalogRecord;
+    const recordB = fixture.workflowCatalogExtraRecord;
+    const card = (catalogId) => document.querySelector(
+      `.studio-catalog-card[data-catalog-id="${catalogId}"]`,
+    );
+    const editor = document.querySelector("#studio-editor");
+
+    card(recordA.record.catalog_id).click();
+    await waitFor(() =>
+      editor.value.includes(`"version": "${recordA.record.definition.version}"`) &&
+      document.querySelector("#studio-save-ledger").dataset.state === "saved" &&
+      card(recordA.record.catalog_id).getAttribute("aria-current") === "true",
+      "record A did not open");
+    editor.value = editor.value.replace(
+      `"version": "${recordA.record.definition.version}"`,
+      '"version": "switch-a-save"',
+    );
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    fixture.delayNextWorkflowCatalogPut();
+    document.querySelector("#studio-save").click();
+    await waitFor(() => fixture.pendingCount("workflow-catalog-put") === 1,
+      "record A save response was not delayed");
+    card(recordB.record.catalog_id).click();
+    await waitFor(() => editor.value.includes('"version": "switch-b"'),
+      "record B did not become the active editor");
+    fixture.resolveNext(
+      "workflow-catalog-put",
+      fixture.workflowCatalogResponse(fixture.workflowCatalogRecord),
+    );
+    await tick();
+    assert(editor.value.includes('"version": "switch-b"') &&
+      card(recordB.record.catalog_id).getAttribute("aria-current") === "true",
+    "late record A PUT success replaced record B");
+
+    card(recordA.record.catalog_id).click();
+    await waitFor(() => editor.value.includes('"version": "switch-a-save"'),
+      "updated record A did not reopen");
+    editor.value = editor.value.replace(
+      '"version": "switch-a-save"', '"version": "switch-a-unknown"',
+    );
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    fixture.outcomeUnknownNextWorkflowCatalogPut();
+    document.querySelector("#studio-save").click();
+    await waitFor(
+      () => fixture.pendingCount(
+        `workflow-catalog-detail-${recordA.record.catalog_id}`,
+      ) === 1,
+      "record A outcome-unknown reconciliation GET was not delayed",
+    );
+    card(recordB.record.catalog_id).click();
+    await waitFor(() => editor.value.includes('"version": "switch-b"'),
+      "record B did not remain selectable during record A reconciliation");
+    fixture.resolveNext(
+      `workflow-catalog-detail-${recordA.record.catalog_id}`,
+      fixture.workflowCatalogResponse(fixture.workflowCatalogRecord),
+    );
+    await tick();
+    assert(editor.value.includes('"version": "switch-b"') &&
+      card(recordB.record.catalog_id).getAttribute("aria-current") === "true",
+    "late record A reconciliation GET replaced record B");
+
+    fixture.delayWorkflowCatalogDetail(recordB.record.catalog_id);
+    card(recordB.record.catalog_id).click();
+    await waitFor(
+      () => fixture.pendingCount(
+        `workflow-catalog-detail-${recordB.record.catalog_id}`,
+      ) === 1,
+      "record B detail response was not delayed",
+    );
+    card(recordA.record.catalog_id).click();
+    await waitFor(() => editor.value.includes('"version": "switch-a-unknown"'),
+      "record A did not become active during delayed record B read");
+    fixture.resolveNext(
+      `workflow-catalog-detail-${recordB.record.catalog_id}`,
+      fixture.workflowCatalogResponse(recordB),
+    );
+    await tick();
+    assert(editor.value.includes('"version": "switch-a-unknown"') &&
+      card(recordA.record.catalog_id).getAttribute("aria-current") === "true",
+    "late record B detail response replaced record A");
+    assert(fixture.workflowCatalogPutCount === 2,
+      "record-switch recovery repeated a Workflow mutation");
+    document.querySelector("#studio-close").click();
+    record("workflow-catalog-record-switch");
+  }
+
   async function run() {
     const fixture = global.__sasoriFixture;
     await waitFor(
@@ -1461,6 +1929,14 @@
     await workflowStudioRejectedCase(fixture);
     await workflowStudioTransportCase(fixture);
     await workflowStudioInvalidUnicodeCase(fixture);
+    await workflowCatalogSaveCase(fixture);
+    await workflowCatalogStaleEditCase(fixture);
+    await workflowCatalogConflictCase(fixture);
+    await workflowCatalogUnknownRecoveryCase(fixture);
+    await workflowCatalogMalformedSuccessCase(fixture);
+    await workflowCatalogPaginationCase(fixture);
+    await workflowCatalogDigestMismatchCase(fixture);
+    await workflowCatalogRecordSwitchCase(fixture);
     memorySkillSurfaceCase();
     await workflowSurfaceCase();
     workflowProjectionContractCase(fixture);

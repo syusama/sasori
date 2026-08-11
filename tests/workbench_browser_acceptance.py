@@ -21,6 +21,9 @@ EXPECTED = (
     "PASS:unavailable-workflow,workflow-studio-preflight,workflow-studio-stale-edit,workflow-studio-contract,"
     "workflow-studio-malformed-rejection,workflow-studio-rejected,workflow-studio-transport,"
     "workflow-studio-invalid-unicode,"
+    "workflow-catalog-save,workflow-catalog-stale-edit,workflow-catalog-conflict,"
+    "workflow-catalog-unknown-recovery,workflow-catalog-malformed-success,"
+    "workflow-catalog-pagination,workflow-catalog-digest-mismatch,workflow-catalog-record-switch,"
     "memory-skill-surface,workflow-surface,"
     "workflow-projection-contract,cancelled-recovery,workflow-refresh-burst,workflow-refresh-switch,"
     "stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
@@ -95,6 +98,8 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
                 "workflow-manifest.0.1.0.js",
                 "workflow-studio.0.1.0.css",
                 "workflow-studio.0.1.0.js",
+                "workflow-studio.0.2.0.css",
+                "workflow-studio.0.2.0.js",
                 "event-reducer.0.1.0.js",
                 "mark.0.1.0.svg",
             }:
@@ -309,6 +314,8 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "workflow-manifest.0.1.0.js",
             "workflow-studio.0.1.0.css",
             "workflow-studio.0.1.0.js",
+            "workflow-studio.0.2.0.css",
+            "workflow-studio.0.2.0.js",
         ],
     }
 

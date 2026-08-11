@@ -231,7 +231,13 @@ class WorkflowSpecTests(unittest.TestCase):
 
     def test_architecture_keeps_one_core_loop_store_and_public_boundary(self):
         source_root = Path(__file__).parents[1] / "src"
-        core_files = tuple((source_root / "sasori").rglob("*.py"))
+        # The HTTP server is an adapter and may integrate the core-external
+        # Workflow package. Kernel modules must keep the dependency one-way.
+        core_files = tuple(
+            path
+            for path in (source_root / "sasori").rglob("*.py")
+            if path.name != "server.py"
+        )
         flow_files = tuple((source_root / "sasori_flow").rglob("*.py"))
 
         for path in core_files:
@@ -256,15 +262,16 @@ class WorkflowSpecTests(unittest.TestCase):
             path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for path in flow_files
         }
-        classes = {
-            node.name
-            for tree in flow_trees.values()
+        store_classes = {
+            (path.name, node.name)
+            for path, tree in flow_trees.items()
             for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef)
+            if isinstance(node, ast.ClassDef) and node.name.endswith("Store")
         }
-        self.assertFalse(
-            any(name.endswith("Store") for name in classes),
-            "sasori_flow must not introduce a second durable store authority",
+        self.assertEqual(
+            store_classes,
+            {("catalog.py", "WorkflowCatalogStore")},
+            "sasori_flow may own only the ADR-0017 authoring catalog, never a second run store",
         )
         self.assertFalse(
             any(

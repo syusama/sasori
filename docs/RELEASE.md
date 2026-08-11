@@ -75,6 +75,10 @@ print(build_sdist(chr(47)+chr(111)+chr(117)+chr(116)))
 PY
   '
 if ($LASTEXITCODE -ne 0) { throw "artifact build failed" }
+$wheels = @(Get-ChildItem -LiteralPath $output -Filter *.whl)
+if ($wheels.Count -ne 1) { throw "expected exactly one built wheel" }
+python scripts/repack_wheel.py --wheel $wheels[0].FullName
+if ($LASTEXITCODE -ne 0) { throw "wheel repack failed" }
 ```
 
 The mirror is transport only: dependency versions, hashes, base-image digest,
@@ -97,8 +101,10 @@ The verifier uses only the standard library. It checks safe archive paths,
 member limits, wheel `RECORD`, metadata/license, zero runtime dependencies,
 console/plugin entry points, exact source bytes, Workbench package data, sdist
 rebuild inputs, the 250 KiB wheel threshold, build locks, and Docker defaults.
-It writes an application-artifact SPDX 2.3 JSON SBOM, artifact manifest, and
-unsigned local provenance record:
+Wheel members must use only Deflate or BZIP2 compression, carry no archive
+comment, encryption, or data-descriptor flag, and place `.dist-info` physically
+after payload members. It writes an application-artifact SPDX 2.3 JSON SBOM,
+artifact manifest, and unsigned local provenance record:
 
 ```powershell
 $version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
@@ -136,6 +142,36 @@ ordinary non-tag `main` run: all 20 non-tag jobs passed and the exact-tag-only
 release-candidate job was skipped. It therefore produced no exact-tag bundle,
 GitHub-hosted signed attestation or trusted provenance, GitHub Release, PyPI
 publication, or published container image.
+
+The W1.3 implementation candidate changes the verifier inventory because
+ADR-0017 becomes an explicit release/source-tree input. Its local verifier is
+therefore `sasori-release-verify` v12 with `sasori-source-tree-v9`; the strict
+wheel threshold remains unchanged. After the normal locked build,
+`scripts/repack_wheel.py` deterministically chooses the smaller of Deflate 9 and
+BZIP2 9 for each member without changing its path, extracted bytes, permission,
+timestamp, extra metadata, or `RECORD` bytes; `.dist-info` is written last and a
+second repack must be byte-idempotent. The rebuilt-sdist wheel uses the same
+repacker before verification and installation.
+
+The 2026-08-11 exact-current-source local candidate built through the
+digest-pinned DaoCloud Python base, Tsinghua index, and hash-locked build
+wheelhouse. Its ordinary build wheel was 258,582 bytes; the canonical repack was
+243,357 bytes with 37 Deflate-9 members and 32 BZIP2-9 members. A second repack
+was byte-idempotent.
+Verifier v12 accepted the wheel and sdist while returning the required dirty
+local exit `5` and `release_eligible=false`. A clean normal-pip consumer passed,
+and the locked sdist consumer produced a 243,366-byte canonical wheel, ran the
+same verifier, installed it into a separate environment, and passed the saved
+Catalog smoke. The exact-current-code mainland-source container fresh-volume
+journey, 471-test suite with five skips, 29-case Chrome fixture, and three real
+browser journeys also passed locally.
+
+This is not W1.3 Hosted artifact evidence. The exact implementation commit must
+still pass the Linux/Windows Python 3.11/3.12/3.13 source, original-wheel, and
+rebuilt-sdist matrices plus browser and mainland-source container jobs. Do not
+reuse the W1.2 run URL for W1.3, and do not raise the wheel limit. These local
+figures are not an exact-tag bundle, TestPyPI/PyPI upload/download/install,
+attestation, publication, or release claim.
 
 `--trigger-tag` is not inferred from ambient environment state. When supplied,
 it must equal the dynamic project tag exactly and is written into the local
@@ -217,7 +253,9 @@ runtime dependencies, eight import packages (including the optional
 `sasori_memory` extension), all allowlisted Workbench resources, and all three
 console scripts. The installed-wheel smoke also creates a separate Memory
 database, writes one immutable revision, and retrieves it through the installed
-package; it does not import the source checkout.
+package; it does not import the source checkout. W1.3 also creates, CAS-updates,
+reopens, and reads the independent saved Workflow catalog from the installed
+distribution.
 
 The source-archive gate rejects a missing, nested, symlinked, non-wheel, or
 multi-file build wheelhouse before launching a subprocess. It clears inherited
@@ -233,6 +271,16 @@ verified-but-unversioned result on branch builds, while an exact release-tag
 build may return `0`. Exit codes `1` through `4` always fail the consumer gate.
 Directly installing the sdist with implicit build isolation is not equivalent
 evidence because it can resolve undeclared or unlocked build inputs.
+
+The supported distribution path is normal pip extraction and installation.
+Other wheel installers require separate evidence and are not part of the
+current compatibility claim. Sasori does not promise that adding the wheel
+archive directly to `sys.path` will work as `zipimport`, and generic ZIP tools
+that lack BZIP2-member support are outside the installation contract. The
+original and rebuilt-sdist wheels must both prove BZIP2 acceptance in the full
+Python 3.11/3.12/3.13 by Linux/Windows Hosted matrix. Before a formal tag, an
+upload/download/install round trip through TestPyPI is also required; a local
+pip success is not publication evidence.
 
 On an exact tag, the final `Exact-tag release candidate bundle` job waits
 explicitly for all five gate families: source tests, package verification,
@@ -373,9 +421,14 @@ python tests/workbench_browser_journey.py --require-browser
 The first gate executes the bundled assets against a same-origin fixture. It
 freezes delayed/stale response isolation and the Studio's exact success,
 controlled rejection, malformed-envelope, invalid-Unicode, keyboard/focus,
-desktop, 390×844 narrow, and reduced-motion behavior. The second forwards every
-product request to a real local `sasori.server`: a transient Studio preflight
-must create no run or action, then independent Incident and typed Workflow
+desktop, 390×844 narrow, and reduced-motion behavior. The W1.3 fixture also
+covers 29 cases including stable pagination, browser canonical SHA-256 binding,
+saved create, stale edit, exact `412` conflict, exact non-retryable 504 and
+malformed-success GET reconciliation, three kinds of late record-switch result,
+and no automatic mutation retry. The second runs three journeys while forwarding
+every product request to a real local `sasori.server`: Studio
+preflight plus an explicit saved revision 1 must create no run or action, then
+independent Incident and typed Workflow
 journeys must pass `approval_required → resume_required → explicit resume →
 completed`, artifact, cold-reopen, and no-replay checks. Its test-only
 action-count probe is out-of-band evidence, not a Sasori API. These checks do
@@ -388,6 +441,11 @@ real workflow rather than health-only checks:
 ```text
 POST /v1/workflows/preflight
   -> unchanged run/event/action ledger
+  -> PUT saved Workflow revision 1 (If-None-Match: *)
+  -> PUT saved Workflow revision 2 (If-Match: exact ETag)
+  -> stale writer rejected with 412
+  -> current and historical saved revisions readable
+  -> unchanged run/event/action ledger
   -> POST /v1/runs
   -> approval_required
   -> durable approval
@@ -396,8 +454,9 @@ POST /v1/workflows/preflight
   -> completed
   -> SSE reconnect from the durable cursor
   -> container restart
+  -> saved head/history unchanged
   -> unchanged final and effect count
-  -> second database owner rejected
+  -> second run and Workflow-catalog owners rejected
 ```
 
 The repository's `Container product gate` job performs this workflow on
@@ -422,6 +481,7 @@ $runId = "container-acceptance-$([guid]::NewGuid().ToString('N'))"
 $evidence = Join-Path $env:TEMP "$runId.json"
 $workflowRunId = "workflow-$([guid]::NewGuid().ToString('N'))"
 $workflowEvidence = Join-Path $env:TEMP "$workflowRunId.json"
+$savedWorkflowEvidence = Join-Path $env:TEMP "saved-$workflowRunId.json"
 
 python scripts/container_acceptance.py prepare `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
@@ -429,6 +489,10 @@ python scripts/container_acceptance.py prepare `
 python scripts/container_acceptance.py complete `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
   --evidence $evidence
+
+python scripts/container_saved_workflow_acceptance.py prepare `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $savedWorkflowEvidence
 
 python scripts/container_workflow_acceptance.py preflight `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
@@ -448,6 +512,9 @@ python scripts/container_acceptance.py after-restart `
 python scripts/container_workflow_acceptance.py after-restart `
   --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
   --evidence $workflowEvidence
+python scripts/container_saved_workflow_acceptance.py after-restart `
+  --base-url $baseUrl --token-file $env:SASORI_TOKEN_FILE `
+  --evidence $savedWorkflowEvidence
 ```
 
 The Workflow `preflight` reconstructs the strict definition from the catalog,
@@ -460,6 +527,14 @@ the side effect; `complete` explicitly resumes and observes exactly 17 events
 and one Workflow action; `after-restart` repeats read/preflight identity checks
 and rejects any replay. This remains step-boundary recovery, not exactly-once
 execution.
+
+The saved Workflow driver is a different zero-execution path. `prepare` creates
+revision 1 with `If-None-Match: *`, updates to revision 2 with the exact r1 ETag,
+requires a stale r1 writer to return `412`, and reads both the current head and
+historical revision 1. `after-restart` requires those same identities, digests,
+ETags, list summary, and `current_contract` verdicts. Run/event counts remain
+zero, and CI takes byte-identical external action snapshots immediately before
+and after saved authoring. The driver never calls `/v1/runs`.
 
 Incident `prepare` must stop at `resume_required` with 11 exact semantic events
 and no completed `record_action`. `complete` must first prove that prepared durable
@@ -485,14 +560,18 @@ or introduce a second Loop merely to perform the extension smoke.
 The CI job independently snapshots `/data/incident-actions.jsonl` across the
 Incident and Workflow boundaries, verifies exact per-composition counts and
 digests, and starts a second container against the same named volume. Only an
-exact `ConcurrentRunError` with exit code `2` passes that ownership probe.
+exact `ConcurrentRunError` for the run database and
+`WorkflowCatalogConfigurationError` for the saved Workflow database, followed
+by the probe's exit code `2`, pass that ownership check.
 Before upload it scans the acceptance evidence, action snapshots, runtime log,
 owner log, image SPDX, native Syft catalog, and image binding for the bearer
-token. The token and raw logs are deleted. Fourteen audited JSON files are
+token. The token and raw logs are deleted. Eighteen audited JSON files are
 retained for seven days: Incident evidence; Workflow completed/restarted;
+saved Workflow completed/restarted plus its before/after action snapshots;
 Memory prepared/restarted; artifact tamper; three Incident action snapshots;
-and five Workflow action snapshots spanning before-preflight, preflight,
-paused, completed, and restarted. The image SPDX, native catalog, and unsigned
+and five executable-Workflow action snapshots spanning before-preflight,
+preflight, paused, completed, and restarted. The image SPDX, native catalog,
+and unsigned
 binding are uploaded as a separate three-file, 30-day artifact. Cleanup
 deliberately uses `docker compose down
 --remove-orphans --timeout 20` without `-v` or `--volumes`.
@@ -505,7 +584,8 @@ because file-backed Compose secrets are bind mounts and cannot apply secret
 token or an inspectable token environment variable.
 
 This job exercises the deterministic `incident` composition, first-party typed
-Incident Workflow, zero-execution Workflow preflight, installed-container
+Incident Workflow, zero-execution Workflow preflight and saved authoring
+catalog, installed-container
 Memory smoke, artifact tamper rejection, second-owner exclusion, and the locally
 built `sasori:local` candidate. It generates an unsigned image SBOM from that
 tested candidate, but does not run either credentialed provider smoke,
@@ -526,10 +606,20 @@ Before uploading or tagging a release, all of the following must be true:
   matrices pass;
 - the delayed-response and real-server Workbench browser gates pass on the
   final revision;
+- saved Workflow unit/HTTP/browser/container gates prove immutable history,
+  strong-ETag CAS, stale-writer refusal, crash/restart recovery, current-Tool
+  drift, unchanged runtime/action authorities, and both database owner locks;
 - OpenAI and Anthropic each pass the real two-turn tool smoke without exposing
   credentials, and any claimed streaming behavior has its own conformance test;
 - the no-cache domestic-source Compose workflow and installed-container Memory
-  write/search/restart smoke pass on the final revision;
+  write/search/restart smoke plus saved Workflow create/update/history/restart
+  smoke pass on the final revision;
+- the final exact wheel remains strictly below 256,000 bytes without changing
+  the verifier threshold, and both installed-wheel and rebuilt-sdist consumers
+  execute the saved Catalog smoke outside the source checkout;
+- the final exact original and rebuilt-sdist wheels pass pip installation on
+  Python 3.11-3.13 across Linux and Windows, and the exact candidate completes a
+  TestPyPI upload/download/install round trip before the formal tag;
 - wheel/sdist manifest, application SBOM, image SBOM, and notices are archived,
   and the signed GitHub build-provenance attestation verifies every relied-upon
   subject against the expected workflow, exact tag ref, and tag commit;
@@ -537,6 +627,9 @@ Before uploading or tagging a release, all of the following must be true:
   eight-file candidate bundle has passed source, package, wheel, sdist, and
   container jobs;
 - the working tree is clean and exactly tagged; and
+- the exact implementation commit and any later documentation-promotion commit
+  have each passed their own Hosted non-tag gates before the exact tag is
+  created; and
 - `catalog/index.json` changes only after hosting, review, and provenance are
   real.
 

@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/assets/artifacts.0.1.0.css">
   <link rel="stylesheet" href="/assets/workflow.0.1.0.css">
   <link rel="stylesheet" href="/assets/workflow-studio.0.1.0.css">
+  <link rel="stylesheet" href="/assets/workflow-studio.0.2.0.css">
 </head>
 <body>
   <a class="skip-link" href="#workbench-main">跳到工作区</a>
@@ -43,9 +44,9 @@
   <section class="workflow-studio" id="workflow-studio" hidden aria-labelledby="studio-title">
     <header class="studio-masthead">
       <div class="studio-title-lockup">
-        <span class="studio-kicker">SASORI / MECHANISM DRAFTING TABLE · W1.2 CANDIDATE</span>
-        <h1 id="studio-title">静态串行 <em>机关制图台</em></h1>
-        <p>把严格 JSON 草稿送入同一编译边界；这里只校验与显影，不保存、不激活、不执行。</p>
+        <span class="studio-kicker">SASORI / DURABLE MECHANISM ARCHIVE · W1.3 CANDIDATE</span>
+        <h1 id="studio-title">静态串行 <em>机关藏经阁</em></h1>
+        <p>严格图纸沿同一编译边界预检并保存为不可变 revision；可留存、可追溯，但不可激活、不可执行。</p>
       </div>
       <div class="studio-mast-actions">
         <span class="studio-status" id="studio-status" data-state="idle" role="status" aria-live="polite"><i></i><b>等待草稿</b></span>
@@ -54,18 +55,40 @@
     </header>
 
     <div class="studio-bounds" aria-label="制图台信任边界">
-      <span data-tone="lacquer">DRAFT ONLY</span>
+      <span data-tone="lacquer">SAVED AUTHORING</span>
+      <span data-tone="brass">IMMUTABLE REVISIONS</span>
+      <span data-tone="lacquer">NO ACTIVATION</span>
       <span data-tone="lacquer">NO EXECUTION</span>
       <span data-tone="brass">TRUSTED PYTHON</span>
       <span data-tone="danger">NO SANDBOX</span>
-      <p>浏览器只保管本页草稿文字。服务端冻结的 Tool 合同是唯一预检合同来源。</p>
+      <p>浏览器只保管当前草稿与 CAS 凭据；服务端 Catalog 与冻结 Tool 合同分别拥有保存和预检权威。</p>
     </div>
 
     <div class="studio-grid">
+      <aside class="studio-catalog-panel" aria-labelledby="studio-catalog-title">
+        <header class="studio-panel-heading">
+          <span><small>00 / DURABLE ARCHIVE</small><h2 id="studio-catalog-title">机关卷宗</h2></span>
+          <button class="studio-catalog-refresh" id="studio-catalog-refresh" type="button" aria-label="刷新保存的机关卷宗">↻</button>
+        </header>
+        <div class="studio-catalog-command">
+          <button class="button brass wide" id="studio-new" type="button"><span>新建图纸</span><i aria-hidden="true">＋</i></button>
+          <p>按不可复用的 Catalog UUID 定位；Workflow 名称与作者版本不会覆盖身份。</p>
+        </div>
+        <div class="studio-catalog-list" id="studio-catalog-list" aria-live="polite">
+          <p class="studio-catalog-empty">等待耐久目录…</p>
+        </div>
+        <section class="studio-save-ledger" id="studio-save-ledger" data-state="idle" aria-live="polite">
+          <small>CATALOG LEDGER</small>
+          <b>尚未选择卷宗</b>
+          <p>新图纸将在首次保存时获得独立 Catalog ID。</p>
+          <button class="text-button" id="studio-reconcile" type="button" hidden>核验落库结果</button>
+        </section>
+      </aside>
+
       <section class="studio-editor-panel" aria-labelledby="studio-editor-title">
         <header class="studio-panel-heading">
           <span><small>01 / DEFINITION SOURCE</small><h2 id="studio-editor-title">机关图纸</h2></span>
-          <span class="studio-counter" id="studio-byte-count">0 B / 1 MiB</span>
+          <span class="studio-counter"><b id="studio-record-label">UNSAVED</b><i id="studio-byte-count">0 B / 1 MiB</i></span>
         </header>
 
         <div class="studio-tool-shelf">
@@ -83,6 +106,7 @@
           <button class="button ghost" id="studio-reset" type="button">重置草稿</button>
           <span><kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 服务端预检</span>
           <button class="button studio-preflight" id="studio-preflight" type="button"><span>校验机关</span><i aria-hidden="true">PRE­FLIGHT →</i></button>
+          <button class="button studio-save" id="studio-save" type="button"><span>封存图纸</span><i aria-hidden="true">CAS SAVE ↗</i></button>
         </footer>
       </section>
 
@@ -103,8 +127,8 @@
     </div>
 
     <footer class="studio-footnote">
-      <span><b>ZERO</b> model calls</span><span><b>ZERO</b> Tool dispatches</span><span><b>ZERO</b> durable mutations</span>
-      <p>关闭或刷新不会保存草稿。成功只代表当前定义与此进程冻结的 Tool 合同匹配。</p>
+      <span><b>ZERO</b> model calls</span><span><b>ZERO</b> Tool dispatches</span><span><b>ONE</b> catalog CAS transaction per changed save</span>
+      <p>保存不等于激活或运行；网络中断后的写入结果必须按已知 Catalog ID 核验。</p>
     </footer>
   </section>
 
@@ -240,5 +264,6 @@
   <script src="/assets/workflow.0.2.0.js" defer></script>
   <script src="/assets/workflow-manifest.0.1.0.js" defer></script>
   <script src="/assets/workflow-studio.0.1.0.js" defer></script>
+  <script src="/assets/workflow-studio.0.2.0.js" defer></script>
 </body>
 </html>

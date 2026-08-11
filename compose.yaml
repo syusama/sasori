@@ -7,6 +7,7 @@ services:
     image: sasori:local
     environment:
       SASORI_ARTIFACT_ROOT: /data/artifacts
+      SASORI_WORKFLOW_DB: /data/sasori.workflows.sqlite3
       SASORI_PUBLISH_FINAL_ARTIFACT: "1"
     init: true
     read_only: true

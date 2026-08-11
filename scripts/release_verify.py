@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import bz2
 import configparser
 import csv
 import hashlib
@@ -15,14 +16,15 @@ import sys
 import tarfile
 import tomllib
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "11"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v8"
+VERIFIER_VERSION = "12"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v9"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -61,6 +63,7 @@ RELEASE_DOCS = (
     "docs/ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md",
     "docs/ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md",
     "docs/ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md",
+    "docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md",
     "docs/ARTIFACTS.md",
     "docs/BENCHMARK-LEAGENT-TOFU.md",
     "docs/CONTEXT.md",
@@ -330,6 +333,40 @@ def _verify_record(files: dict[str, bytes], dist_info: str) -> None:
             raise ReleaseVerificationError(f"wheel RECORD mismatch: {name}", 3)
 
 
+def _canonical_wheel_compression(value: bytes) -> tuple[int, bytes]:
+    compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
+    deflated = compressor.compress(value) + compressor.flush()
+    bzip2 = bz2.compress(value, compresslevel=9)
+    if len(bzip2) < len(deflated):
+        return zipfile.ZIP_BZIP2, bzip2
+    return zipfile.ZIP_DEFLATED, deflated
+
+
+def _compressed_wheel_member(stream, info: zipfile.ZipInfo) -> bytes:
+    stream.seek(info.header_offset)
+    header = stream.read(30)
+    if len(header) != 30 or header[:4] != b"PK\x03\x04":
+        raise ReleaseVerificationError("wheel local member header is invalid", 3)
+    flags = int.from_bytes(header[6:8], "little")
+    method = int.from_bytes(header[8:10], "little")
+    compressed_size = int.from_bytes(header[18:22], "little")
+    file_size = int.from_bytes(header[22:26], "little")
+    name_size = int.from_bytes(header[26:28], "little")
+    extra_size = int.from_bytes(header[28:30], "little")
+    if (
+        flags != info.flag_bits
+        or method != info.compress_type
+        or compressed_size != info.compress_size
+        or file_size != info.file_size
+    ):
+        raise ReleaseVerificationError("wheel local member header is inconsistent", 3)
+    stream.seek(name_size + extra_size, 1)
+    compressed = stream.read(info.compress_size)
+    if len(compressed) != info.compress_size:
+        raise ReleaseVerificationError("wheel compressed member is truncated", 3)
+    return compressed
+
+
 def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict[str, object]:
     if path.stat().st_size >= MAX_WHEEL_BYTES:
         raise ReleaseVerificationError(f"wheel is not below {MAX_WHEEL_BYTES} bytes")
@@ -338,12 +375,16 @@ def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict
         raise ReleaseVerificationError(f"wheel filename must be {expected_name}", 3)
     files: dict[str, bytes] = {}
     seen: set[str] = set()
+    compression_counts = {"deflate": 0, "bzip2": 0}
     try:
-        with zipfile.ZipFile(path) as archive:
+        with path.open("rb") as raw, zipfile.ZipFile(path) as archive:
+            if archive.comment:
+                raise ReleaseVerificationError("wheel archive comment is not allowed", 3)
             infos = archive.infolist()
             if len(infos) > MAX_MEMBERS:
                 raise ReleaseVerificationError("wheel has too many members")
             total = 0
+            dist_info_started = False
             for info in infos:
                 parts = _safe_member_name(info.filename)
                 _reject_forbidden(parts, "wheel")
@@ -352,19 +393,51 @@ def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict
                     raise ReleaseVerificationError("wheel has duplicate/colliding members")
                 seen.add(folded)
                 mode = (info.external_attr >> 16) & 0o170000
-                if mode and mode not in (stat.S_IFREG, stat.S_IFDIR):
+                if info.is_dir() or (mode and mode != stat.S_IFREG):
                     raise ReleaseVerificationError("wheel contains a non-regular member")
-                if info.flag_bits & 1 or info.file_size > MAX_MEMBER_BYTES:
-                    raise ReleaseVerificationError("wheel contains encrypted or oversized content")
-                if not info.is_dir():
-                    total += info.file_size
-                    if total > MAX_UNCOMPRESSED_BYTES:
-                        raise ReleaseVerificationError("wheel expands beyond the verification limit")
-                    files[info.filename] = archive.read(info)
+                if (
+                    info.compress_type
+                    not in (zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2)
+                    or info.flag_bits & 0x9
+                    or info.file_size > MAX_MEMBER_BYTES
+                ):
+                    raise ReleaseVerificationError(
+                        "wheel contains unsupported compression, flags, or size"
+                    )
+                is_dist_info = ".dist-info/" in info.filename
+                if dist_info_started and not is_dist_info:
+                    raise ReleaseVerificationError(
+                        "wheel dist-info members must be physically last", 3
+                    )
+                dist_info_started = dist_info_started or is_dist_info
+                total += info.file_size
+                if total > MAX_UNCOMPRESSED_BYTES:
+                    raise ReleaseVerificationError("wheel expands beyond the verification limit")
+                value = archive.read(info)
+                expected_method, expected_compressed = _canonical_wheel_compression(
+                    value
+                )
+                if (
+                    info.compress_type != expected_method
+                    or _compressed_wheel_member(raw, info) != expected_compressed
+                ):
+                    raise ReleaseVerificationError(
+                        "wheel member is not canonically repacked", 3
+                    )
+                compression_counts[
+                    "bzip2"
+                    if info.compress_type == zipfile.ZIP_BZIP2
+                    else "deflate"
+                ] += 1
+                files[info.filename] = value
     except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
         raise ReleaseVerificationError("wheel is unreadable", 1) from exc
 
     dist_infos = {name.split("/", 1)[0] for name in files if ".dist-info/" in name}
+    if not all(compression_counts.values()):
+        raise ReleaseVerificationError(
+            "wheel must contain canonical Deflate and BZIP2 members", 3
+        )
     expected_dist_info = f"sasori-{project['version']}.dist-info"
     if dist_infos != {expected_dist_info}:
         raise ReleaseVerificationError("wheel must have one exact dist-info directory", 3)
@@ -435,6 +508,10 @@ def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict
         "member_inventory_sha256": _inventory(files),
         "regular_file_count": len(files),
         "archive_member_count": len(infos),
+        "compression": {
+            "algorithm": "per-member-min-deflate9-bzip2-9-v1",
+            "methods": compression_counts,
+        },
         "name": name,
         "version": version,
         "requires_python": requires_python,

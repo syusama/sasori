@@ -20,6 +20,7 @@ FROM ${PYTHON_BASE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     SASORI_DB=/data/sasori.sqlite3 \
+    SASORI_WORKFLOW_DB=/data/sasori.workflows.sqlite3 \
     SASORI_ARTIFACT_ROOT=/data/artifacts \
     SASORI_ACTION_LOG=/data/incident-actions.jsonl
 COPY --from=builder /wheels /wheels

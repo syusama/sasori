@@ -30,6 +30,12 @@ sdist_smoke = load_script("sdist_consumer_smoke")
 class InstalledOriginTests(unittest.TestCase):
     def test_installed_inventory_includes_workflow_package(self):
         self.assertIn("sasori_flow", installed_smoke.PACKAGES)
+        self.assertEqual(
+            installed_smoke.SCRIPTS,
+            ("sasori", "sasori-server", "sasori-catalog"),
+        )
+        self.assertIn("workflow-studio.0.2.0.css", installed_smoke.WEB_RESOURCES)
+        self.assertIn("workflow-studio.0.2.0.js", installed_smoke.WEB_RESOURCES)
 
     def test_origin_must_resolve_under_the_exact_consumer_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -68,10 +74,17 @@ class SdistConsumerTests(unittest.TestCase):
         )
         self.build_wheel.write_bytes(b"locked build wheel")
         self.check = self.root / "installed_wheel_smoke.py"
+        self.repacker = self.root / "repack_wheel.py"
         self.verifier = self.root / "release_verify.py"
         self.source = self.root / "source"
         self.source.mkdir()
-        for path in (self.sdist, self.lock, self.check, self.verifier):
+        for path in (
+            self.sdist,
+            self.lock,
+            self.check,
+            self.repacker,
+            self.verifier,
+        ):
             path.write_bytes(b"fixture")
 
     def test_venv_python_is_platform_exact(self):
@@ -134,6 +147,7 @@ class SdistConsumerTests(unittest.TestCase):
                 self.lock,
                 self.wheelhouse,
                 self.check,
+                self.repacker,
                 self.verifier,
                 self.source,
             )
@@ -147,7 +161,7 @@ class SdistConsumerTests(unittest.TestCase):
                 "release_verifier_exit": 5,
             },
         )
-        self.assertEqual(len(calls), 7)
+        self.assertEqual(len(calls), 8)
         commands = [call[0] for call in calls]
         self.assertIn("--isolated", commands[1])
         self.assertIn("--no-cache-dir", commands[1])
@@ -161,15 +175,16 @@ class SdistConsumerTests(unittest.TestCase):
         self.assertIn("--no-index", commands[2])
         self.assertIn("--no-build-isolation", commands[2])
         self.assertIn("--no-deps", commands[2])
-        self.assertIn("--allow-dirty-local", commands[3])
-        self.assertIn("--wheel", commands[3])
-        self.assertIn("--sdist", commands[3])
-        self.assertEqual(calls[3][3], frozenset({0, 5}))
-        self.assertIn("--no-index", commands[5])
-        self.assertIn("--isolated", commands[5])
-        self.assertIn("--no-cache-dir", commands[5])
-        self.assertIn("--no-deps", commands[5])
-        self.assertNotEqual(commands[1][0], commands[5][0])
+        self.assertEqual(commands[3][1:3], [self.repacker.resolve(), "--wheel"])
+        self.assertIn("--allow-dirty-local", commands[4])
+        self.assertIn("--wheel", commands[4])
+        self.assertIn("--sdist", commands[4])
+        self.assertEqual(calls[4][3], frozenset({0, 5}))
+        self.assertIn("--no-index", commands[6])
+        self.assertIn("--isolated", commands[6])
+        self.assertIn("--no-cache-dir", commands[6])
+        self.assertIn("--no-deps", commands[6])
+        self.assertNotEqual(commands[1][0], commands[6][0])
         for _, cwd, environment, _ in calls:
             self.assertNotEqual(cwd.resolve(), ROOT.resolve())
             self.assertNotIn("PYTHONPATH", environment)
@@ -199,6 +214,7 @@ class SdistConsumerTests(unittest.TestCase):
                 self.lock,
                 self.wheelhouse,
                 self.check,
+                self.repacker,
                 self.verifier,
                 self.source,
             )
@@ -214,6 +230,7 @@ class SdistConsumerTests(unittest.TestCase):
                 self.lock,
                 self.wheelhouse,
                 self.check,
+                self.repacker,
                 self.verifier,
                 self.source,
             )
@@ -264,6 +281,7 @@ class SdistConsumerTests(unittest.TestCase):
                     self.lock,
                     wheelhouse,
                     self.check,
+                    self.repacker,
                     self.verifier,
                     self.source,
                 )
@@ -284,6 +302,7 @@ class SdistConsumerTests(unittest.TestCase):
                 self.lock,
                 self.wheelhouse,
                 self.check,
+                self.repacker,
                 self.verifier,
                 self.source,
             )
@@ -304,6 +323,7 @@ class SdistConsumerTests(unittest.TestCase):
                 self.lock,
                 self.wheelhouse,
                 self.check,
+                self.repacker,
                 self.verifier,
                 self.source,
             )

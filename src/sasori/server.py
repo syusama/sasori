@@ -30,6 +30,20 @@ from sasori_artifacts import (
     artifact_projection,
     validate_artifact_id,
 )
+from sasori_flow import (
+    SavedWorkflowCatalog,
+    SavedWorkflowDetail,
+    WorkflowCatalogConfigurationError,
+    WorkflowCatalogError,
+    WorkflowCatalogExists,
+    WorkflowCatalogIntegrityError,
+    WorkflowCatalogNotFound,
+    WorkflowCatalogRevisionMismatch,
+    WorkflowCatalogStore,
+    WorkflowCatalogValidationError,
+    catalog_etag,
+    validate_catalog_id,
+)
 
 from .app import AppLoadError, load_harness
 from .contracts import Message, Tool, is_valid_app_id
@@ -65,6 +79,10 @@ _RUN_PATH = re.compile(r"/v1/runs/([^/]+)(?:/(resume|approval|effect|events))?\Z
 _ARTIFACT_PATH = re.compile(
     r"/v1/runs/([^/]+)/artifacts(?:/([^/]+)/content)?\Z"
 )
+_WORKFLOW_CATALOG_PATH = re.compile(r"/v1/workflows/(wfcat_[0-9a-f]{32})\Z")
+_WORKFLOW_ETAG = re.compile(
+    r'"sasori-wfcat-([0-9a-f]{32})-r([1-9][0-9]*)-([0-9a-f]{64})"\Z'
+)
 _WORKBENCH_ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8", "no-cache"),
     "/assets/app.0.1.0.css": ("app.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
@@ -80,6 +98,8 @@ _WORKBENCH_ASSETS = {
     "/assets/workflow-manifest.0.1.0.js": ("workflow-manifest.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow-studio.0.1.0.css": ("workflow-studio.0.1.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/workflow-studio.0.1.0.js": ("workflow-studio.0.1.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/workflow-studio.0.2.0.css": ("workflow-studio.0.2.0.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable"),
+    "/assets/workflow-studio.0.2.0.js": ("workflow-studio.0.2.0.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable"),
     "/assets/mark.0.1.0.svg": ("mark.0.1.0.svg", "image/svg+xml", "public, max-age=31536000, immutable"),
 }
 _WORKBENCH_SECURITY_HEADERS = {
@@ -102,6 +122,15 @@ class RuntimeBusy(Exception):
     pass
 
 
+class WorkflowCatalogOutcomeUnknown(Exception):
+    def __init__(self, catalog_id: str) -> None:
+        self.catalog_id = catalog_id
+        super().__init__(
+            "saved Workflow mutation outcome is unknown; "
+            "reconcile with a read-only GET"
+        )
+
+
 class ServerShuttingDown(Exception):
     pass
 
@@ -122,6 +151,10 @@ class WorkflowPreflightRejected(Exception):
     def __init__(self, reason_code: str, message: str) -> None:
         self.reason_code = reason_code
         super().__init__(message)
+
+
+class WorkflowCatalogPreconditionRequired(Exception):
+    pass
 
 
 class InvalidArtifactRange(Exception):
@@ -175,6 +208,26 @@ def _bounded_workflow_error(exc: Exception, fallback: str) -> str:
     return message
 
 
+def _workflow_database_path(database: str, configured: str | Path | None) -> str:
+    if configured is not None:
+        if not isinstance(configured, (str, Path)) or not str(configured):
+            raise ServerConfigurationError("Workflow catalog database path is invalid")
+        value = str(configured)
+    elif database == ":memory:":
+        value = ":memory:"
+    else:
+        source = Path(database)
+        suffix = source.suffix or ".sqlite3"
+        value = str(source.with_name(f"{source.stem}.workflows{suffix}"))
+    if database != ":memory:" and value != ":memory:" and (
+        Path(database).resolve() == Path(value).resolve()
+    ):
+        raise ServerConfigurationError(
+            "run and Workflow catalog databases must be different files"
+        )
+    return value
+
+
 def _loopback(host: str) -> bool:
     if host.rstrip(".").lower() == "localhost":
         return True
@@ -209,8 +262,10 @@ class _Owner:
         app: str | Mapping[str, str],
         artifact_root: str | Path | None = None,
         publish_final_artifact: bool = False,
+        workflow_database: str | Path | None = None,
     ) -> None:
         self.database = database
+        self.workflow_database = _workflow_database_path(database, workflow_database)
         if artifact_root is None:
             if database == ":memory:":
                 raise ServerConfigurationError(
@@ -239,6 +294,8 @@ class _Owner:
         self._thread = threading.Thread(target=self._thread_main, daemon=True)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._store: SQLiteStore | None = None
+        self._workflow_store: WorkflowCatalogStore | None = None
+        self._saved_workflows: SavedWorkflowCatalog | None = None
         self._artifacts: ArtifactStore | None = None
         self._harnesses: dict[str, Harness] = {}
         self._unavailable: dict[str, str] = {}
@@ -288,6 +345,7 @@ class _Owner:
         self._loop = loop
         try:
             try:
+                self._workflow_store = WorkflowCatalogStore(self.workflow_database)
                 self._store = SQLiteStore(self.database)
                 self._artifacts = ArtifactStore(self._store, self.artifact_root)
                 first_error: BaseException | None = None
@@ -306,6 +364,9 @@ class _Owner:
                 from sasori_apps.registry import workflow_preflight_tools
 
                 self._workflow_tools = workflow_preflight_tools(self._harnesses)
+                self._saved_workflows = SavedWorkflowCatalog(
+                    self._workflow_store, self._workflow_tools
+                )
                 if self.publish_final_artifact:
                     self._reconcile_artifacts()
                 self._gate = asyncio.Lock()
@@ -338,11 +399,15 @@ class _Owner:
                         if self._store is not None:
                             self._store.close()
                     finally:
-                        loop.close()
-                        with self._state_lock:
-                            self._state = "CLOSED"
-                        self._ready.set()
-                        self._closed.set()
+                        try:
+                            if self._workflow_store is not None:
+                                self._workflow_store.close()
+                        finally:
+                            loop.close()
+                            with self._state_lock:
+                                self._state = "CLOSED"
+                            self._ready.set()
+                            self._closed.set()
 
     def call(self, operation: Coroutine[Any, Any, Any], timeout: float | None = None):
         with self._state_lock:
@@ -586,6 +651,59 @@ class _Owner:
                 _bounded_workflow_error(exc, fallback),
             ) from None
         return {"ok": True, "schema_version": 1, "manifest": manifest}
+
+    @staticmethod
+    def _workflow_record(detail: SavedWorkflowDetail) -> dict[str, object]:
+        return {
+            "ok": True,
+            "schema_version": 1,
+            "record": detail.as_data(),
+        }
+
+    async def saved_workflow_list(
+        self, limit: int, before: int | None
+    ) -> dict[str, object]:
+        assert self._saved_workflows is not None
+        return self._saved_workflows.list(limit, before).as_data()
+
+    async def saved_workflow_get(
+        self, catalog_id: str, revision: int | None
+    ) -> tuple[dict[str, object], str]:
+        assert self._saved_workflows is not None
+        detail = self._saved_workflows.get(catalog_id, revision)
+        return self._workflow_record(detail), catalog_etag(detail.record)
+
+    async def saved_workflow_put(
+        self,
+        catalog_id: str,
+        definition: dict[str, object],
+        *,
+        create: bool,
+        expected_revision: int | None = None,
+        expected_definition_sha256: str | None = None,
+    ) -> tuple[int, dict[str, object], str]:
+        assert self._saved_workflows is not None
+        try:
+            if create:
+                record = self._saved_workflows.create(catalog_id, definition)
+                status = 201
+            else:
+                assert expected_revision is not None
+                assert expected_definition_sha256 is not None
+                record, _changed = self._saved_workflows.update(
+                    catalog_id,
+                    expected_revision,
+                    expected_definition_sha256,
+                    definition,
+                )
+                status = 200
+        except WorkflowCatalogValidationError as exc:
+            raise WorkflowPreflightRejected(
+                exc.reason_code,
+                _bounded_workflow_error(exc, "workflow definition was rejected"),
+            ) from None
+        detail = SavedWorkflowDetail(record, record.catalog_revision, "compatible", None)
+        return status, self._workflow_record(detail), catalog_etag(record)
 
     async def history(
         self, limit: int, before: int | None, app_id: str | None
@@ -942,6 +1060,7 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
         message: str,
         *,
         run_id: str | None = None,
+        catalog_id: str | None = None,
         retryable: bool = False,
         reason_code: str | None = None,
         extra: Mapping[str, str] | None = None,
@@ -953,6 +1072,8 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
         }
         if run_id is not None:
             error["run_id"] = run_id
+        if catalog_id is not None:
+            error["catalog_id"] = catalog_id
         if reason_code is not None:
             error["reason_code"] = reason_code
         self._json(status, {"ok": False, "error": error}, extra)
@@ -1129,6 +1250,85 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             raise InvalidRequest(str(exc)) from None
         return run_id, artifact_id
 
+    def _workflow_catalog_path(self) -> str | None:
+        try:
+            parsed = urllib.parse.urlsplit(self.path)
+        except ValueError as exc:
+            raise InvalidRequest("request path is invalid") from exc
+        match = _WORKFLOW_CATALOG_PATH.fullmatch(parsed.path)
+        if match is None:
+            if parsed.path.startswith("/v1/workflows/"):
+                raise InvalidRequest("saved Workflow catalog path is invalid")
+            return None
+        try:
+            return validate_catalog_id(urllib.parse.unquote(match.group(1)))
+        except ValueError as exc:
+            raise InvalidRequest(str(exc)) from None
+
+    @staticmethod
+    def _workflow_list_query(query: str) -> tuple[int, int | None]:
+        try:
+            values = urllib.parse.parse_qs(query, keep_blank_values=True)
+        except ValueError as exc:
+            raise InvalidRequest("Workflow catalog query is invalid") from exc
+        if set(values).difference({"limit", "before"}) or any(
+            len(items) != 1 for items in values.values()
+        ):
+            raise InvalidRequest("Workflow catalog query is invalid")
+        try:
+            limit = int(values.get("limit", ["50"])[0])
+            before = int(values["before"][0]) if "before" in values else None
+        except ValueError as exc:
+            raise InvalidRequest("Workflow catalog cursors must be integers") from exc
+        if not 1 <= limit <= 100 or before is not None and not (
+            1 <= before <= 2**63 - 1
+        ):
+            raise InvalidRequest("Workflow catalog cursor or limit is out of range")
+        return limit, before
+
+    @staticmethod
+    def _workflow_revision_query(query: str) -> int | None:
+        if not query:
+            return None
+        try:
+            values = urllib.parse.parse_qs(query, keep_blank_values=True)
+        except ValueError as exc:
+            raise InvalidRequest("Workflow revision query is invalid") from exc
+        if set(values) != {"revision"} or len(values["revision"]) != 1:
+            raise InvalidRequest("Workflow revision query is invalid")
+        try:
+            revision = int(values["revision"][0])
+        except ValueError as exc:
+            raise InvalidRequest("Workflow revision must be an integer") from exc
+        if not 1 <= revision <= 2**63 - 1:
+            raise InvalidRequest("Workflow revision is out of range")
+        return revision
+
+    def _workflow_precondition(
+        self, catalog_id: str
+    ) -> tuple[bool, int | None, str | None]:
+        matches = self.headers.get_all("If-Match", [])
+        none_matches = self.headers.get_all("If-None-Match", [])
+        if len(matches) > 1 or len(none_matches) > 1:
+            raise InvalidRequest("Workflow conditional headers must not be repeated")
+        if matches and none_matches:
+            raise InvalidRequest("Workflow conditional headers are mutually exclusive")
+        if none_matches:
+            if none_matches[0] != "*":
+                raise InvalidRequest("Workflow create requires If-None-Match: *")
+            return True, None, None
+        if not matches:
+            raise WorkflowCatalogPreconditionRequired(
+                "saved Workflow mutation requires a conditional request"
+            )
+        matched = _WORKFLOW_ETAG.fullmatch(matches[0])
+        if matched is None or f"wfcat_{matched.group(1)}" != catalog_id:
+            raise InvalidRequest("If-Match must contain the exact current Workflow ETag")
+        revision = int(matched.group(2))
+        if revision > 2**63 - 1:
+            raise InvalidRequest("Workflow ETag revision is out of range")
+        return False, revision, matched.group(3)
+
     def _handle_exception(self, exc: Exception, run_id: str | None = None) -> None:
         if isinstance(exc, ServerShuttingDown):
             self._close_error(
@@ -1137,6 +1337,14 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 str(exc),
                 retryable=True,
                 extra={"Retry-After": "1"},
+            )
+        elif isinstance(exc, WorkflowCatalogOutcomeUnknown):
+            self._error(
+                504,
+                "workflow_catalog_outcome_unknown",
+                str(exc),
+                catalog_id=exc.catalog_id,
+                extra={"Cache-Control": "private, no-store"},
             )
         elif isinstance(exc, RuntimeBusy):
             self._error(
@@ -1200,6 +1408,37 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 str(exc),
                 reason_code=exc.reason_code,
             )
+        elif isinstance(exc, WorkflowCatalogPreconditionRequired):
+            self._error(
+                428,
+                "workflow_catalog_precondition_required",
+                str(exc),
+            )
+        elif isinstance(exc, (WorkflowCatalogExists, WorkflowCatalogRevisionMismatch)):
+            self._error(
+                412,
+                "workflow_catalog_revision_mismatch",
+                "saved Workflow precondition did not match durable state",
+            )
+        elif isinstance(exc, WorkflowCatalogNotFound):
+            self._error(
+                404,
+                "workflow_catalog_not_found",
+                "saved Workflow or revision was not found",
+            )
+        elif isinstance(exc, WorkflowCatalogIntegrityError):
+            self._error(
+                503,
+                "workflow_catalog_integrity_failed",
+                "saved Workflow catalog integrity verification failed",
+            )
+        elif isinstance(exc, (WorkflowCatalogConfigurationError, WorkflowCatalogError)):
+            self._error(
+                503,
+                "workflow_catalog_store_unavailable",
+                "saved Workflow catalog is unavailable",
+                retryable=True,
+            )
         elif isinstance(exc, ModelTimeoutError):
             self._error(504, exc.code, str(exc), run_id=run_id, retryable=True)
         elif isinstance(exc, (ModelCallError, DuplicateToolCallError)):
@@ -1245,8 +1484,12 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
             "text/plain; charset=utf-8",
             0,
             {
-                "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Authorization, Content-Type, Last-Event-ID, Range",
+                "Access-Control-Allow-Methods": "GET, HEAD, POST, PUT, OPTIONS",
+                "Access-Control-Allow-Headers": (
+                    "Authorization, Content-Type, If-Match, If-None-Match, "
+                    "Last-Event-ID, Range"
+                ),
+                "Access-Control-Expose-Headers": "ETag, Location",
                 "Access-Control-Max-Age": "600",
             },
         )
@@ -1286,8 +1529,34 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 value = self.sasori.owner.call(self.sasori.owner.catalog(), 5)
                 self._json(200, value)
                 return
+            if parsed.path == "/v1/workflows":
+                limit, before = self._workflow_list_query(parsed.query)
+                value = self.sasori.owner.call(
+                    self.sasori.owner.saved_workflow_list(limit, before), 5
+                )
+                self._json(200, value)
+                return
             if parsed.path == "/v1/workflows/preflight":
                 self._error(405, "method_not_allowed", "GET is not allowed")
+                return
+            workflow_catalog_id = self._workflow_catalog_path()
+            if workflow_catalog_id is not None:
+                revision = self._workflow_revision_query(parsed.query)
+                value, etag = self.sasori.owner.call(
+                    self.sasori.owner.saved_workflow_get(
+                        workflow_catalog_id, revision
+                    ),
+                    5,
+                )
+                self._json(
+                    200,
+                    value,
+                    {
+                        "Cache-Control": "private, no-store",
+                        "ETag": etag,
+                        "Access-Control-Expose-Headers": "ETag, Location",
+                    },
+                )
                 return
             if parsed.path == "/v1/runs":
                 limit, before, app_id = self._history_query(parsed.query)
@@ -1661,12 +1930,61 @@ class SasoriRequestHandler(BaseHTTPRequestHandler):
                 return
             self._handle_exception(exc, run_id)
 
+    def do_PUT(self) -> None:
+        self._response_started = False
+        if not self._authorized():
+            return
+        try:
+            parsed = urllib.parse.urlsplit(self.path)
+            catalog_id = self._workflow_catalog_path()
+            if catalog_id is None:
+                self._error(404, "not_found", "endpoint was not found")
+                return
+            if parsed.query:
+                raise InvalidRequest(
+                    "saved Workflow mutation does not accept query parameters"
+                )
+            create, expected_revision, expected_digest = self._workflow_precondition(
+                catalog_id
+            )
+            body = self._body()
+            if body is None:
+                return
+            assert isinstance(body, dict)
+            try:
+                status, value, etag = self.sasori.owner.call(
+                    self.sasori.owner.saved_workflow_put(
+                        catalog_id,
+                        body,
+                        create=create,
+                        expected_revision=expected_revision,
+                        expected_definition_sha256=expected_digest,
+                    ),
+                    5,
+                )
+            except RuntimeBusy:
+                raise WorkflowCatalogOutcomeUnknown(catalog_id) from None
+            headers = {
+                "Cache-Control": "private, no-store",
+                "ETag": etag,
+                "Access-Control-Expose-Headers": "ETag, Location",
+            }
+            if status == 201:
+                headers["Location"] = f"/v1/workflows/{catalog_id}"
+            self._json(status, value, headers)
+        except Exception as exc:
+            if self._response_started:
+                self.close_connection = True
+                return
+            self._handle_exception(exc)
+
 
 def create_server(
     host: str,
     port: int,
     *,
     database: str,
+    workflow_database: str | Path | None = None,
     artifact_root: str | Path | None = None,
     app: str | None = None,
     apps: Mapping[str, str] | None = None,
@@ -1715,6 +2033,7 @@ def create_server(
         app if app is not None else apps or {},
         artifact_root,
         publish_final_artifact,
+        workflow_database,
     )
     owner.start()
     try:
@@ -1736,6 +2055,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--db", default=os.environ.get("SASORI_DB", "sasori.sqlite3"))
+    parser.add_argument(
+        "--workflow-db", default=os.environ.get("SASORI_WORKFLOW_DB")
+    )
     parser.add_argument(
         "--artifact-root", default=os.environ.get("SASORI_ARTIFACT_ROOT")
     )
@@ -1786,6 +2108,7 @@ def main() -> int:
             args.host,
             args.port,
             database=args.db,
+            workflow_database=args.workflow_db,
             artifact_root=args.artifact_root,
             apps=apps,
             token=token,
@@ -1793,7 +2116,12 @@ def main() -> int:
             cors_origins=args.cors_origin,
             publish_final_artifact=publish_final_artifact,
         )
-    except (ServerConfigurationError, AppLoadError, StoreError) as exc:
+    except (
+        ServerConfigurationError,
+        AppLoadError,
+        StoreError,
+        WorkflowCatalogError,
+    ) as exc:
         print(f"sasori-server: {exc}", file=os.sys.stderr)
         return 2
     try:

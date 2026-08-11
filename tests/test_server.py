@@ -1523,7 +1523,9 @@ class ServerTests(unittest.TestCase):
         self.assertIn('id="artifacts-tab" role="tab"', page)
         self.assertIn('id="studio-button" type="button"', page)
         self.assertIn('id="workflow-studio" hidden', page)
-        self.assertIn("DRAFT ONLY", page)
+        self.assertIn("SAVED AUTHORING", page)
+        self.assertIn("IMMUTABLE REVISIONS", page)
+        self.assertIn("NO ACTIVATION", page)
         self.assertIn("NO EXECUTION", page)
         self.assertIn('id="artifact-list" aria-live="polite"', page)
         self.assertIn('tabindex="-1"', page)
@@ -1544,6 +1546,8 @@ class ServerTests(unittest.TestCase):
             ("/assets/workflow-manifest.0.1.0.js", "text/javascript"),
             ("/assets/workflow-studio.0.1.0.css", "text/css"),
             ("/assets/workflow-studio.0.1.0.js", "text/javascript"),
+            ("/assets/workflow-studio.0.2.0.css", "text/css"),
+            ("/assets/workflow-studio.0.2.0.js", "text/javascript"),
             ("/assets/mark.0.1.0.svg", "image/svg+xml"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
@@ -1576,6 +1580,10 @@ class ServerTests(unittest.TestCase):
         self.assertLess(
             page.index("/assets/workflow-manifest.0.1.0.js"),
             page.index("/assets/workflow-studio.0.1.0.js"),
+        )
+        self.assertLess(
+            page.index("/assets/workflow-studio.0.1.0.js"),
+            page.index("/assets/workflow-studio.0.2.0.js"),
         )
         reducer = assets["/assets/event-reducer.0.1.0.js"]
         self.assertIn("function reduceEvent(state, projected)", reducer)
@@ -1639,9 +1647,26 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("innerHTML", workflow_studio_script)
         self.assertNotIn("localStorage", workflow_studio_script)
         self.assertNotIn("/v1/runs", workflow_studio_script)
+        workflow_catalog_script = assets["/assets/workflow-studio.0.2.0.js"]
+        self.assertIn("/v1/workflows?limit=100", workflow_catalog_script)
+        self.assertIn("If-None-Match", workflow_catalog_script)
+        self.assertIn("If-Match", workflow_catalog_script)
+        self.assertIn("OUTCOME UNKNOWN", workflow_catalog_script)
+        self.assertIn("selectionEpoch", workflow_catalog_script)
+        self.assertIn("workflow_catalog_outcome_unknown", workflow_catalog_script)
+        self.assertIn("data-recovery-by-catalog-id", workflow_catalog_script)
+        self.assertIn("crypto.subtle", workflow_catalog_script)
+        self.assertIn("data-catalog-more", workflow_catalog_script)
+        self.assertNotIn("localStorage", workflow_catalog_script)
+        self.assertNotIn("indexedDB", workflow_catalog_script)
+        self.assertNotIn("/v1/runs", workflow_catalog_script)
+        self.assertNotIn("innerHTML", workflow_catalog_script)
         workflow_studio_styles = assets["/assets/workflow-studio.0.1.0.css"]
         self.assertIn(".workflow-studio", workflow_studio_styles)
         self.assertIn("prefers-reduced-motion", workflow_studio_styles)
+        workflow_catalog_styles = assets["/assets/workflow-studio.0.2.0.css"]
+        self.assertIn(".studio-catalog-panel", workflow_catalog_styles)
+        self.assertIn("prefers-reduced-motion", workflow_catalog_styles)
         workflow_styles = assets["/assets/workflow.0.1.0.css"]
         self.assertIn(".workflow-rail", workflow_styles)
 
@@ -1661,6 +1686,10 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(
             server, "GET", "/assets/workflow-studio.0.1.0.js?v=1"
+        )
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(
+            server, "GET", "/assets/workflow-studio.0.2.0.js?v=1"
         )
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.0.js")

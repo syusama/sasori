@@ -42,6 +42,8 @@ WEB_RESOURCES = (
     "workflow-manifest.0.1.0.js",
     "workflow-studio.0.1.0.css",
     "workflow-studio.0.1.0.js",
+    "workflow-studio.0.2.0.css",
+    "workflow-studio.0.2.0.js",
     "mark.0.1.0.svg",
 )
 
@@ -142,6 +144,119 @@ def main() -> int:
         ]
     ):
         raise RuntimeError("installed Workflow preflight manifest is invalid")
+
+    SavedWorkflowCatalog = getattr(
+        modules["sasori_flow"], "SavedWorkflowCatalog", None
+    )
+    WorkflowCatalogStore = getattr(
+        modules["sasori_flow"], "WorkflowCatalogStore", None
+    )
+    WorkflowCatalogRevisionMismatch = getattr(
+        modules["sasori_flow"], "WorkflowCatalogRevisionMismatch", None
+    )
+    catalog_etag = getattr(modules["sasori_flow"], "catalog_etag", None)
+    if not all(
+        callable(item)
+        for item in (
+            SavedWorkflowCatalog,
+            WorkflowCatalogStore,
+            WorkflowCatalogRevisionMismatch,
+            catalog_etag,
+        )
+    ) or not isinstance(WorkflowCatalogRevisionMismatch, type):
+        raise RuntimeError("installed saved Workflow catalog exports are incomplete")
+    catalog_id = "wfcat_1234567812344abc8def1234567890ab"
+    with tempfile.TemporaryDirectory(prefix="sasori-installed-catalog-") as directory:
+        catalog_database = Path(directory) / "workflows.sqlite3"
+        first_catalog_store = WorkflowCatalogStore(catalog_database)
+        try:
+            first_catalog = SavedWorkflowCatalog(
+                first_catalog_store, incident_tools()
+            )
+            first_record = first_catalog.create(catalog_id, workflow_spec.as_data())
+            first_detail = first_catalog.get(catalog_id)
+            if (
+                first_record.catalog_revision != 1
+                or first_record.definition_sha256 != workflow_spec.digest
+                or first_detail.record != first_record
+                or first_detail.current_contract != "compatible"
+                or first_detail.head_revision != 1
+            ):
+                raise RuntimeError("installed saved Workflow create is invalid")
+            first_etag = catalog_etag(first_record)
+        finally:
+            first_catalog_store.close()
+
+        second_catalog_store = WorkflowCatalogStore(catalog_database)
+        try:
+            second_catalog = SavedWorkflowCatalog(
+                second_catalog_store, incident_tools()
+            )
+            reopened = second_catalog.get(catalog_id)
+            if (
+                reopened.record != first_record
+                or catalog_etag(reopened.record) != first_etag
+            ):
+                raise RuntimeError("installed saved Workflow reopen changed revision 1")
+            changed_definition = json.loads(workflow_document)
+            changed_definition["version"] = "2"
+            second_record, changed = second_catalog.update(
+                catalog_id,
+                first_record.catalog_revision,
+                first_record.definition_sha256,
+                changed_definition,
+            )
+            historical = second_catalog.get(catalog_id, 1)
+            current = second_catalog.get(catalog_id)
+            page = second_catalog.list(10, None)
+            same_record, same_changed = second_catalog.update(
+                catalog_id,
+                second_record.catalog_revision,
+                second_record.definition_sha256,
+                changed_definition,
+            )
+            if (
+                not changed
+                or second_record.catalog_revision != 2
+                or second_record.parent_revision != 1
+                or second_record.definition_version != "2"
+                or historical.record != first_record
+                or historical.head_revision != 2
+                or historical.record.catalog_revision != 1
+                or current.record != second_record
+                or current.current_contract != "compatible"
+                or [item.catalog_id for item in page.items] != [catalog_id]
+                or page.items[0].catalog_revision != 2
+                or page.items[0].definition_sha256 != second_record.definition_sha256
+                or same_changed
+                or same_record != second_record
+            ):
+                raise RuntimeError("installed saved Workflow revision contract is invalid")
+            try:
+                second_catalog.update(
+                    catalog_id,
+                    first_record.catalog_revision,
+                    first_record.definition_sha256,
+                    changed_definition,
+                )
+            except WorkflowCatalogRevisionMismatch:
+                pass
+            else:
+                raise RuntimeError("installed saved Workflow stale CAS was accepted")
+        finally:
+            second_catalog_store.close()
+
+        third_catalog_store = WorkflowCatalogStore(catalog_database)
+        try:
+            third_catalog = SavedWorkflowCatalog(third_catalog_store, incident_tools())
+            if (
+                third_catalog.get(catalog_id).record != second_record
+                or third_catalog.get(catalog_id, 1).record != first_record
+                or third_catalog.list(10, None).items != page.items
+            ):
+                raise RuntimeError("installed saved Workflow second reopen changed history")
+        finally:
+            third_catalog_store.close()
 
     SQLiteStore = getattr(modules["sasori"], "SQLiteStore", None)
     RunPaused = getattr(modules["sasori"], "RunPaused", None)

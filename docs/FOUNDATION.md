@@ -3,30 +3,37 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current implementation state: the repository foundation, single Loop/Harness,
+Current checked-out implementation candidate: the repository foundation, single Loop/Harness,
 G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE
 aggregation, deterministic bounded-context projection, opt-in low-trust semantic
 compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP
 entry points, local multi-application HTTP/SSE, domestic-source Docker delivery,
 trusted local plugins, four first-party application compositions, curated
-catalog metadata, and a bundled Workbench exist. The fourth composition is a
-core-external W1.2 static serial Tool Workflow: strict data/JSON and a small
+catalog metadata, and a bundled Workbench exist. The fourth composition remains
+a core-external static serial Tool Workflow: strict data/JSON and a small
 Python builder produce the existing immutable W0 definition, zero-execution
 preflight returns its bounded detached compiled manifest, and a core-owned
 versioned public run projection supplies the bounded Workbench step rail. The
-Workbench adds a transient strict-JSON draft surface over an authoritative HTTP
-preflight, exact-validates and previews immutable definition metadata, and
-retains the existing event reducer for timeline/cursor state. It cannot save,
-activate, deploy, or run the draft; durable authoring, DAG scheduling, branches,
-parallelism, agent nodes, and subflows remain later work. Memory is accepted
+accepted W1.2 Workbench adds a transient strict-JSON draft surface over an
+authoritative HTTP preflight, exact-validates and previews immutable definition
+metadata, and retains the existing event reducer for timeline/cursor state. An
+unpromoted W1.3 local candidate adds an independent deployment-owner saved
+authoring catalog, immutable revisions, strong-ETag CAS, exact historical reads,
+current-Tool compatibility verdicts, and a fail-closed saved Studio layer. It
+still cannot activate, publish, deploy, schedule, or run a saved definition;
+DAG scheduling, branches, parallelism, agent nodes, and subflows remain later
+work. Memory is accepted
 only for a deployment-owned local-single-owner
 namespace after its deterministic, package, mainland-source container, and
 [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961)
-gates passed. Workflow W1.2 is accepted at
+gates passed. Workflow W1.2 remains the latest accepted Hosted baseline at
 [`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
 after its source, package, real-browser, mainland-source container, and
 [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31391700342)
-gates passed. Real-provider semantic/Memory quality evaluation, per-request
+gates passed. This document does not yet bind W1.3 to an exact implementation
+commit or Hosted run, so it must not be described as accepted, shipped, or
+released. Real-provider
+semantic/Memory quality evaluation, per-request
 user/tenant identity, public token streaming, multi-agent orchestration,
 untrusted-plugin isolation, and a central marketplace remain incomplete;
 planned behavior is not described as shipped behavior.
@@ -141,9 +148,9 @@ These are boundaries, not directories to scaffold before use:
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
 | MCP adapter | current frozen host adapter; split only after an external package consumer exists | bounded stdio boundary accepted |
-| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, public projection, and transient HTTP/Workbench draft preflight around serial W0, Hosted-verified at `e3bc816`; saved/activated definitions and DAG/parallel/Agent-node gates remain open |
+| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, and public projection are Hosted-verified at `e3bc816`; the saved static-serial catalog is an unpromoted W1.3 local candidate, while activation/run-from-saved and DAG/parallel/Agent-node gates remain open |
 | DAG/graph/multi-agent | later extensions | requires parallel/branch/ownership/recovery ADRs; not current W0 behavior |
-| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product adds a transient strict-JSON Studio preflight, exact-validates/previews immutable Workflow definition metadata, and consumes the versioned run projection for serial step state; it owns no save/execute authority and the existing reducer remains the event timeline/cursor authority |
+| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product exact-validates/previews immutable Workflow definition metadata and consumes the versioned run projection for serial step state; the W1.3 candidate adds explicit conditional save/list/open UI backed by server CAS, but no execute/activate/publish authority, and the existing reducer remains the event timeline/cursor authority |
 | Marketplace | metadata service, not binary host | market gate in section 8 |
 
 ### 3.4 Public events and run views are projections
@@ -275,9 +282,9 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; Memory-enabled Research/Developer still use that path; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | delayed/stale response isolation plus real-server Studio preflight, Incident, and typed Workflow journeys pass in Chrome; desktop, 390×844 narrow, keyboard/focus, and reduced-motion cases pass; the Workflow rail consumes the core-owned run projection while the existing reducer remains the timeline/cursor authority; cross-browser, full mobile-device, and accessibility certification remain open |
-| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; zero-mutation Workflow preflight; split approval/resume; exact events/SSE/final/effect; restart persistence; exclusive owner; secret audit |
-| Packaging/supply chain | wheel contents/size, zero core deps, hashes/lock, application and image SBOMs, trusted provenance |
+| UI browser acceptance (`PARTIAL`) | accepted W1.2 delayed/stale isolation plus real-server preflight, Incident, and typed Workflow journeys pass in Chrome; the W1.3 local candidate additionally covers stable saved-catalog pagination, browser SHA-256 binding, saved create, stale edit, exact conflict/504 taxonomy, per-record outcome recovery, late PUT/detail/reconciliation record-switch isolation, no mutation retry, and zero run/action mutation at desktop and 390×844 reduced-motion sizes; cross-browser, full mobile-device, and accessibility certification remain open |
+| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; zero-mutation preflight; split approval/resume; exact events/SSE/final/effect; W1.3 candidate create r1, CAS update r2, stale `412`, historical read, restart identity, unchanged run/event/action ledgers, and two independent database-owner refusals; secret audit |
+| Packaging/supply chain | wheel contents/size, deterministic Deflate-9/BZIP2-9 member compression, zero core deps, locked original/rebuilt-sdist pip installation on the six OS/Python combinations, hashes/lock, application and image SBOMs, trusted provenance |
 
 ### Honest determinism
 
@@ -393,6 +400,26 @@ nodes, subflows, distributed execution, exactly-once effects, sandboxing,
 live-provider quality, signing, trusted provenance, public deployment, or
 production readiness.
 
+The separate W1.3 implementation candidate is locally evidenced by 471
+deterministic tests with five documented platform/permission skips, including
+Catalog/HTTP crash, CAS, schema/trigger/FK tamper, pagination sentinel,
+strict-request, exact non-retryable 504 outcome-unknown, and no-runtime-mutation
+checks; a 29-case real-Chrome fixture matrix; and three real-server browser
+journeys including saved authoring. The exact-current-code mainland-source
+container was rebuilt through the digest-pinned DaoCloud Python base and
+Tsinghua index, then passed a fresh-volume create-r1/update-r2/stale-writer/
+history/restart journey with byte-identical empty action ledgers, unchanged
+run/event projections, both database-owner refusals, and a credential-leakage
+audit. The locked local distribution candidate canonically repacked 69 wheel
+members to 243,357 bytes with 37 Deflate-9 and 32 BZIP2-9 members; a second
+repack was byte-idempotent, normal pip extraction/installation passed in a clean
+environment, and the verified sdist rebuilt, repacked, installed, and passed the
+same Catalog smoke. These are local-candidate results only until the exact
+implementation commit and its Hosted matrices are complete. They do not
+retroactively change the W1.2 Hosted numbers above and do not establish
+activation, execution, public deployment, TestPyPI/PyPI publication, signing,
+trusted provenance, or release.
+
 ### Days 56-75: switching-value validation
 
 Deliver:
@@ -463,18 +490,24 @@ The Workbench is a task-control surface, not another chat skin. It currently:
 8. Previews the exact-validated immutable compiled definition manifest,
    including dependencies, argument sources, approval/recovery policy, Tool
    revisions, and explicit trusted-Python/no-sandbox disclosure.
-9. Offers a transient strict-JSON Workflow Studio with server-authoritative
-   contract preflight and browser-side fail-closed stale-response and Unicode
-   gates. It edits only the current page's in-memory draft and has no save,
-   activation, deployment, scheduling, or run control.
+9. Offers a strict-JSON Workflow Studio with server-authoritative contract
+   preflight and browser-side fail-closed stale-response and Unicode gates.
+10. In the W1.3 candidate, explicitly saves to the deployment-owner catalog
+    with a client-known Catalog ID and strong ETag, lists/opens durable heads,
+    labels immutable revisions, preserves local drafts on conflict, and treats
+    ambiguous mutation outcomes as an exact non-retryable 504 until GET-only
+    reconciliation. Recovery is retained per Catalog ID across record switches;
+    there is no automatic PUT, `Retry-After`, activation, deployment, scheduling,
+    publish, or run control.
 
 Desktop information architecture: worker/history navigation on the left, task
 conversation and composer in the center, and timeline/approval/evidence/
 capability views on the right. Narrow screens switch these three surfaces with
 a bottom navigation bar without hiding pending approvals.
 
-Structured plans, saved/durable Workflow authoring, activation/run-from-draft,
-visual DAG editing, branches/parallel execution, Agent nodes/subflows, run
+Structured plans, saved-record delete/restore/purge, metadata editing,
+sharing/tenant ownership, activation/run-from-draft/run-from-saved, visual DAG
+editing, branches/parallel execution, Agent nodes/subflows, run
 cancellation, dynamic
 skill selection, background queues, multi-agent collaboration, sandboxed plugin
 execution, and marketplace installation are not current Workbench capabilities.
@@ -503,18 +536,23 @@ from the timeline. A dependency-free headless-browser fixture executes the
 bundled HTML/assets and deterministically releases late status, cold history,
 SSE, create, approval, Workflow refresh, Studio preflight, and cancelled-effect
 recovery responses after a newer view is selected. The Studio fixture also
-covers exact rejection versus unverified transport taxonomy and stale/invalid
-Unicode fail-closed behavior; the wider product/browser matrix remains partial.
+covers exact rejection versus unverified transport taxonomy, stale/invalid
+Unicode fail-closed behavior, stable catalog pagination, browser canonical
+SHA-256 verification, saved create, stale edit, exact conflict and 504 taxonomy,
+per-record outcome recovery without a second mutation, and late PUT/detail/
+reconciliation isolation across record switches; the wider product/browser
+matrix remains partial.
 See
 [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 
 An independent same-origin test proxy now injects real-browser journeys while
 forwarding all product APIs to `sasori.server`. The bundled Workbench first
-preflights a transient Studio draft and proves zero durable run/effect mutation,
-then completes independent Incident and typed Workflow approval/explicit-resume
-lifecycles. The two approved effects execute exactly once, the typed Workflow
-retains its 17-event projection and definition digest, and cold reload/history
-reopen preserves finals, artifacts, and the visible `FULL HOST PROCESS
+preflights a Studio draft, explicitly saves exactly one Catalog revision 1,
+and proves zero durable run/effect mutation during authoring. It then completes
+independent Incident and typed Workflow approval/explicit-resume lifecycles.
+The two approved effects execute exactly once, the typed Workflow retains its
+17-event projection and definition digest, and cold reload/history reopen
+preserves finals, artifacts, and the visible `FULL HOST PROCESS
 PRIVILEGES` / `enforced=false` disclosure without replay.
 The proxy's action-count endpoint is out-of-band test evidence, not a shipped
 Sasori API. A real Chrome matrix also covers desktop, 390×844 narrow layout,
@@ -558,8 +596,16 @@ The current HTTP/Docker package follows this contract:
 - `UV_DEFAULT_INDEX` or `PIP_INDEX_URL` defaults to Tsinghua's PyPI mirror and remains configurable;
 - dependency versions/hashes remain locked; mirror use never disables lock verification;
 - Compose exposes a project-local configurable port and does not stop unrelated services;
+- Compose stores `/data/sasori.sqlite3` and
+  `/data/sasori.workflows.sqlite3` in the same named volume as different
+  authorities; both file-backed databases require one process owner, and the
+  owner probe must observe `ConcurrentRunError` plus
+  `WorkflowCatalogConfigurationError`;
 - native-Linux file secrets remain host-private and use an explicit numeric supplemental group so the non-root container can read the bind mount without making it world-readable;
 - acceptance calls a real agent endpoint and validates the final persisted/visible result, not just image build or container health.
+
+Saved Workflow create/update/history/restart proves authoring durability only.
+It does not prove execution durability, activation, or exactly-once effects.
 
 Current deployment modes are the embedded Python library, CLI, and the local
 HTTP/SSE container with the bundled Workbench. Optional workers/queues,

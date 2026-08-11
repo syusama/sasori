@@ -26,6 +26,12 @@ SPEC = importlib.util.spec_from_file_location(
 release_verify = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = release_verify
 SPEC.loader.exec_module(release_verify)
+REPACK_SPEC = importlib.util.spec_from_file_location(
+    "sasori_repack_wheel_for_release_tests", ROOT / "scripts" / "repack_wheel.py"
+)
+repack_wheel = importlib.util.module_from_spec(REPACK_SPEC)
+sys.modules[REPACK_SPEC.name] = repack_wheel
+REPACK_SPEC.loader.exec_module(repack_wheel)
 
 
 def metadata(*, dependency=False, extra=""):
@@ -49,10 +55,14 @@ def metadata(*, dependency=False, extra=""):
 
 
 class ReleaseVerificationTests(unittest.TestCase):
-    def test_release_contract_version_tracks_workflow_inventory(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "11")
+    def test_release_contract_version_tracks_saved_workflow_inventory(self):
+        self.assertEqual(release_verify.VERIFIER_VERSION, "12")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v8"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v9"
+        )
+        self.assertIn(
+            "docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md",
+            release_verify.RELEASE_DOCS,
         )
 
     def setUp(self):
@@ -77,6 +87,16 @@ class ReleaseVerificationTests(unittest.TestCase):
         shutil.copytree(ROOT / "licenses", self.source / "licenses")
         shutil.copytree(ROOT / "docs", self.source / "docs")
         shutil.copytree(ROOT / "src", self.source / "src", ignore=shutil.ignore_patterns("*.egg-info", "__pycache__"))
+
+    def test_saved_workflow_adr_is_bound_into_the_release_source_tree(self):
+        before_digest, before_count = release_verify._source_tree(self.source)
+        decision = (
+            self.source / "docs" / "ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md"
+        )
+        decision.write_bytes(decision.read_bytes() + b"\n")
+        after_digest, after_count = release_verify._source_tree(self.source)
+        self.assertEqual(after_count, before_count)
+        self.assertNotEqual(after_digest, before_digest)
 
     def test_docker_context_must_exclude_secrets(self):
         dockerignore = self.source / ".dockerignore"
@@ -155,6 +175,10 @@ class ReleaseVerificationTests(unittest.TestCase):
         metadata_extra="",
         wheel_extra="",
         extra_dist_info=False,
+        compression=zipfile.ZIP_DEFLATED,
+        archive_comment=b"",
+        dist_info_first=False,
+        repack=True,
     ):
         path = self.root / f"sasori-{PROJECT_VERSION}-py3-none-any.whl"
         dist_info = f"sasori-{PROJECT_VERSION}.dist-info"
@@ -202,9 +226,15 @@ class ReleaseVerificationTests(unittest.TestCase):
         files[record_name] = output.getvalue().encode()
         if corrupt_record:
             files["sasori/__init__.py"] += b"\n# tampered after RECORD\n"
-        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for name, value in files.items():
-                archive.writestr(name, value)
+        ordered = list(files.items())
+        if dist_info_first:
+            ordered.sort(key=lambda item: not item[0].startswith(f"{dist_info}/"))
+        with zipfile.ZipFile(path, "w", compression=compression) as archive:
+            for name, value in ordered:
+                archive.writestr(name, value, compress_type=compression)
+            archive.comment = archive_comment
+        if repack:
+            repack_wheel.repack(path)
         return path
 
     def sdist(
@@ -301,6 +331,31 @@ class ReleaseVerificationTests(unittest.TestCase):
                     self.wheel(**options),
                     self.source,
                     release_verify._project(self.source),
+                )
+
+    def test_wheel_compression_contract_requires_canonical_mixed_streams(self):
+        project = release_verify._project(self.source)
+        accepted = release_verify.verify_wheel(
+            self.wheel(), self.source, project
+        )
+        self.assertEqual(
+            accepted["compression"]["algorithm"],
+            "per-member-min-deflate9-bzip2-9-v1",
+        )
+        self.assertGreater(accepted["compression"]["methods"]["deflate"], 0)
+        self.assertGreater(accepted["compression"]["methods"]["bzip2"], 0)
+        for options in (
+            {"compression": zipfile.ZIP_DEFLATED, "repack": False},
+            {"compression": zipfile.ZIP_BZIP2, "repack": False},
+            {"compression": zipfile.ZIP_STORED, "repack": False},
+            {"archive_comment": b"comment", "repack": False},
+            {"dist_info_first": True, "repack": False},
+        ):
+            with self.subTest(options=options), self.assertRaises(
+                release_verify.ReleaseVerificationError
+            ):
+                release_verify.verify_wheel(
+                    self.wheel(**options), self.source, project
                 )
 
     def test_rejects_archive_path_traversal(self):
@@ -465,6 +520,7 @@ class ReleaseVerificationTests(unittest.TestCase):
             "--dest /out/build-wheelhouse",
             'test "${1%-py3-none-any.whl}" != "$1"',
             "python -m pip --isolated --no-cache-dir install",
+            "python scripts/repack_wheel.py --wheel",
             "--no-index",
             "--find-links /out/build-wheelhouse",
             "name: sasori-build-wheelhouse-${{ github.sha }}",
@@ -474,6 +530,24 @@ class ReleaseVerificationTests(unittest.TestCase):
         ):
             with self.subTest(package_contract=required):
                 self.assertIn(required, package)
+        lines = package.splitlines()
+        heredoc_start = next(
+            index for index, line in enumerate(lines) if "python - <<PY" in line
+        )
+        heredoc_end = next(
+            index
+            for index in range(heredoc_start + 1, len(lines))
+            if lines[index].strip() == "PY"
+        )
+        yaml_indent = len(lines[heredoc_end]) - len(lines[heredoc_end].lstrip())
+        body_lines = lines[heredoc_start + 1 : heredoc_end]
+        self.assertTrue(body_lines)
+        self.assertTrue(all(line.startswith(" " * yaml_indent) for line in body_lines))
+        compile(
+            "\n".join(line[yaml_indent:] for line in body_lines),
+            "<ci-package-sdist-heredoc>",
+            "exec",
+        )
         self.assertLess(
             package.index("PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple"),
             package.index("python -m pip download"),
@@ -498,6 +572,7 @@ class ReleaseVerificationTests(unittest.TestCase):
             "--build-lock requirements-build.txt",
             "--build-wheelhouse $wheelhouseRoot",
             "--consumer-check scripts/installed_wheel_smoke.py",
+            "--wheel-repacker scripts/repack_wheel.py",
             "--release-verifier scripts/release_verify.py",
             "--source-root .",
         ):

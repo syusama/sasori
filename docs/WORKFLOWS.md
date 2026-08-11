@@ -162,11 +162,12 @@ scanned code. A compiled `WorkflowHarness.definition_manifest()` returns the
 same semantics, and the first-party app catalog reuses this composer instead of
 re-deriving its own step contract.
 
-The current Workbench definition preview exact-validates that catalog manifest
-through a new immutable extension while preserving the existing run projection
-and event reducer. It displays dependencies, approval points, recovery policy,
-and the trusted-Python/no-sandbox boundary; it does not execute or persist a
-Workflow definition in the browser.
+The W1.1/W1.2 Workbench definition preview exact-validates that application
+catalog manifest through an immutable extension while preserving the existing
+run projection and event reducer. It displays dependencies, approval points,
+recovery policy, and the trusted-Python/no-sandbox boundary. That historical
+preview did not execute or persist a Workflow definition; W1.3 persistence is a
+separate server-owned catalog described below.
 
 This W1.1 boundary is Hosted-verified at
 [`709200b`](https://github.com/syusama/sasori/commit/709200b8d6e4521245109852be54170c09fb0da4)
@@ -218,7 +219,8 @@ but that is read-only inspection—not parallel Workflow execution. Client abort
 means only that the response was abandoned; it is not forced cancellation of
 synchronous server work.
 
-The Workbench calls the endpoint with the existing bearer/same-origin client
+The W1.2 `workflow-studio.0.1.0` layer calls the endpoint with the existing
+bearer/same-origin client
 boundary and hands a successful response to the existing exact manifest
 consumer. It renders response and draft content with text nodes, keeps no
 definition in `localStorage`, and offers no save, activation, deployment, or
@@ -254,6 +256,121 @@ run-from-draft, visual DAG, branch, parallel set, Agent node, subflow,
 marketplace, sandbox, second reducer/runtime/checkpoint, exactly-once execution,
 or production-readiness claim. See
 [ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md).
+
+## Durable saved static-serial catalog (W1.3 local candidate)
+
+W1.3 adds durable authoring without adding another execution runtime:
+
+```text
+strict Workflow definition
+    -> startup-frozen Tool preflight
+    -> canonical definition + detached manifest
+    -> independent SQLite catalog transaction
+    -> immutable revision + mutable head
+```
+
+The persistence identity is not the definition identity:
+
+| Value | Meaning |
+|---|---|
+| `catalog_id` | client-known durable record identity, `wfcat_` plus a validated UUID v4 in 32 lowercase hexadecimal digits |
+| `catalog_revision` | server-managed positive immutable history revision and strong-ETag CAS generation |
+| `definition.workflow_id` | logical Workflow identity authored inside the strict definition |
+| `definition.version` | author-controlled definition version string |
+| `definition_sha256` | canonical definition digest, still used by the compiler and derived application identity |
+
+One catalog head may therefore move to a snapshot whose Workflow ID, author
+version, or digest differs from the previous snapshot. That movement does not
+replace the old row: revision `N+1` points back to revision `N`, while an exact
+historical GET remains readable. `catalog_revision` never replaces
+`definition.version`, and neither grants application identity or run authority.
+
+`WorkflowCatalogStore` lives in `sasori_flow`, not core. Its SQLite authority is
+separate from the run/checkpoint/event database, uses its own process lock,
+schema identity, `synchronous=FULL`, WAL, and `BEGIN IMMEDIATE` mutation. The
+default sibling of `sasori.sqlite3` is `sasori.workflows.sqlite3`; deployments
+may override it with `--workflow-db` or `SASORI_WORKFLOW_DB`. The resolved files
+must differ. There is deliberately no cross-database transaction because saving
+a definition changes no run state.
+
+An existing catalog opens only when its exact version-1 table, constraint,
+immutable-trigger, and composite-foreign-key contract matches. Startup requires
+foreign keys and rejects reported FK violations. Current detail, historical
+detail, and list share one head validator that checks the current snapshot
+binding and the contiguous revision chain. Strict stored-scalar failures are
+integrity errors, while invalid caller inputs remain request errors. The list
+also validates its hidden `limit + 1` sentinel before returning the next stable
+descending cursor.
+
+Create and update accept the exact existing Workflow definition, not a relaxed
+wrapper. The server performs the one strict HTTP JSON parse, reuses
+`workflow_spec_from_data()` and `preflight_workflow()`, and derives both stored
+canonical documents. The request cannot supply its own manifest, digest,
+revision, owner, or lifecycle. Invalid JSON/Unicode, unknown fields, current
+Tool drift, ambiguity, wrapper-only Tools, and unavailable Tools fail before a
+catalog transaction.
+
+Create uses `PUT /v1/workflows/{catalog_id}` with `If-None-Match: *`. Update
+uses the exact strong ETag returned by GET:
+
+```text
+"sasori-wfcat-<32 hex>-r<catalog_revision>-<definition_sha256>"
+```
+
+CAS is checked in the same transaction that appends the snapshot and moves the
+head. Two stale writers cannot both win. A stale writer receives `412` even if
+its submitted definition now equals the current head. A current writer
+submitting identical canonical definition and manifest bytes receives the same
+head without a false new revision.
+
+The immutable `saved_manifest` records the contract accepted for one saved
+revision. Detail reads independently report `current_contract` against the
+current process's already-frozen ordinary-Harness Tool tuple. Tool
+effect/revision/schema/signature/ambiguity drift can make that verdict
+`incompatible`; it cannot rewrite the saved definition, manifest, digest,
+revision, or history. Definition/manifest/head corruption fails closed.
+
+The Workbench `workflow-studio.0.2.0` layer lists saved heads and opens exact
+definitions. Its save state separates selected Catalog ID, loaded ETag, edit
+epoch, selection epoch, request identity, and captured text. Late responses
+cannot mark a newer draft or another record as saved. Exact `412` becomes
+`CONFLICT` while preserving the local draft. Network/timeout/abort/malformed
+success becomes `OUTCOME UNKNOWN`. An accepted PUT whose owner result times out
+returns exact `504 workflow_catalog_outcome_unknown`, `retryable=false`, the
+matching Catalog ID, and no `Retry-After`, ETag, or Location. Only GET
+reconciliation is automatic; the browser never repeats PUT, merges, or
+overwrites automatically.
+
+Recovery context is retained per Catalog ID. Switching cards isolates rendering
+but does not discard the older record's recovery state; late PUT, reconciliation
+GET, and detail GET results cannot replace the newly selected editor. A matching
+GET proves the desired definition is durable, not which request committed it;
+a differing head becomes conflict and a create not-found establishes current
+absence. Adopting a server head or attempting another conditional PUT remains
+an explicit operator action.
+
+The rail follows the stable pagination cursor and deduplicates identities across
+pages. Before loading a detail into the editor, the browser recomputes SHA-256
+over canonical definition bytes and binds it to the saved manifest, response
+digest, and exact strong ETag. The browser has no `localStorage` or IndexedDB
+authority.
+
+Catalog list/detail/create/update call no model, Tool handler, wrapper,
+idempotency hook, subprocess, network, or run/checkpoint/event/approval/effect/
+artifact authority. Saved records do not enter the executable application
+catalog at `/v1/apps`, do not construct `WorkflowHarness`, and cannot be passed
+to `/v1/runs`. Saving is authoring durability, not activation.
+
+The existing bearer is only deployment-wide admission; it has no user, tenant,
+workspace, or record-owner subject. Every admitted caller can read and modify
+the whole saved catalog. W1.3 does not claim RBAC or tenant isolation.
+
+This slice intentionally has no delete, restore, purge, metadata mutation,
+import/export, sharing, publish, activation, deployment, scheduling,
+run-from-draft, run-from-saved, DAG, branch, parallel ready set, Agent node,
+subflow, encryption at rest, secure erase, signed provenance, or sandbox. See
+[ADR-0017](ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md). The implementation is a
+locally verified W1.3 candidate; Hosted evidence and promotion remain pending.
 
 ## Run, approve, then explicitly resume
 
@@ -327,6 +444,11 @@ A definition change is a new application identity, even when the author version
 was not changed. Keep the old definition/factory installed while its durable
 runs may still need recovery. Sasori will not silently resume an old run under a
 new definition.
+
+Saved catalog revision is orthogonal. Updating a catalog head appends authoring
+history; it does not install the new definition as an application, migrate an
+old run, or authorize recovery under a new digest. Re-saving the exact current
+definition and manifest is a catalog no-op.
 
 The digest does not authenticate a publisher or hash handler source code. Wheel
 and release provenance are separate concerns.
@@ -481,10 +603,14 @@ call and step identities, nullable-call rules, current-step semantics, and the
 exact core cursor. This validation runs before an extension enters a CLI or HTTP
 response; Workbench validation is an independent fail-closed consumer check.
 
-The app catalog continues to expose Workflow ID/version/digest, serial-only
+The application catalog at `/v1/apps` continues to expose loaded Workflow
+ID/version/digest, serial-only
 flags, wrapper Tool contracts, logical Tool names, and the ordered
 definition-bound step mapping. The bundled Workbench uses `run.workflow` for
-durable rail semantics and the catalog only for immutable definition mapping.
+durable execution-rail semantics. The saved authoring catalog at
+`/v1/workflows` is a different authority and never implies that a Harness is
+loaded. The application catalog supplies immutable executable-definition
+mapping; saved detail supplies authoring snapshots.
 The existing event reducer remains the timeline/cursor authority; event arrival
 triggers a coalesced single-run status refresh with at most one status GET in
 flight and one pending follow-up. Nested and core cursors must match exactly;
@@ -502,6 +628,10 @@ Workflow adds no `workflow.*` events. Existing `run.*`, `model.*`, `tool.*`,
 | Input slots | 128 |
 | Arguments per step | 128 |
 | Canonical definition | 1 MiB |
+| Saved manifest | 4 MiB |
+| Catalog ID | `wfcat_` plus 32 lowercase UUID-v4 hexadecimal digits |
+| Catalog revision | positive signed 64-bit integer |
+| Saved list page | 1-100 heads; stable `catalog_seq` cursor |
 | Canonical typed input | 256 KiB |
 | Public input | 256 KiB |
 | One literal | 128 KiB |
@@ -536,6 +666,14 @@ At minimum, add deterministic checks for:
 - cancellation without downstream dispatch;
 - durable pending-call cross-record validation;
 - child-process exit after dispatch, tool return, and final commit;
+- Catalog ID/definition identity separation, create/update CAS, stale writer,
+  identical no-op, immutable historical reads, and stable pagination;
+- saved definition/manifest/head tamper refusal, current Tool drift without
+  mutation, run/catalog same-path refusal, and second Catalog owner exclusion;
+- catalog crash points before revision insert, after revision insert, after head
+  movement, and immediately after commit;
+- saved authoring leaves run/event/checkpoint/call/action authorities unchanged,
+  and browser conflict/outcome-unknown flows never retry PUT automatically;
 - Python, CLI, HTTP, installed wheel, rebuilt sdist, container restart, and
   browser journeys.
 
@@ -549,6 +687,8 @@ W0  one-Harness ordered Tool proof
 W1  strict static serial authoring and versioned public step projection
 W1.1 static compiled manifest and zero-execution preflight
 W1.2 transient browser draft and authoritative HTTP preflight preview
+W1.3 durable saved static-serial catalog with immutable revisions and CAS;
+     no activation or execution authority
 W2  bounded Workbench step inspection from the public projection;
     existing reducer retained for timeline/cursor
 W3  bounded parallel ready set
@@ -582,3 +722,11 @@ preflight endpoint over the shared compiler and startup-frozen ordinary Tool
 registry, and exact detached-manifest rendering. It adds no persistence or
 execution authority and changes none of the W0-W1.1 runtime, reducer,
 checkpoint, event, effect, or recovery semantics.
+
+The W1.3 implementation candidate adds only the ADR-0017 deployment-owner saved
+authoring database, immutable revisions, strong-ETag CAS, historical reads,
+current-Tool compatibility verdict, and the fail-closed saved Studio layer. It
+does not change any W0-W1.2 execution identity, reducer, run/checkpoint/event,
+approval, effect, or recovery semantics. Its local package/browser/container
+evidence is not Hosted promotion evidence; an exact implementation commit and
+its later documentation-promotion commit must each pass their own Hosted gates.

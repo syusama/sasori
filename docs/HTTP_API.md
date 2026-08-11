@@ -7,6 +7,7 @@ Status: experimental single-node adapter. It is designed for local Workbench and
 ```powershell
 sasori-server --host 127.0.0.1 --port 8080 `
   --db .\runs.sqlite3 `
+  --workflow-db .\workflows.sqlite3 `
   --artifact-root .\artifacts `
   --app incident=sasori_apps.incident:create_harness `
   --app research=sasori_apps.research:create_harness `
@@ -16,7 +17,18 @@ sasori-server --host 127.0.0.1 --port 8080 `
 
 For any non-loopback bind, and normally for loopback too, use `SASORI_SERVER_TOKEN` or `--token-file`. All `/v1/*` requests then require `Authorization: Bearer ...`. Tokens in query strings are not supported. Exact same-origin browser requests are accepted. Cross-origin access is absent by default; each `--cors-origin` is an exact origin, never `*`, and cookies are not used.
 
-The process owns one file-backed `SQLiteStore` and freezes one `app_id → Harness` mapping at startup. Every loaded Harness uses that store and the same Harness implementation. All store access runs on one asyncio owner thread, and one mutation gate covers all applications. Another run/resume/approval/effect request receives `503 runtime_busy` with `Retry-After: 1`; it is not described as queued. GET catalog/history/status/events can run while a model or threaded tool is awaiting.
+The process owns one file-backed run `SQLiteStore`, one independent saved
+Workflow catalog database, and freezes one `app_id -> Harness` mapping at
+startup. `SASORI_WORKFLOW_DB` is equivalent to `--workflow-db`; when omitted,
+`sasori.sqlite3` derives `sasori.workflows.sqlite3`. The two authorities must
+not resolve to the same file. Every loaded Harness uses the run store and the
+same Harness implementation. All access runs on one asyncio owner thread, and
+one mutation gate covers all applications. Saved Workflow catalog operations
+use their own SQLite transaction/CAS boundary and do not acquire that runtime
+gate. Another run/resume/approval/effect request receives `503 runtime_busy`
+with `Retry-After: 1`; it is not described as queued. GET application catalog,
+saved Workflow, history, status, and events can run while a model or threaded
+tool is awaiting.
 
 The process also owns one immutable artifact root. `SASORI_ARTIFACT_ROOT` is
 equivalent to `--artifact-root`; a file-backed database defaults to a sibling
@@ -250,13 +262,217 @@ displayed as server guidance; the Studio never retries a draft automatically.
 Successful and rejected preflight requests do not acquire the runtime mutation
 gate, construct a Harness/Store, call a model/provider/Tool/idempotency hook,
 or create/change any run, call, message, event, checkpoint, approval, recovery,
-artifact, catalog, or execution identity. There is no save, activate, deploy,
-schedule, or run-from-draft operation. The bundled Studio keeps only transient
-page text; reload discards it. This bounded endpoint is Hosted-verified at
+artifact, catalog, or execution identity. This endpoint itself has no save,
+activate, deploy, schedule, or run-from-draft operation. The W1.2 Studio kept
+only transient page text; W1.3 saving uses the separate conditional catalog API
+below. This bounded preflight endpoint is Hosted-verified at
 [`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
 in [run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
 See [ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md) for its exact
 acceptance evidence and non-goals.
+
+### Durable saved Workflow catalog (W1.3 local candidate)
+
+W1.3 adds a deployment-owner authoring catalog outside core. It persists strict
+static serial Workflow definitions and the detached manifest accepted at save
+time. It does not activate, publish, compile, schedule, or execute them. Saved
+records do not enter `/v1/apps`, and `/v1/runs` still accepts only an
+application explicitly configured by the deployer.
+
+Four identities remain separate:
+
+| Field | Authority |
+|---|---|
+| `catalog_id` | client-generated persistence identity: `wfcat_` plus the 32 lowercase hexadecimal digits of an RFC 4122 version-4 UUID |
+| `catalog_revision` | server-managed positive immutable revision and CAS generation |
+| `definition.workflow_id` / `definition.version` | author-controlled logical identity and version inside the strict definition |
+| `definition_sha256` | canonical definition content digest |
+
+The catalog uses a mutable head plus append-only revision snapshots in its own
+SQLite file. Definition and manifest bytes are canonical UTF-8 JSON. Reads
+verify their digests and the head/revision relationship; corruption fails
+closed. File locking, `synchronous=FULL`, WAL, and atomic transactions establish
+single-machine crash recovery, not distributed consensus or tamper-proof
+provenance. Literal bindings are stored in plaintext as part of the definition.
+
+Startup validates the exact version-1 table, constraint, immutable-trigger, and
+composite-foreign-key contract, requires `PRAGMA foreign_keys=1`, and rejects a
+non-empty `PRAGMA foreign_key_check`. Current detail, historical detail, and
+list use the same head validator. It verifies the current snapshot binding and
+a contiguous revision chain from 1 through the head. Stored scalar violations
+are catalog integrity failures; malformed caller paths, queries, preconditions,
+and bodies remain ordinary request errors.
+
+#### `GET /v1/workflows?limit=<1..100>&before=<catalog_seq>`
+
+Returns stable descending head summaries. `limit` defaults to `50`; use the
+returned `next_before` value for the next page. List items deliberately omit
+the full definition and manifest:
+
+```json
+{
+  "ok": true,
+  "schema_version": 1,
+  "items": [
+    {
+      "catalog_id": "wfcat_1234567812344abc8def1234567890ab",
+      "catalog_revision": 2,
+      "workflow_id": "studio-inspect-incident",
+      "definition_version": "2",
+      "definition_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "next_before": null
+}
+```
+
+Unknown, repeated, empty, non-integer, or out-of-range query values return
+`422 invalid_request` without accessing a record.
+The server validates the extra `limit + 1` sentinel before returning a non-null
+cursor. The Workbench follows only a positive descending `next_before`, loads
+older pages on explicit request, and deduplicates identities across pages.
+
+#### `GET /v1/workflows/{catalog_id}`
+
+Returns the current head. Add one positive integer `revision` query to read an
+exact immutable historical snapshot:
+
+```http
+GET /v1/workflows/wfcat_1234567812344abc8def1234567890ab?revision=1
+```
+
+The exact response envelope is:
+
+```json
+{
+  "ok": true,
+  "schema_version": 1,
+  "record": {
+    "catalog_id": "wfcat_1234567812344abc8def1234567890ab",
+    "catalog_revision": 1,
+    "parent_revision": null,
+    "definition_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "definition": {},
+    "saved_manifest": {},
+    "head_revision": 2,
+    "is_head": false,
+    "current_contract": {
+      "status": "compatible",
+      "reason_code": null
+    }
+  }
+}
+```
+
+`saved_manifest` is immutable save-time evidence. `current_contract` is a
+zero-execution read-time comparison against the current process's
+startup-frozen Tool registry. Its status is `compatible` or `incompatible`;
+the bounded incompatible reason is `tool_contract_mismatch` or
+`manifest_rejected`. Tool drift never rewrites the saved definition, manifest,
+revision, or run authority. Detail responses include the exact strong `ETag`
+for the returned revision and `Cache-Control: private, no-store`.
+
+#### `PUT /v1/workflows/{catalog_id}`
+
+The body is the complete strict Workflow definition itself. There is no outer
+wrapper and the client cannot supply a digest, manifest, revision, owner, or
+activation state.
+
+Create requires exactly:
+
+```http
+PUT /v1/workflows/wfcat_1234567812344abc8def1234567890ab
+If-None-Match: *
+Content-Type: application/json
+
+<exact Workflow definition>
+```
+
+A successful create returns `201`, the detail envelope, `Location`, and a
+strong ETag:
+
+```text
+"sasori-wfcat-1234567812344abc8def1234567890ab-r1-<definition_sha256>"
+```
+
+Update uses the same route and body with exactly one current strong
+`If-Match`. The ETag binds catalog identity, revision, and definition digest.
+CAS is checked inside the transaction that inserts the immutable snapshot and
+moves the head. Two writers with the same ETag can therefore create at most one
+new revision. A stale writer returns `412`, even when its submitted definition
+happens to equal the current head. A current writer submitting the exact same
+canonical definition and manifest receives `200` with the unchanged revision
+and ETag; no false history entry is appended.
+
+Create/update runs the same strict JSON codec and startup-frozen Tool preflight
+as the read-only endpoint before mutation. It does not call a model, Tool,
+wrapper, idempotency hook, network, subprocess, or runtime run/checkpoint/event/
+approval/effect/artifact authority. Successful saving is authoring evidence,
+not permission to execute trusted Python.
+
+Conditional headers are fail closed. Missing create/update preconditions return
+`428 workflow_catalog_precondition_required`. Repeated, weak, list-valued,
+malformed, mutually exclusive, non-star create, or wildcard update conditions
+return `422 invalid_request`. Other stable catalog errors are:
+
+| HTTP | Code | Meaning |
+|---|---|---|
+| `404` | `workflow_catalog_not_found` | catalog identity or requested revision does not exist |
+| `412` | `workflow_catalog_revision_mismatch` | create/update condition does not match durable state |
+| `422` | `workflow_preflight_rejected` | strict definition or current Tool contract was rejected |
+| `503` | `workflow_catalog_integrity_failed` | stored bytes or head/revision relationship failed validation |
+| `503` | `workflow_catalog_store_unavailable` | bounded catalog storage/configuration failure |
+| `504` | `workflow_catalog_outcome_unknown` | a conditional PUT was submitted but no authoritative mutation result was obtained; reconcile by GET and never automatically repeat PUT |
+
+Authentication and exact-Origin checks occur before body read, JSON parsing,
+preflight, or catalog access. The bearer has no user/tenant subject, so this is
+one deployment-wide catalog, not row-level ownership, RBAC, or multi-tenant
+isolation.
+
+After the owner accepts a saved-Workflow PUT, an owner wait timeout has this
+exact public response:
+
+```http
+HTTP/1.1 504 Gateway Timeout
+Cache-Control: private, no-store
+Content-Type: application/json; charset=utf-8
+```
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "workflow_catalog_outcome_unknown",
+    "message": "saved Workflow mutation outcome is unknown; reconcile with a read-only GET",
+    "retryable": false,
+    "catalog_id": "wfcat_1234567812344abc8def1234567890ab"
+  }
+}
+```
+
+The response has no `Retry-After`, `ETag`, or `Location`, and does not claim
+that SQLite committed or rolled back. It is distinct from preflight/admission
+`503 runtime_busy`, which remains retryable and may carry `Retry-After: 1`
+because no ambiguous catalog mutation is being repeated.
+
+A client timeout, disconnect, abort, shutdown, non-JSON response, or malformed
+success is also treated locally as `OUTCOME UNKNOWN`. The client may issue one
+read-only GET for the already-known `catalog_id` but never automatically repeats
+PUT. A 200 whose canonical definition matches proves that the desired definition
+is now the durable head, not that this exact HTTP request committed. A differing
+head is a conflict. Exact not-found after a create establishes current absence;
+any later create remains an explicit operator action. GET transport, malformed,
+storage, or integrity failure leaves the outcome unresolved. Exact `412` is a
+separate authoritative conflict: preserve the local draft, read the current
+head, and require an explicit choice rather than automatic merge or overwrite.
+
+W1.3 does not provide delete, restore, purge, metadata mutation, import/export,
+sharing, activation, run-from-saved, DAG/parallel execution, Agent nodes,
+subflows, encryption at rest, secure erase, signed provenance, or sandboxing.
+See [ADR-0017](ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md). This implementation
+candidate has local deterministic, real-Chrome, installed-container, restart,
+CAS, crash-point, and no-execution evidence; it is not Hosted-verified or
+released until the exact implementation commit passes the public gates.
 
 ### `GET /v1/runs`
 
@@ -415,6 +631,26 @@ mutation response from replacing the currently selected view. Aborting that
 view cancels local waiting only; it is not a claim that an already accepted
 server operation stopped. See [ADR-0008](ADR-0008-WORKBENCH-EVENT-REDUCER.md).
 
+The immutable `workflow-studio.0.2.0.css`/`.js` layer adds the W1.3 saved
+authoring rail without changing that run reducer. Browser state keeps selected
+`catalog_id`, loaded strong ETag, edit epoch, selection epoch, captured draft,
+request identity, and recovery context per `catalog_id`. Selection epochs decide
+whether a result may render; switching records does not delete another record's
+recovery context. Late PUT success, late outcome-unknown reconciliation, and
+late detail GET can update only their original record's rail/recovery state,
+never the newly selected editor, ETag, label, or draft. Exact `412` becomes
+`CONFLICT` and preserves the local draft; the operator must explicitly adopt
+the refreshed server head. Exact 504, transport, or malformed-success ambiguity
+becomes `OUTCOME UNKNOWN`; only a read-only GET of the already-known identity is
+automatic, never another PUT.
+
+List pagination uses the stable descending cursor and cross-page identity
+deduplication. Before a detail is loaded, the browser recomputes SHA-256 over
+the canonical definition bytes and binds the result to the manifest, record
+digest, and exact strong ETag. The browser uses no `localStorage` or IndexedDB
+authority, and the saved rail exposes no Run, Activate, Publish, Deploy, or
+Schedule action.
+
 Tool/provider text is untrusted and rendered as text, never executable HTML.
 Artifact cards come only from the run-scoped artifact endpoint. UTF-8 text/JSON
 preview uses authenticated fetch and `textContent`; downloads use a short-lived
@@ -425,14 +661,22 @@ lacks.
 ### Health
 
 - `GET /healthz`: HTTP process is alive.
-- `GET /readyz`: the owner loop, app factory, database, and exclusive owner lock are ready.
+- `GET /readyz`: the owner loop, app factories, run database, Workflow catalog
+  database, and both exclusive owner locks are ready.
 
 Runtime busy does not make readiness fail. Health/readiness are not proof that a real Agent workflow passed.
 
 ## Request and deployment boundary
 
-- JSON POST bodies require `Content-Length`, UTF-8 `application/json`, unique object keys, finite numbers, and at most 1 MiB. Chunked and unsupported bodies fail closed.
+- JSON POST/PUT bodies require `Content-Length`, UTF-8 `application/json`,
+  unique object keys, finite numbers, and at most 1 MiB. Chunked and unsupported
+  bodies fail closed. Saved Workflow PUT also requires one exact non-repeated
+  `If-None-Match` or `If-Match` condition as described above.
 - Access logging is suppressed so bearer tokens, prompts, tool arguments, and manual results do not enter ordinary logs.
 - A request disconnect does not mean user cancellation; there is no public cancel endpoint in this slice.
 - The server does not implement TLS, accounts, tenants, cookies, uploads, rate-limit policy, general background jobs, multiple workers, replicas, leases, failover, artifact deletion/GC, or network-filesystem guarantees. The opt-in final-artifact host policy performs only deterministic idempotent startup reconciliation for its own output.
-- Use one process and one local database. CLI operations against a running server's database correctly fail the owner lock; operational clients should use HTTP.
+- Use one process with separate local run and Workflow-catalog databases. CLI
+  or second-server operations against either running file correctly fail its
+  owner lock; operational clients should use HTTP. The deployment bearer is a
+  deployment-wide admission credential, not a user/tenant subject, so every
+  admitted caller can read and modify the saved authoring catalog.

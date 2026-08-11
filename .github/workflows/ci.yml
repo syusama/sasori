@@ -119,6 +119,10 @@ jobs:
               "CONTAINER_EVIDENCE_FILE": root / f"sasori-container-evidence-{suffix}.json",
               "WORKFLOW_EVIDENCE_FILE": root / f"sasori-workflow-evidence-{suffix}.json",
               "WORKFLOW_RESTARTED_FILE": root / f"sasori-workflow-restarted-{suffix}.json",
+              "SAVED_WORKFLOW_EVIDENCE_FILE": root / f"sasori-saved-workflow-evidence-{suffix}.json",
+              "SAVED_WORKFLOW_RESTARTED_FILE": root / f"sasori-saved-workflow-restarted-{suffix}.json",
+              "SAVED_WORKFLOW_ACTION_BEFORE_FILE": root / f"sasori-saved-workflow-action-before-{suffix}.json",
+              "SAVED_WORKFLOW_ACTION_AFTER_FILE": root / f"sasori-saved-workflow-action-after-{suffix}.json",
               "MEMORY_PREPARED_FILE": root / f"sasori-memory-prepared-{suffix}.json",
               "MEMORY_RESTARTED_FILE": root / f"sasori-memory-restarted-{suffix}.json",
               "ARTIFACT_TAMPER_FILE": root / f"sasori-artifact-tamper-{suffix}.json",
@@ -349,6 +353,18 @@ jobs:
 
           action_snapshot 1 0 "$WORKFLOW_ACTION_BEFORE_FILE"
 
+          action_snapshot 1 0 "$SAVED_WORKFLOW_ACTION_BEFORE_FILE"
+          python scripts/container_saved_workflow_acceptance.py prepare \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$SAVED_WORKFLOW_EVIDENCE_FILE"
+          action_snapshot 1 0 "$SAVED_WORKFLOW_ACTION_AFTER_FILE"
+          if ! cmp -s \
+            "$SAVED_WORKFLOW_ACTION_BEFORE_FILE" "$SAVED_WORKFLOW_ACTION_AFTER_FILE"; then
+            echo "::error::saved Workflow Catalog changed the action log"
+            exit 1
+          fi
+
           python scripts/container_workflow_acceptance.py preflight \
             --base-url "$SASORI_BASE_URL" \
             --token-file "$SASORI_TOKEN_FILE" \
@@ -402,6 +418,12 @@ jobs:
             --evidence "$WORKFLOW_EVIDENCE_FILE" \
             > "$WORKFLOW_RESTARTED_FILE"
 
+          python scripts/container_saved_workflow_acceptance.py after-restart \
+            --base-url "$SASORI_BASE_URL" \
+            --token-file "$SASORI_TOKEN_FILE" \
+            --evidence "$SAVED_WORKFLOW_EVIDENCE_FILE" \
+            > "$SAVED_WORKFLOW_RESTARTED_FILE"
+
           docker compose -p "$COMPOSE_PROJECT_NAME" exec -T sasori \
             python - after-restart \
             < scripts/container_memory_acceptance.py \
@@ -448,16 +470,31 @@ jobs:
             > "$OWNER_LOG_FILE" 2>&1 <<'PY'
           import sys
           from sasori import ConcurrentRunError, SQLiteStore
+          from sasori_flow import (
+              WorkflowCatalogConfigurationError,
+              WorkflowCatalogStore,
+          )
 
+          run_blocked = False
           try:
               store = SQLiteStore("/data/sasori.sqlite3")
           except ConcurrentRunError:
               print("ConcurrentRunError", file=sys.stderr)
-              raise SystemExit(2)
+              run_blocked = True
           else:
               store.close()
-              print("second owner unexpectedly acquired the database", file=sys.stderr)
-              raise SystemExit(97)
+          workflow_blocked = False
+          try:
+              workflows = WorkflowCatalogStore("/data/sasori.workflows.sqlite3")
+          except WorkflowCatalogConfigurationError:
+              print("WorkflowCatalogConfigurationError", file=sys.stderr)
+              workflow_blocked = True
+          else:
+              workflows.close()
+          if run_blocked and workflow_blocked:
+              raise SystemExit(2)
+          print("second owner unexpectedly acquired a database", file=sys.stderr)
+          raise SystemExit(97)
           PY
           owner_status=$?
           set -e
@@ -467,6 +504,10 @@ jobs:
           fi
           if ! grep -Fxq -- "ConcurrentRunError" "$OWNER_LOG_FILE"; then
             echo "::error::second database owner did not prove ConcurrentRunError"
+            exit 1
+          fi
+          if ! grep -Fxq -- "WorkflowCatalogConfigurationError" "$OWNER_LOG_FILE"; then
+            echo "::error::second Workflow catalog owner was not rejected"
             exit 1
           fi
 
@@ -599,6 +640,10 @@ jobs:
           evidence_file="${CONTAINER_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-container-evidence-$suffix.json}"
           workflow_evidence="${WORKFLOW_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-workflow-evidence-$suffix.json}"
           workflow_restarted="${WORKFLOW_RESTARTED_FILE:-$RUNNER_TEMP/sasori-workflow-restarted-$suffix.json}"
+          saved_workflow_evidence="${SAVED_WORKFLOW_EVIDENCE_FILE:-$RUNNER_TEMP/sasori-saved-workflow-evidence-$suffix.json}"
+          saved_workflow_restarted="${SAVED_WORKFLOW_RESTARTED_FILE:-$RUNNER_TEMP/sasori-saved-workflow-restarted-$suffix.json}"
+          saved_workflow_before="${SAVED_WORKFLOW_ACTION_BEFORE_FILE:-$RUNNER_TEMP/sasori-saved-workflow-action-before-$suffix.json}"
+          saved_workflow_after="${SAVED_WORKFLOW_ACTION_AFTER_FILE:-$RUNNER_TEMP/sasori-saved-workflow-action-after-$suffix.json}"
           memory_prepared="${MEMORY_PREPARED_FILE:-$RUNNER_TEMP/sasori-memory-prepared-$suffix.json}"
           memory_restarted="${MEMORY_RESTARTED_FILE:-$RUNNER_TEMP/sasori-memory-restarted-$suffix.json}"
           tamper_file="${ARTIFACT_TAMPER_FILE:-$RUNNER_TEMP/sasori-artifact-tamper-$suffix.json}"
@@ -640,6 +685,10 @@ jobs:
                 "acceptance evidence:$evidence_file" \
                 "Workflow completed evidence:$workflow_evidence" \
                 "Workflow restarted evidence:$workflow_restarted" \
+                "saved Workflow evidence:$saved_workflow_evidence" \
+                "saved Workflow restarted evidence:$saved_workflow_restarted" \
+                "saved Workflow before action evidence:$saved_workflow_before" \
+                "saved Workflow after action evidence:$saved_workflow_after" \
                 "Memory prepared evidence:$memory_prepared" \
                 "Memory restarted evidence:$memory_restarted" \
                 "artifact tamper evidence:$tamper_file" \
@@ -677,6 +726,10 @@ jobs:
               "acceptance:$evidence_file" \
               "workflow-completed:$workflow_evidence" \
               "workflow-restarted:$workflow_restarted" \
+              "saved-workflow:$saved_workflow_evidence" \
+              "saved-workflow-restarted:$saved_workflow_restarted" \
+              "saved-workflow-action-before:$saved_workflow_before" \
+              "saved-workflow-action-after:$saved_workflow_after" \
               "memory-prepared:$memory_prepared" \
               "memory-restarted:$memory_restarted" \
               "artifact-tamper:$tamper_file" \
@@ -742,6 +795,10 @@ jobs:
             ${{ runner.temp }}/sasori-container-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-workflow-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-workflow-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-saved-workflow-evidence-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-saved-workflow-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-saved-workflow-action-before-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/sasori-saved-workflow-action-after-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-memory-prepared-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-memory-restarted-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/sasori-artifact-tamper-${{ github.run_id }}-${{ github.run_attempt }}.json
@@ -854,6 +911,10 @@ jobs:
           print(build_sdist(chr(47)+chr(111)+chr(117)+chr(116)))
           PY
             '
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python scripts/repack_wheel.py --wheel "${wheels[0]}"
 
       - name: Verify unversioned artifacts are not release eligible
         if: ${{ github.ref_type != 'tag' }}
@@ -1083,6 +1144,7 @@ jobs:
             --build-lock requirements-build.txt `
             --build-wheelhouse $wheelhouseRoot `
             --consumer-check scripts/installed_wheel_smoke.py `
+            --wheel-repacker scripts/repack_wheel.py `
             --release-verifier scripts/release_verify.py `
             --source-root .
           if ($LASTEXITCODE -ne 0) { throw "source archive consumer smoke failed" }

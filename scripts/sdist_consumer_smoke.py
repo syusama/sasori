@@ -81,6 +81,7 @@ def run_smoke(
     build_lock_path: Path,
     build_wheelhouse_path: Path,
     consumer_check_path: Path,
+    wheel_repacker_path: Path,
     release_verifier_path: Path,
     source_root_path: Path,
 ) -> dict[str, str | int]:
@@ -88,6 +89,7 @@ def run_smoke(
     build_lock = _regular_file(build_lock_path, "build lock")
     build_wheelhouse, build_wheel = _single_build_wheel(build_wheelhouse_path)
     consumer_check = _regular_file(consumer_check_path, "consumer check")
+    wheel_repacker = _regular_file(wheel_repacker_path, "wheel repacker")
     release_verifier = _regular_file(release_verifier_path, "release verifier")
     if source_root_path.is_symlink():
         raise RuntimeError("source root must not be a symlink")
@@ -158,6 +160,11 @@ def run_smoke(
             environment=environment,
         )
         wheel = _single_wheel(wheel_root)
+        _run(
+            [sys.executable, wheel_repacker, "--wheel", wheel],
+            cwd=root,
+            environment=environment,
+        )
         verifier_code = _run(
             [
                 sys.executable,
@@ -212,6 +219,7 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--build-lock", required=True, type=Path)
     parser.add_argument("--build-wheelhouse", required=True, type=Path)
     parser.add_argument("--consumer-check", required=True, type=Path)
+    parser.add_argument("--wheel-repacker", required=True, type=Path)
     parser.add_argument("--release-verifier", required=True, type=Path)
     parser.add_argument("--source-root", required=True, type=Path)
     options = parser.parse_args(arguments)
@@ -220,6 +228,7 @@ def main(arguments: list[str] | None = None) -> int:
         options.build_lock,
         options.build_wheelhouse,
         options.consumer_check,
+        options.wheel_repacker,
         options.release_verifier,
         options.source_root,
     )

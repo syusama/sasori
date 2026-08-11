@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .contracts import Event, Message, ModelReply, ToolCall
+from ._sqlite_lock import acquire_process_lock, release_process_lock
 
 
 class StoreError(Exception):
@@ -48,6 +48,19 @@ class ArtifactRegistrationConflict(StoreError):
 
 class ArtifactLimitExceeded(StoreError):
     pass
+
+
+def _acquire_process_lock(path: str):
+    try:
+        return acquire_process_lock(path)
+    except (OSError, BlockingIOError) as exc:
+        raise ConcurrentRunError(
+            "SQLiteStore allows one file-backed owner process"
+        ) from exc
+
+
+def _release_process_lock(stream) -> None:
+    release_process_lock(stream)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,45 +110,6 @@ class StoredArtifact:
     declared_media_type: str | None
     detected_media_type: str
     created_seq: int
-
-
-def _acquire_process_lock(path: str):
-    stream = open(path + ".lock", "a+b")
-    try:
-        stream.seek(0, os.SEEK_END)
-        if stream.tell() == 0:
-            stream.write(b"\0")
-            stream.flush()
-        stream.seek(0)
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return stream
-    except (OSError, BlockingIOError) as exc:
-        stream.close()
-        raise ConcurrentRunError(
-            "SQLiteStore allows one file-backed owner process"
-        ) from exc
-
-
-def _release_process_lock(stream) -> None:
-    try:
-        stream.seek(0)
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
-    finally:
-        stream.close()
 
 
 def _plain(value: object) -> object:
