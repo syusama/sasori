@@ -45,7 +45,7 @@ Runtime：Python、CLI、HTTP 与 Workbench 全部驱动同一条单 Agent Loop�
 | 真实副作用如何控制 | 工具必须声明 `read_only`、`idempotent` 或 `side_effecting`；非只读动作需要 revision 与人工决定 |
 | 崩溃后结果不确定怎么办 | 调用前先持久化 dispatch intent；歧义结果停在 `effect_unknown`，等待人工核验恢复 |
 | 多入口会不会各写一套逻辑 | Python、CLI、HTTP、应用与 Workbench 都汇入 `Harness.run()` / `resume()` |
-| 静态 Workflow 会不会另起炉灶 | strict data/JSON 与小型 Python builder 生成同一个 immutable serial `WorkflowSpec`；zero-execution preflight 输出有界 detached manifest；瞬态 Studio 只检查草稿、不保存也不运行；Python、CLI、HTTP 与 Workbench 仍共享同一 Runtime 和公共 run projection |
+| 静态 Workflow 会不会另起炉灶 | strict data/JSON 与小型 Python builder 生成同一个 immutable serial `WorkflowSpec`；zero-execution preflight 输出有界 detached manifest；Studio 可通过 strong-ETag CAS 耐久保存 immutable revision，但不会激活或运行它；Python、CLI、HTTP 与 Workbench 仍共享同一 Runtime 和公共 run projection |
 | 上下文快装不下时 | 默认做确定性结构投影；可选具名 compactor 选择冷历史时不拆散 tool call/result 原子，完整耐久 transcript 始终不改写 |
 | Memory 如何避免玄学 | 可选 `sasori_memory` 用独立 SQLite 保存 immutable revisions，完整 fixed scope 在排序前过滤，每次 mutation 都走 Harness approval/idempotency |
 | 交付物如何耐久化 | 可选 `sasori_artifacts` 把 immutable bytes、metadata 与公共事件绑定到精确 run，不扩张 Loop |
@@ -314,8 +314,8 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 - live/cold/reconnect 共用 pure reducer 的时间轴；
 - 从版本化 server projection 消费耐久串行 Workflow rail；event reducer 只负责
   timeline/cursor，不再推导 Workflow 耐久状态；
-- 瞬态 strict-JSON Workflow Studio 只向服务器请求权威 detached preflight
-  manifest，不保存或运行草稿；
+- strict-JSON Workflow Studio 向服务器请求权威 detached preflight manifest，
+  通过 strong-ETag CAS 保存 immutable revision，但不会激活或运行 saved definition；
 - 精确 run-scoped artifact cards、认证 UTF-8 text/JSON preview、verified download
   与 stale-response 隔离；
 - skill、tool effect、plugin identity 与宿主权限披露；
@@ -331,9 +331,9 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 | `sasori_context` | 确定性结构投影；可选具名 semantic compactor；source lineage、有界输出/cache/诊断、显式失败 |
 | `sasori_memory` | 可选 fixed-scope SQLite 权威库；immutable revision/CAS、source lineage、有界 lexical recall、suppression、atomic rebuild、Harness-gated tools |
 | `sasori_artifacts` | immutable content-addressed blobs、run/event association、verified list/content/HEAD/Range |
-| `sasori_flow` | 定义绑定的串行 W0 执行；strict data/JSON/builder authoring；zero-execution compiled manifest preflight；版本化脱敏 Workflow projection；无 DAG/并行/Agent node |
+| `sasori_flow` | 定义绑定的串行 W0 执行；strict data/JSON/builder authoring；zero-execution compiled manifest preflight；deployment-owner saved catalog、immutable revision 与 strong-ETag CAS；版本化脱敏 Workflow projection；无 activation/DAG/并行/Agent node |
 | CLI | run/status/events/approval/resume/effect；JSON/JSONL 模式 |
-| HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、只读 Workflow preflight、readiness、Workbench |
+| HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、只读 Workflow preflight、条件式 saved-Workflow catalog、readiness、Workbench |
 | Applications | 确定性 Incident；需配置的 Research 与 Developer；定义绑定的 Incident Mechanism Workflow |
 | Plugins | workspace、allowlisted HTTPS、SQLite/FTS5 RAG、Git、冻结 MCP stdio；配置后注册第一方 Memory |
 | Catalog | 严格本地 curated index；中央 marketplace 尚未上线 |
@@ -349,7 +349,8 @@ delete、retention/GC 保证、分享 grant 或 active-content preview。详见
 - **Incident Mechanism**：定义绑定、串行 `inspect → record` 的 Tool Workflow；
   复用同一套 approval、effect、recovery 与事件路径，暴露有界公共步骤投影，
   并可在不执行定义的前提下预览 immutable compiled manifest。Studio 可依据
-  启动时冻结的宿主 Tools 预检瞬态草稿，但不能保存、激活、部署或运行它。
+  启动时冻结的宿主 Tools 预检草稿，并条件式保存 immutable revision 到
+  deployment-owner catalog，但不能激活、部署、调度或运行它。
 
 配置不足会显示 unavailable，不会偷偷用 Incident Demo 冒充成功。
 
@@ -390,6 +391,9 @@ Sasori 不把它们冒充沙箱。
 - [ADR-0007：External plugin host](docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md)
 - [ADR-0013：Typed Workflow boundary](docs/ADR-0013-TYPED-WORKFLOW-BOUNDARY.md)
 - [ADR-0014：Static serial authoring 与公共 projection](docs/ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md)
+- [ADR-0015：Static compiled manifest preflight](docs/ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md)
+- [ADR-0016：Static serial Workflow Studio](docs/ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md)
+- [ADR-0017：Durable saved Workflow catalog](docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md)
 
 ## CLI 与本地服务
 
@@ -447,36 +451,42 @@ python tests/workbench_browser_journey.py --require-browser `
 ```
 
 最新已托管验证的实现基线
-[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
-在 [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342)
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+在 [Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213)
 中成功完成：五个 job families 的 20 个非 tag jobs 全部通过；仅用于 exact tag 的
 release-bundle job 按设计跳过。实际执行的门禁包括：
 
-- 414 项确定性 source suite 通过 Ubuntu + Windows × Python 3.11 / 3.12 /
+- 471 项确定性 source suite 通过 Ubuntu + Windows × Python 3.11 / 3.12 /
   3.13 matrix；本地 Windows 基线为 `OK (skipped=5)`，仅跳过有明确说明的
   平台/权限条件；
-- installed wheel 与 rebuilt sdist matrix；
-- package 验证确认 wheel 为 252,158 bytes、低于 256,000-byte 上限，使用
-  verifier v11 / source-tree algorithm v8，并拒绝普通 push 冒充 exact tag；
-- locked 国内源 no-cache image build，以及真实 Compose Incident 与 Workflow
-  `preflight → prepare → complete → after-restart` 四阶段，证明预检不创建 run、
-  不执行副作用，重启不重放 action；
+- 六种 OS/Python 组合上的 original installed-wheel 与 rebuilt-sdist consumer
+  matrix，以及严格 256,000-byte wheel 上限和 ordinary-push tag 拒绝；
+- locked 国内源 image build 与 fresh-volume Compose 真实旅程，覆盖 Incident、
+  executable Workflow、Memory、artifact 与 saved Workflow catalog；create、精确
+  CAS update、stale-writer refusal、historical read、restart 全程不改变
+  run/event/action authority；
 - SBOM、image binding 与审计证据上传；
 - real Chrome fixture 在 desktop 与 390×844 reduced-motion 两种尺寸通过
-  21 个 cases，并在 Ubuntu/Python 3.12 跑通真实 Studio preflight、Incident
-  与 Typed Workflow 旅程。
+  29 个 cases，并在 Ubuntu/Python 3.12 跑通真实 saved Studio、Incident 与
+  Typed Workflow 旅程，包含浏览器端 canonical SHA-256 binding 和 fail-closed
+  per-record recovery。
 
-该 main branch run **没有**创建 tag、签名 attestation 或最终 release bundle。
+该 ordinary main branch run **没有**创建 tag、TestPyPI/PyPI publication、
+exact-tag bundle、签名 attestation、GitHub Release、registry image 或正式 release。
 Exact-tag provenance 仍是单独的发布门禁。
 
-该 run 正式晋级 W1.2：在既有核心外、定义绑定、串行 W0 runtime 外，
-交付 strict static data/JSON/builder authoring、有界 detached compiled manifest、
-瞬态 strict-JSON Studio 与权威 HTTP preflight、immutable 定义预览，以及
-core-owned、版本化、脱敏的公共 Workflow projection。它**不是** saved Workflow
-catalog 或耐久 authoring、activation/run-from-draft、visual DAG、并行/分支
-执行器、Agent-node 图、subflow 系统、分布式 scheduler、exactly-once runtime、
-sandbox、签名 provenance、production readiness 或真实 provider 质量证据；
-这些门禁仍然开放。
+该 run 正式晋级 Workflow W1.3。在 W0-W1.2 之上，Sasori 现在拥有独立的
+deployment-owner saved-authoring catalog：immutable revisions、由精确 strong ETag
+CAS 保护的 mutable head、稳定分页、精确 historical read，以及 zero-execution 的
+current-Tool compatibility verdict。Workbench 对打开的 definition 做 canonical
+SHA-256 binding，按 Catalog ID 隔离 recovery，冲突时保留草稿；歧义 mutation
+固定返回不可自动重试的 `504 workflow_catalog_outcome_unknown`，只允许一次只读
+GET reconciliation，绝不自动重复 PUT。
+
+这**不是** activation、run-from-draft/run-from-saved、delete/restore/purge、metadata
+editing、sharing、tenant ownership/RBAC、visual DAG、并行/分支执行、Agent node、
+subflow、distributed scheduler、exactly-once、sandbox、签名 provenance、
+production readiness 或真实 provider 质量证据；这些门禁仍然开放。
 
 ## Current / Next
 
@@ -487,7 +497,7 @@ sandbox、签名 provenance、production readiness 或真实 provider 质量证�
 | 单 Agent Loop 与一个 Runtime path | multi-user Memory 所需的可信 per-request user/tenant identity |
 | 本地 single-owner durable bounded Memory | 自动低信任 extraction、conflict policy、embedding/rerank、TTL/export/restore |
 | 版本化耐久事件与纯 UI reducer | 动态 skill selection 与受审市场 |
-| approval/effect 恢复 + strict static 串行 authoring、瞬态 Studio preflight、immutable manifest 预览与公共步骤投影 | saved Workflow catalog 与耐久 authoring，再分别门禁 activation/run-from-draft、DAG/分支/并行 ready set/Agent node/subflow |
+| approval/effect 恢复 + strict static 串行 authoring、权威 Studio preflight、immutable manifest 预览、deployment-owner saved catalog 的 immutable revision/strong-ETag CAS/history，以及公共步骤投影 | 分别门禁 activation/run-from-draft/run-from-saved、delete/restore/metadata、tenant ownership/RBAC、DAG/分支/并行 ready set/Agent node/subflow |
 | OpenAI + Anthropic conformance | 通过共享套件后的更多 providers |
 | 结构投影 + 可选整包请求绑定、未经事实验证的语义注记 | Project Charter/Board 与多 Agent orchestration |
 | CLI、HTTP/SSE、四种应用、Workbench | 安全 versioned GenUI 与更丰富产品面 |

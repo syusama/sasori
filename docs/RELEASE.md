@@ -143,7 +143,7 @@ release-candidate job was skipped. It therefore produced no exact-tag bundle,
 GitHub-hosted signed attestation or trusted provenance, GitHub Release, PyPI
 publication, or published container image.
 
-The W1.3 implementation candidate changes the verifier inventory because
+The Hosted-verified W1.3 implementation revision changes the verifier inventory because
 ADR-0017 becomes an explicit release/source-tree input. Its local verifier is
 therefore `sasori-release-verify` v12 with `sasori-source-tree-v9`; the strict
 wheel threshold remains unchanged. After the normal locked build,
@@ -166,12 +166,17 @@ Catalog smoke. The exact-current-code mainland-source container fresh-volume
 journey, 471-test suite with five skips, 29-case Chrome fixture, and three real
 browser journeys also passed locally.
 
-This is not W1.3 Hosted artifact evidence. The exact implementation commit must
-still pass the Linux/Windows Python 3.11/3.12/3.13 source, original-wheel, and
-rebuilt-sdist matrices plus browser and mainland-source container jobs. Do not
-reuse the W1.2 run URL for W1.3, and do not raise the wheel limit. These local
-figures are not an exact-tag bundle, TestPyPI/PyPI upload/download/install,
-attestation, publication, or release claim.
+Those byte counts remain local measurements and are not substituted for Hosted
+artifact metadata. The exact W1.3 implementation is bound to
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+and [Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213).
+All 20 non-tag jobs passed, including the Linux/Windows Python 3.11/3.12/3.13
+source, original-wheel, rebuilt-sdist, package, browser, and mainland-source
+container/restart gates. The exact-tag-only job was skipped. Do not raise the
+wheel limit: that ordinary `main` run and the local figures are not a tag,
+TestPyPI/PyPI upload/download/install round trip, exact-tag bundle, signed
+attestation, GitHub Release, published registry image, trusted provenance, or
+formal release claim.
 
 `--trigger-tag` is not inferred from ambient environment state. When supplied,
 it must equal the dynamic project tag exactly and is written into the local

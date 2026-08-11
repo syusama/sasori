@@ -257,7 +257,7 @@ marketplace, sandbox, second reducer/runtime/checkpoint, exactly-once execution,
 or production-readiness claim. See
 [ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md).
 
-## Durable saved static-serial catalog (W1.3 local candidate)
+## Durable saved static-serial catalog (Hosted-verified W1.3)
 
 W1.3 adds durable authoring without adding another execution runtime:
 
@@ -370,7 +370,11 @@ import/export, sharing, publish, activation, deployment, scheduling,
 run-from-draft, run-from-saved, DAG, branch, parallel ready set, Agent node,
 subflow, encryption at rest, secure erase, signed provenance, or sandbox. See
 [ADR-0017](ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md). The implementation is a
-locally verified W1.3 candidate; Hosted evidence and promotion remain pending.
+Hosted-verified W1.3 slice bound to
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+and [run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213).
+That ordinary `main` run skipped the exact-tag-only job and is not a tag,
+TestPyPI/PyPI round trip, signed provenance, or formal release.
 
 ## Run, approve, then explicitly resume
 
@@ -723,10 +727,13 @@ registry, and exact detached-manifest rendering. It adds no persistence or
 execution authority and changes none of the W0-W1.1 runtime, reducer,
 checkpoint, event, effect, or recovery semantics.
 
-The W1.3 implementation candidate adds only the ADR-0017 deployment-owner saved
+The current W1.3 implementation, Hosted-verified at
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+in [run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213),
+adds only the ADR-0017 deployment-owner saved
 authoring database, immutable revisions, strong-ETag CAS, historical reads,
 current-Tool compatibility verdict, and the fail-closed saved Studio layer. It
 does not change any W0-W1.2 execution identity, reducer, run/checkpoint/event,
-approval, effect, or recovery semantics. Its local package/browser/container
-evidence is not Hosted promotion evidence; an exact implementation commit and
-its later documentation-promotion commit must each pass their own Hosted gates.
+approval, effect, or recovery semantics. The exact implementation revision has
+passed its Hosted gate; its later documentation-promotion commit must pass its
+own Hosted non-tag gate before any exact tag is created.

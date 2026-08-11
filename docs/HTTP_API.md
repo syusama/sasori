@@ -271,7 +271,7 @@ in [run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342)
 See [ADR-0016](ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md) for its exact
 acceptance evidence and non-goals.
 
-### Durable saved Workflow catalog (W1.3 local candidate)
+### Durable saved Workflow catalog (Hosted-verified W1.3)
 
 W1.3 adds a deployment-owner authoring catalog outside core. It persists strict
 static serial Workflow definitions and the detached manifest accepted at save
@@ -470,9 +470,13 @@ W1.3 does not provide delete, restore, purge, metadata mutation, import/export,
 sharing, activation, run-from-saved, DAG/parallel execution, Agent nodes,
 subflows, encryption at rest, secure erase, signed provenance, or sandboxing.
 See [ADR-0017](ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md). This implementation
-candidate has local deterministic, real-Chrome, installed-container, restart,
-CAS, crash-point, and no-execution evidence; it is not Hosted-verified or
-released until the exact implementation commit passes the public gates.
+is bound to
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+and [Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213).
+The exact revision passed deterministic, package, real-Chrome,
+mainland-source-container, restart, CAS, crash-point, and no-execution gates.
+That was an ordinary `main` run whose exact-tag-only job was skipped; it did not
+create a tag, TestPyPI/PyPI round trip, signed provenance, or formal release.
 
 ### `GET /v1/runs`
 

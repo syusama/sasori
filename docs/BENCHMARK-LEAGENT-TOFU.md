@@ -2,15 +2,15 @@
 
 > 研究日期：2026-08-09
 >
-> Sasori W1.2 证据刷新：2026-08-10
+> Sasori W1.3 证据刷新：2026-08-11
 >
-> Sasori 当前 Workflow 实现基线：[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)，[Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342) 成功；五个 job families 的 20 个非 tag jobs 全部通过，exact-tag release-bundle 按设计跳过
+> Sasori 当前 Workflow 实现基线：[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)，[Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213) 成功；五个 job families 的 20 个非 tag jobs 全部通过，exact-tag release-bundle 按设计跳过
 >
 > Semantic compaction 实现证据：[`8751b4e`](https://github.com/syusama/sasori/commit/8751b4edd8998493e25e1afc826a9832ac9b6206) / [Hosted run 31306732164](https://github.com/syusama/sasori/actions/runs/31306732164)
 >
 > Durable Memory 实现证据：[`bc049ec`](https://github.com/syusama/sasori/commit/bc049ec) / [Hosted run 31323818961](https://github.com/syusama/sasori/actions/runs/31323818961)
 >
-> W1.2 已由自身实现提交 `e3bc816` 的 exact-revision Hosted 结果晋级：既有 W0-W1.1 one-Harness 串行 runtime、authoring/compiler、manifest 与公共 projection 不变；新增 transient browser JSON draft、权威 HTTP preflight、启动冻结的 ordinary-Harness Tool registry，以及 fail-closed 的 exact manifest UI；不扩大为 saved/activated/executable Studio、DAG/并行/Agent node/分布式 Workflow
+> W1.3 已由自身实现提交 `a3c4870` 的 exact-revision Hosted 结果晋级：既有 W0-W1.2 one-Harness 串行 runtime、authoring/compiler、manifest 与公共 projection 不变；新增独立 deployment-owner saved-authoring catalog、immutable revisions、strong-ETag CAS、历史读取、稳定分页、current-Tool compatibility 与 fail-closed 浏览器恢复；不扩大为 activated/executable Studio、DAG/并行/Agent node/分布式 Workflow
 >
 > LeAgent 基线：[`1f16badc`](https://github.com/vixues/LeAgent/tree/1f16badc834abbd829d3cb7e9f8fcb5b2d57f443)
 >
@@ -18,7 +18,7 @@
 
 这不是按 README 关键词计数的功能表。LeAgent/ToFu 结论来自上述固定 commit
 的入口、运行循环、事件、持久化、工具、上下文、插件、部署、测试和 UI 源码；
-Sasori 的 Hosted 结论分别绑定上述实现 commit；Workflow 结论绑定 `e3bc816` / run `31391700342`，本地候选镜像证据不冒充签名 provenance。上游随时会变化；
+Sasori 的 Hosted 结论分别绑定上述实现 commit；Workflow 结论绑定 `a3c4870` / run `31468469213`，普通 `main` 的候选镜像证据不冒充签名 provenance 或正式 release。上游随时会变化；
 重新做产品决策前必须刷新 Sasori、LeAgent、ToFu 的 commit 与证据。
 
 ## 结论先行
@@ -42,7 +42,7 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 > Storage、RAG、Apps 与 UI 在核心外按需装配。
 
 不得在当前 README 中宣称：已具备 per-user/tenant 或自动抽取的完整语义 Memory、Artifact access grant/版本
-生命周期、通用 DAG/并行/分布式 Workflow、多 Agent、插件沙箱、水平扩展、中央市场或正式签名发布。当前只晋级围绕串行有序 Tool W0 的 W1.2：保留 W1/W1.1 static authoring、compiled manifest/preflight、公共 projection 与 bounded inspector，新增 transient Studio draft/HTTP preflight preview；仍无 saved catalog、activation、run-from-draft、DAG/并行/Agent node。
+生命周期、通用 DAG/并行/分布式 Workflow、多 Agent、插件沙箱、水平扩展、中央市场或正式签名发布。当前晋级围绕串行有序 Tool W0 的 W1.3：保留 W1/W1.1 static authoring、compiled manifest/preflight、公共 projection 与 bounded inspector，W1.2 的 Studio/HTTP preflight 之上新增耐久 saved static-serial catalog；仍无 activation、run-from-draft/run-from-saved、DAG/并行/Agent node。
 
 ## 判定口径
 
@@ -68,15 +68,15 @@ Sasori 已经在“小而可信的 Agent 机制层”胜出，但还没有在产
 | Memory | `bc049ec` / Hosted run `31323818961` 已验证核心外 fixed-scope SQLite authority：三类 kind 共用 immutable revision/CAS/source lineage；operation/observation identity、audit-verified replay、SQL scope-first lexical rank、whole-record final-budget merge、exact/source/scope suppression、atomic generation switch；仍仅 local-single-owner，无自动 extractor/vector/rerank/profile quality claim | episodic/semantic/procedural 持久化 + lexical fallback；存在 turn 去重缺陷 | BM25 top-40 + LLM rerank、profile core/detail、失败不注入 | Sasori 耐久/恢复/删除合同更强；竞品产品与语义检索广度仍胜 |
 | Artifact/FileRef | `94f4d0e` 已托管验证核心外 immutable Ref、同事务 event/metadata、no-overwrite blob、run-scoped list/content/HEAD/Range、text/JSON Workbench 与真实浏览器/重启/篡改门禁；尚无用户 grant、版本、GC、PDF/image preview | `FileRef`、FileService、预签名预览/下载、工作流资产复用，但 blob/metadata 原子性、locator 泄露与进程内 cleanup 边界较弱 | Artifacts/Canvas、版本面板与 CSP 较丰富，但 ownership/raw/view/export 授权及 HTML/SVG 网络边界较弱 | Sasori 的最小可靠闭环胜；竞品广度仍胜 |
 | Skills/plugins | 严格 manifest/digest/catalog；installed entry point 明示 trusted code；市场为空 | Skills 安装/注册面完整，但安装/依赖/脚本供应链权限过宽 | Skills Store、MCP、工具插件面广 | Sasori 信任边界胜、生态落后 |
-| Workflow | `e3bc816` / Hosted run `31391700342` 已验证核心外 W1.2：既有 strict data/JSON/builder、one-Harness 串行 approval/effect/recovery、compiled manifest 与 public projection 不变；新增 transient browser draft、startup-frozen ordinary-Harness Tool registry、权威 HTTP preflight、exact detached-manifest UI 与 Unicode/stale-response/REJECTED-vs-UNVERIFIED fail-closed 控制；无 save/activate/run-from-draft/DAG/并行/分支/Agent node/subflow | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 的 definition/preflight/projection/recovery 与窄 UI failure taxonomy 更严；竞品 saved graph authoring 与产品广度仍胜 |
+| Workflow | `a3c4870` / Hosted run `31468469213` 已验证核心外 W1.3：既有 strict data/JSON/builder、one-Harness 串行 approval/effect/recovery、compiled manifest 与 public projection 不变；新增 deployment-owner saved catalog、immutable revisions/head、strong-ETag CAS、exact history、current-Tool verdict、stable pagination、canonical digest binding 与 non-retryable 504/GET-only recovery；无 activate/run-from-saved/DAG/并行/分支/Agent node/subflow | ReactFlow DAG、typed tool nodes、持久化状态与 UI | Autopilot/Endpoint/Flow 等产品流丰富但实现多轨 | Sasori 的定义耐久性、并发覆盖保护、mutation ambiguity 与证据边界更强；竞品 visual graph authoring、编排与产品广度仍胜 |
 | 多 Agent/项目协作 | 未交付 | Subagent 与 workflow agent | Swarm、Charter/Board/activity/path soft lease | Sasori 落后 |
-| UI | 独特 Puppet Workbench；真实 Chrome 覆盖 desktop、390×844 reduced-motion、keyboard/focus、invalid-Unicode no-fetch、stale response、exact 422 rejection 与非权威失败保持 UNVERIFIED；真实 Studio preflight、Incident、typed Workflow 生命周期通过，并持续明示 DRAFT ONLY / NO EXECUTION / TRUSTED PYTHON / NO SANDBOX；不是 saved/visual editor | React 19、Workflow、GenUI、Desktop，产品面更完整 | 全功能 SPA、真截图、桌面/浏览器/移动端 | Sasori 审美与窄切片状态可信度有辨识度、产品广度仍落后 |
+| UI | 独特 Puppet Workbench；真实 Chrome 覆盖 desktop、390×844 reduced-motion、keyboard/focus、invalid-Unicode no-fetch、stale response、exact 422/412/504 taxonomy、save/list/open/revision/conflict/outcome recovery、per-record stale-response isolation 与 canonical SHA-256 binding；真实 saved Studio、Incident、typed Workflow 生命周期通过，并持续明示 DRAFT ONLY / NO EXECUTION / TRUSTED PYTHON / NO SANDBOX；不是 visual DAG editor，也没有 execution authority | React 19、Workflow、GenUI、Desktop，产品面更完整 | 全功能 SPA、真截图、桌面/浏览器/移动端 | Sasori 审美、状态可信度与故障恢复有辨识度；竞品可视编排和产品广度仍领先 |
 | Provider | OpenAI/Anthropic stdlib 适配，共享 conformance；未宣称 live smoke | Provider/路由/降级更多 | OpenAI-compatible 与多 provider/多 key 路由更广 | 竞品广度胜，Sasori 合约胜 |
 | 本地交付 | Python/CLI/HTTP、no-build UI、国内源 Compose | dev/Docker/Desktop 安装路径丰富 | 一键安装、Docker/Desktop/Agents/SDK 丰富 | 竞品易用性胜 |
 | 依赖与镜像完整性 | base digest、Python/build hash、国内镜像、SBOM/binding、wheel/sdist matrix | base/apt/pip 未等价锁定，Docker label 版本漂移 | 多 `>=` 无 hash、Docker 未用国内源/digest、Playwright 安装可吞错 | Sasori 明显胜 |
 | 默认沙箱表述 | 明示 full host process privilege；路径限制不冒充沙箱 | README 称 isolation，但当前 inproc/subprocess 实现与宿主同权 | Shell/桌面/浏览器执行主要是主机能力与可选防护，取消 best-effort | Sasori 诚实性胜 |
 | 水平扩展 | 明确单 owner/单 mutation，不声称多 worker | PG 不消除 process-local registry/queue 热状态 | 多用户/PG 功能广，但 task dict/进程执行与恢复边界复杂 | 三者均不能仅凭数据库宣称完整 HA |
-| 测试证据 | 历史功能证据按 `8751b4e`、`bc049ec` 分别绑定 Hosted run；Workflow W1.2 由 `e3bc816` / run `31391700342` 验证：20 个 non-tag jobs 全绿；六平台 source matrix 完成 414-test suite，本地 Windows 基线含 5 个有记录的平台/权限 skips；252,158-byte wheel、wheel/rebuilt-sdist matrix、verifier v11/source-tree v8、desktop/narrow/reduced-motion Chrome 与 Studio failure taxonomy；国内源 no-cache Compose 完成 preflight→prepare→complete→after-restart，验证零 mutation、approval/resume、identity stability、restart/no-replay；exact-tag bundle 按设计跳过，不构成 tag、签名或 provenance 证据 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 的证据边界与 W1.2 definition/preflight/projection/recovery 路径更清晰；更广图编排仍待后续 |
+| 测试证据 | 历史功能证据按 `8751b4e`、`bc049ec` 分别绑定 Hosted run；Workflow W1.3 由 `a3c4870` / run `31468469213` 验证：20 个 non-tag jobs 全绿；六平台 source、original installed-wheel、rebuilt-sdist consumer matrix、package/SBOM/image binding、29-case desktop/narrow/reduced-motion Chrome 与三条真实 server journey；国内源 fresh-volume Compose 覆盖 saved create/CAS/stale writer/history/restart、零 run/event/action mutation 与双数据库 owner lock；exact-tag bundle 按设计跳过，不构成 tag、TestPyPI/PyPI、签名 provenance 或正式 release 证据 | 测试覆盖广，但 README claim 与 release/container 证据未系统绑定 | 测试规模巨大，但当前固定 HEAD 的 hosted workflow 非绿 | Sasori 的证据边界与 W1.3 definition/preflight/catalog/projection/recovery 路径更清晰；更广图编排仍待后续 |
 
 ToFu 当前 HEAD 的 hosted jobs 没有获得 GitHub hosted runner，页面显示平台内部
 错误；这意味着“缺少当前绿色托管证据”，**不**意味着源码测试已被证明失败。
@@ -263,7 +263,7 @@ spawn Agent”更有产品价值。Sasori 后续应先定义项目状态、owner
 
 | 增量 | 验收定义 |
 |---|---|
-| Workflow W0-W1.2 + bounded W2 inspector | `e3bc816` / Hosted run `31391700342` 已晋级 one-Harness 串行 runtime、typed input/result、human gate、effect recovery、strict static authoring、compiled manifest/preflight、public projection、bounded Workbench inspector 与 transient Studio draft/HTTP preflight preview；仍不包含 saved catalog、activation、run-from-draft、DAG、并行、分支、Agent node 或 subflow |
+| Workflow W0-W1.3 + bounded W2 inspector | `a3c4870` / Hosted run `31468469213` 已晋级 one-Harness 串行 runtime、typed input/result、human gate、effect recovery、strict static authoring、compiled manifest/preflight、public projection、bounded Workbench inspector、Studio/HTTP preflight，以及 deployment-owner saved catalog 的 immutable revision/CAS/history/fail-closed recovery；仍不包含 activation、run-from-draft/run-from-saved、DAG、并行、分支、Agent node 或 subflow |
 | Workflow W3-W5 | bounded parallel ready set → branches/Agent nodes/subflows/editor → lease/fencing/queue/scheduler/distributed execution；每阶段独立 ADR 与 crash/browser/container gate |
 | Project/多 Agent | Charter/Board/lease/ownership；每个 worker 仍走 Harness；预算、取消与故障隔离 |
 | GenUI | versioned safe component schema；无任意 HTML/JS；live/cold reducer parity；导出/Artifact 链 |

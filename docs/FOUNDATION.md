@@ -3,7 +3,7 @@
 Status: **accepted foundation for an experimental vertical slice**
 Date: 2026-08-07
 Decision owner: repository maintainer
-Current checked-out implementation candidate: the repository foundation, single Loop/Harness,
+Current Hosted-verified implementation baseline: the repository foundation, single Loop/Harness,
 G1 trust semantics, stdlib OpenAI/Anthropic adapters with optional upstream SSE
 aggregation, deterministic bounded-context projection, opt-in low-trust semantic
 compaction, a core-external fixed-scope durable Memory slice, Python/CLI/HTTP
@@ -16,8 +16,8 @@ preflight returns its bounded detached compiled manifest, and a core-owned
 versioned public run projection supplies the bounded Workbench step rail. The
 accepted W1.2 Workbench adds a transient strict-JSON draft surface over an
 authoritative HTTP preflight, exact-validates and previews immutable definition
-metadata, and retains the existing event reducer for timeline/cursor state. An
-unpromoted W1.3 local candidate adds an independent deployment-owner saved
+metadata, and retains the existing event reducer for timeline/cursor state. The
+exact-revision Hosted-verified W1.3 slice adds an independent deployment-owner saved
 authoring catalog, immutable revisions, strong-ETag CAS, exact historical reads,
 current-Tool compatibility verdicts, and a fail-closed saved Studio layer. It
 still cannot activate, publish, deploy, schedule, or run a saved definition;
@@ -26,13 +26,13 @@ work. Memory is accepted
 only for a deployment-owned local-single-owner
 namespace after its deterministic, package, mainland-source container, and
 [exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31323818961)
-gates passed. Workflow W1.2 remains the latest accepted Hosted baseline at
-[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
+gates passed. Workflow W1.3 is the latest accepted Hosted implementation baseline at
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
 after its source, package, real-browser, mainland-source container, and
-[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31391700342)
-gates passed. This document does not yet bind W1.3 to an exact implementation
-commit or Hosted run, so it must not be described as accepted, shipped, or
-released. Real-provider
+[exact-revision Hosted](https://github.com/syusama/sasori/actions/runs/31468469213)
+gates passed. That ordinary `main` run skipped the exact-tag-only job and did not
+create a tag, TestPyPI/PyPI round trip, signed provenance, or formal release.
+Real-provider
 semantic/Memory quality evaluation, per-request
 user/tenant identity, public token streaming, multi-agent orchestration,
 untrusted-plugin isolation, and a central marketplace remain incomplete;
@@ -148,9 +148,9 @@ These are boundaries, not directories to scaffold before use:
 | CLI | `sasori` entry point | implemented on the shared Harness path |
 | HTTP/SSE | `sasori-server` entry point | implemented on the shared Harness path |
 | MCP adapter | current frozen host adapter; split only after an external package consumer exists | bounded stdio boundary accepted |
-| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, and public projection are Hosted-verified at `e3bc816`; the saved static-serial catalog is an unpromoted W1.3 local candidate, while activation/run-from-saved and DAG/parallel/Agent-node gates remain open |
+| Ordered typed Workflow | `sasori_flow` outside core | strict static data/JSON/builder authoring, bounded detached manifest/preflight, one-Harness recovery, public projection, and the deployment-owner saved static-serial catalog with immutable revisions/strong-ETag CAS/history are Hosted-verified at `a3c4870`; activation/run-from-saved and DAG/parallel/Agent-node gates remain open |
 | DAG/graph/multi-agent | later extensions | requires parallel/branch/ownership/recovery ADRs; not current W0 behavior |
-| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product exact-validates/previews immutable Workflow definition metadata and consumes the versioned run projection for serial step state; the W1.3 candidate adds explicit conditional save/list/open UI backed by server CAS, but no execute/activate/publish authority, and the existing reducer remains the event timeline/cursor authority |
+| Workbench | bundled static `sasori_web` resources; split only if independent deployment is needed | bounded product exact-validates/previews immutable Workflow definition metadata and consumes the versioned run projection for serial step state; the Hosted-verified W1.3 slice adds explicit conditional save/list/open UI, canonical SHA-256 binding, conflict handling, and per-record outcome recovery backed by server CAS, but no execute/activate/publish authority, and the existing reducer remains the event timeline/cursor authority |
 | Marketplace | metadata service, not binary host | market gate in section 8 |
 
 ### 3.4 Public events and run views are projections
@@ -282,8 +282,8 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 | Provider conformance (`PARTIAL`) | deterministic JSON/SSE success/tool continuation, malformed/interrupted output, 429, timeout, duplicate call and cancellation pass; live credentials remain open |
 | Crash/recovery (`NOW`) | crash before/after model response, before tool dispatch, after side effect, before/after result commit; no silent duplicate side effect |
 | Adapter black box (`NOW`) | Python/CLI/HTTP consume the same runtime/projection; Memory-enabled Research/Developer still use that path; real endpoint result, not just process/container health |
-| UI browser acceptance (`PARTIAL`) | accepted W1.2 delayed/stale isolation plus real-server preflight, Incident, and typed Workflow journeys pass in Chrome; the W1.3 local candidate additionally covers stable saved-catalog pagination, browser SHA-256 binding, saved create, stale edit, exact conflict/504 taxonomy, per-record outcome recovery, late PUT/detail/reconciliation record-switch isolation, no mutation retry, and zero run/action mutation at desktop and 390×844 reduced-motion sizes; cross-browser, full mobile-device, and accessibility certification remain open |
-| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; zero-mutation preflight; split approval/resume; exact events/SSE/final/effect; W1.3 candidate create r1, CAS update r2, stale `412`, historical read, restart identity, unchanged run/event/action ledgers, and two independent database-owner refusals; secret audit |
+| UI browser acceptance (`PARTIAL`) | accepted W1.2 delayed/stale isolation plus real-server preflight, Incident, and typed Workflow journeys pass in Chrome; exact-revision Hosted W1.3 additionally covers stable saved-catalog pagination, browser SHA-256 binding, saved create, stale edit, exact conflict/504 taxonomy, per-record outcome recovery, late PUT/detail/reconciliation record-switch isolation, no mutation retry, and zero run/action mutation at desktop and 390×844 reduced-motion sizes; cross-browser, full mobile-device, and accessibility certification remain open |
+| Container product gate (`NOW`) | no-cache mainland-source candidate-image build; zero-mutation preflight; split approval/resume; exact events/SSE/final/effect; Hosted-verified W1.3 create r1, CAS update r2, stale `412`, historical read, restart identity, unchanged run/event/action ledgers, and two independent database-owner refusals; secret audit |
 | Packaging/supply chain | wheel contents/size, deterministic Deflate-9/BZIP2-9 member compression, zero core deps, locked original/rebuilt-sdist pip installation on the six OS/Python combinations, hashes/lock, application and image SBOMs, trusted provenance |
 
 ### Honest determinism
@@ -361,8 +361,8 @@ Current G2 evidence on 2026-08-08: deterministic OpenAI Responses and Anthropic 
 
 For the current implementation baseline, that exact-revision public CI
 requirement is satisfied by
-[`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
-and [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+and [Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213).
 The older paragraph remains a dated record of the narrower 2026-08-08 local
 evidence; it is not the current Hosted baseline.
 
@@ -379,7 +379,7 @@ prompt-injection neutralization, provider usage, billing, or cost savings. The
 exact-tag release bundle was correctly skipped on this ordinary `main` push, so
 signing and trusted provenance remain separate.
 
-Current deterministic Workflow W1.2 evidence on 2026-08-10 is bound to
+Historical deterministic Workflow W1.2 evidence on 2026-08-10 is bound to
 [`e3bc816`](https://github.com/syusama/sasori/commit/e3bc816c9d33febcc364e595a7480b475d181efb)
 and [Hosted run 31391700342](https://github.com/syusama/sasori/actions/runs/31391700342).
 The Hosted workflow completed successfully: all 20 non-tag jobs across five
@@ -400,7 +400,11 @@ nodes, subflows, distributed execution, exactly-once effects, sandboxing,
 live-provider quality, signing, trusted provenance, public deployment, or
 production readiness.
 
-The separate W1.3 implementation candidate is locally evidenced by 471
+Current deterministic Workflow W1.3 implementation evidence on 2026-08-11 is
+bound to
+[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
+and [Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213).
+The exact source is locally evidenced by 471
 deterministic tests with five documented platform/permission skips, including
 Catalog/HTTP crash, CAS, schema/trigger/FK tamper, pagination sentinel,
 strict-request, exact non-retryable 504 outcome-unknown, and no-runtime-mutation
@@ -414,11 +418,14 @@ audit. The locked local distribution candidate canonically repacked 69 wheel
 members to 243,357 bytes with 37 Deflate-9 and 32 BZIP2-9 members; a second
 repack was byte-idempotent, normal pip extraction/installation passed in a clean
 environment, and the verified sdist rebuilt, repacked, installed, and passed the
-same Catalog smoke. These are local-candidate results only until the exact
-implementation commit and its Hosted matrices are complete. They do not
-retroactively change the W1.2 Hosted numbers above and do not establish
-activation, execution, public deployment, TestPyPI/PyPI publication, signing,
-trusted provenance, or release.
+same Catalog smoke. Those byte counts are local measurements, not substituted
+Hosted artifact metadata. Separately, the exact implementation revision passed
+the non-tag source, original-wheel, rebuilt-sdist, package, real-browser, and
+mainland-source container/restart Hosted gates. The exact-tag-only job was
+skipped. Neither the local measurements nor that ordinary `main` run establish
+activation, execution, public deployment, TestPyPI/PyPI publication, a tag,
+exact-tag bundle, signing, trusted provenance, registry publication, or formal
+release.
 
 ### Days 56-75: switching-value validation
 
@@ -492,7 +499,8 @@ The Workbench is a task-control surface, not another chat skin. It currently:
    revisions, and explicit trusted-Python/no-sandbox disclosure.
 9. Offers a strict-JSON Workflow Studio with server-authoritative contract
    preflight and browser-side fail-closed stale-response and Unicode gates.
-10. In the W1.3 candidate, explicitly saves to the deployment-owner catalog
+10. In the Hosted-verified W1.3 slice, explicitly saves to the deployment-owner
+    catalog
     with a client-known Catalog ID and strong ETag, lists/opens durable heads,
     labels immutable revisions, preserves local drafts on conflict, and treats
     ambiguous mutation outcomes as an exact non-retryable 504 until GET-only
