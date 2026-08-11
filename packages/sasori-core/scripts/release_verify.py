@@ -18,7 +18,7 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "2"
+VERIFIER_VERSION = "3"
 SOURCE_PAYLOAD_ALGORITHM = "sasori-core-source-payload-v1"
 MAX_WHEEL_BYTES = 128 * 1024
 MAX_MEMBER_BYTES = 128 * 1024
@@ -84,7 +84,17 @@ def _safe(name: str) -> tuple[str, ...]:
     return path.parts
 
 
-def _metadata(value: bytes, version: str) -> None:
+def _normalized_utf8(value: bytes, label: str) -> str:
+    try:
+        normalized = value.decode("utf-8").replace("\r\n", "\n")
+    except UnicodeDecodeError as exc:
+        raise CoreReleaseError(f"{label} must be strict UTF-8") from exc
+    if "\r" in normalized:
+        raise CoreReleaseError(f"{label} has unsupported line endings")
+    return normalized
+
+
+def _metadata(value: bytes, version: str, expected_readme: bytes) -> str:
     try:
         message = BytesParser(policy=policy.default).parsebytes(value)
     except (TypeError, ValueError) as exc:
@@ -93,6 +103,7 @@ def _metadata(value: bytes, version: str) -> None:
         "Name": "sasori-core",
         "Version": version,
         "License-Expression": "MIT",
+        "Description-Content-Type": "text/markdown",
     }
     for key, item in expected.items():
         if message.get_all(key, []) != [item]:
@@ -109,6 +120,14 @@ def _metadata(value: bytes, version: str) -> None:
         f"{name}, {url}" for name, url in PROJECT_URLS.items()
     }:
         raise CoreReleaseError("core package project URLs are invalid")
+    normalized = _normalized_utf8(value, "core package metadata")
+    if "\n\n" not in normalized:
+        raise CoreReleaseError("core package metadata is missing its description body")
+    description = normalized.split("\n\n", 1)[1]
+    readme = _normalized_utf8(expected_readme, "core README.md")
+    if description != readme:
+        raise CoreReleaseError("core package description does not match README.md")
+    return _sha256(normalized.encode("utf-8"))
 
 
 def _project(root: Path) -> str:
@@ -125,6 +144,7 @@ def _project(root: Path) -> str:
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", version)
         or project.get("requires-python") != ">=3.11,<3.14"
         or project.get("license") != "MIT"
+        or project.get("readme") != "README.md"
         or project.get("dependencies") != []
         or project.get("urls") != PROJECT_URLS
     ):
@@ -277,7 +297,9 @@ def verify_wheel(path: Path, version: str, project_root: Path) -> dict[str, obje
     }
     if set(files) != expected_modules | expected_dist_info:
         raise CoreReleaseError("core wheel file inventory is invalid")
-    _metadata(files[f"{dist}/METADATA"], version)
+    metadata_sha256 = _metadata(
+        files[f"{dist}/METADATA"], version, (project_root / "README.md").read_bytes()
+    )
     wheel_headers = BytesParser(policy=policy.default).parsebytes(files[f"{dist}/WHEEL"])
     if (
         set(wheel_headers.keys()) != {"Wheel-Version", "Generator", "Root-Is-Purelib", "Tag"}
@@ -303,7 +325,7 @@ def verify_wheel(path: Path, version: str, project_root: Path) -> dict[str, obje
         "sha256": _sha256(path.read_bytes()),
         "member_inventory_sha256": _inventory(files),
         "source_payload_sha256": _inventory(source_payload),
-        "metadata_sha256": _sha256(files[f"{dist}/METADATA"]),
+        "metadata_sha256": metadata_sha256,
         "regular_file_count": len(files),
         "archive_member_count": len(infos),
         "compression": {
@@ -382,7 +404,9 @@ def verify_sdist(path: Path, version: str, project_root: Path) -> dict[str, obje
     for relative in ("LICENSE", "README.md", "pyproject.toml"):
         if files[f"{root}/{relative}"] != (project_root / relative).read_bytes():
             raise CoreReleaseError(f"core sdist {relative} does not match canonical source")
-    _metadata(files[f"{root}/PKG-INFO"], version)
+    metadata_sha256 = _metadata(
+        files[f"{root}/PKG-INFO"], version, (project_root / "README.md").read_bytes()
+    )
     if files[f"{root}/src/sasori_core.egg-info/PKG-INFO"] != files[f"{root}/PKG-INFO"]:
         raise CoreReleaseError("core sdist PKG-INFO copies do not match")
     if files[f"{root}/src/sasori_core.egg-info/top_level.txt"].decode("utf-8").splitlines() != ["sasori_core"]:
@@ -419,7 +443,7 @@ def verify_sdist(path: Path, version: str, project_root: Path) -> dict[str, obje
         "sha256": _sha256(path.read_bytes()),
         "member_inventory_sha256": _inventory(files),
         "source_payload_sha256": _inventory(source_payload),
-        "metadata_sha256": _sha256(files[f"{root}/PKG-INFO"]),
+        "metadata_sha256": metadata_sha256,
         "regular_file_count": len(files),
         "archive_member_count": len(members),
         "sources": sorted(CORE_MODULES),

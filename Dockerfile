@@ -8,7 +8,7 @@ ENV PIP_INDEX_URL=${PYTHON_INDEX_URL} \
 WORKDIR /build
 COPY requirements-build.txt ./
 RUN python -m pip install --require-hashes -r requirements-build.txt
-COPY pyproject.toml MANIFEST.in README.md LICENSE THIRD_PARTY_NOTICES.md ./
+COPY pyproject.toml MANIFEST.in README.md README_zh.md README_ja.md README_ko.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY licenses ./licenses
 COPY packages/sasori-core ./packages/sasori-core
 COPY scripts/repack_wheel.py ./scripts/repack_wheel.py

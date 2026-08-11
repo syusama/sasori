@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title description">
   <title id="title">Sasori — One kernel, many puppets</title>
-  <desc id="description">A dark lacquer and brass banner with an abstract mechanical scorpion and puppet threads.</desc>
+  <desc id="description">An original dark-lacquer, brass and cinnabar banner with an abstract mechanical scorpion, detachable mechanisms and visible puppet threads.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#090b0e"/>
@@ -54,17 +54,18 @@
 
   <g transform="translate(86 92)">
     <text x="0" y="0" fill="#c69a52" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16" font-weight="700" letter-spacing="5">PYTHON-FIRST AGENT FRAMEWORK</text>
-    <text x="0" y="104" fill="#f4f0e8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="102" font-weight="800" letter-spacing="12">SASORI</text>
+    <text x="0" y="104" fill="#f4f0e8" font-family="Palatino Linotype, Yu Mincho, Georgia, serif" font-size="102" font-weight="800" letter-spacing="12">SASORI</text>
     <rect x="2" y="132" width="66" height="3" rx="1.5" fill="#b52a32"/>
-    <text x="0" y="193" fill="#f4f0e8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="650" letter-spacing="1.2">ONE KERNEL. MANY PUPPETS.</text>
-    <text x="0" y="238" fill="#9da5ae" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" letter-spacing="0.6">Tiny core  ·  Explicit effects  ·  Durable recovery</text>
-    <g transform="translate(0 288)" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="1.2">
-      <rect width="112" height="34" rx="17" fill="#211619" stroke="#7e252b"/>
-      <text x="56" y="22" text-anchor="middle" fill="#e5a7aa">一核牵万机</text>
-      <rect x="126" width="208" height="34" rx="17" fill="#181b1f" stroke="#4e4535"/>
-      <text x="230" y="22" text-anchor="middle" fill="#d8bd8f">STANDARD LIBRARY CORE</text>
-      <rect x="348" width="130" height="34" rx="17" fill="#181b1f" stroke="#353b42"/>
-      <text x="413" y="22" text-anchor="middle" fill="#b5bdc7">MIT LICENSE</text>
+    <text x="0" y="193" fill="#f4f0e8" font-family="Palatino Linotype, Yu Mincho, Georgia, serif" font-size="30" font-weight="650" letter-spacing="1.2">ONE KERNEL. MANY PUPPETS.</text>
+    <text x="0" y="238" fill="#9da5ae" font-family="Bahnschrift, Noto Sans, sans-serif" font-size="19" letter-spacing="0.6">Tiny core  ·  Explicit effects  ·  Durable recovery</text>
+    <text x="0" y="278" fill="#d4b77f" font-family="Yu Mincho, Malgun Gothic, Noto Sans CJK, serif" font-size="15" letter-spacing="0.35">一核牵万机  ·  一つの核、多彩な傀儡  ·  하나의 핵, 수많은 꼭두각시</text>
+    <g transform="translate(0 304)" font-family="Bahnschrift, Noto Sans, sans-serif" font-size="14" font-weight="700" letter-spacing="1.2">
+      <rect width="208" height="34" rx="17" fill="#211619" stroke="#7e252b"/>
+      <text x="104" y="22" text-anchor="middle" fill="#e5a7aa">ZERO-DEPENDENCY CORE</text>
+      <rect x="222" width="198" height="34" rx="17" fill="#181b1f" stroke="#4e4535"/>
+      <text x="321" y="22" text-anchor="middle" fill="#d8bd8f">DETACHABLE MODULES</text>
+      <rect x="434" width="130" height="34" rx="17" fill="#181b1f" stroke="#353b42"/>
+      <text x="499" y="22" text-anchor="middle" fill="#b5bdc7">MIT LICENSE</text>
     </g>
   </g>
 

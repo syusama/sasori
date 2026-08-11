@@ -48,11 +48,8 @@ def _metadata() -> bytes:
             f"Project-URL: {name}, {url}"
             for name, url in release_verify.PROJECT_URLS.items()
         ),
-        "",
-        "# sasori-core",
-        "",
     ]
-    return "\n".join(headers).encode("utf-8")
+    return "\n".join(headers).encode("utf-8") + b"\n\n" + (CORE / "README.md").read_bytes()
 
 
 def _record(files: dict[str, bytes], record_name: str) -> bytes:
@@ -171,6 +168,7 @@ class CoreReleaseTests(unittest.TestCase):
     def test_checked_in_core_project_is_zero_dependency_and_version_aligned(self):
         version = release_verify._project(CORE)
         self.assertEqual(version, VERSION)
+        self.assertEqual(release_verify.VERIFIER_VERSION, "3")
         self.assertEqual(release_verify.MAX_WHEEL_BYTES, 128 * 1024)
 
     def test_canonical_wheel_sdist_and_source_are_cryptographically_bound(self):
@@ -185,6 +183,30 @@ class CoreReleaseTests(unittest.TestCase):
         self.assertEqual(wheel["metadata_sha256"], sdist["metadata_sha256"])
         self.assertGreater(wheel["compression"]["methods"]["bzip2"], 0)
         self.assertGreater(wheel["compression"]["methods"]["deflate"], 0)
+
+    def test_metadata_binds_readme_and_accepts_only_crlf_equivalence(self):
+        files = _wheel_files()
+        metadata_name = f"sasori_core-{VERSION}.dist-info/METADATA"
+        record_name = f"sasori_core-{VERSION}.dist-info/RECORD"
+        files[metadata_name] = files[metadata_name].replace(b"\n", b"\r\n")
+        files[record_name] = _record(
+            {name: value for name, value in files.items() if name != record_name},
+            record_name,
+        )
+        _write_wheel(self.wheel, files)
+        value = release_verify.verify(self.wheel, self.sdist, CORE)
+        wheel, sdist = value["artifacts"]
+        self.assertEqual(wheel["metadata_sha256"], sdist["metadata_sha256"])
+
+        files = _wheel_files()
+        files[metadata_name] += b"stale\n"
+        files[record_name] = _record(
+            {name: value for name, value in files.items() if name != record_name},
+            record_name,
+        )
+        _write_wheel(self.wheel, files)
+        with self.assertRaisesRegex(release_verify.CoreReleaseError, "README.md"):
+            release_verify.verify(self.wheel, self.sdist, CORE)
 
     def test_wheel_only_payload_tamper_with_valid_record_is_rejected(self):
         files = _wheel_files()

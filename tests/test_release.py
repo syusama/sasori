@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 import shutil
 import sys
 import tarfile
@@ -34,16 +35,17 @@ sys.modules[REPACK_SPEC.name] = repack_wheel
 REPACK_SPEC.loader.exec_module(repack_wheel)
 
 
-def metadata(*, dependency=False, extra=""):
+def metadata(*, dependency=False, extra="", body: bytes | None = None):
     requires = f"Requires-Dist: sasori-core=={PROJECT_VERSION}\n"
     if dependency:
         requires += "Requires-Dist: unwanted>=1\n"
-    return (
+    header = (
         "Metadata-Version: 2.4\n"
         "Name: sasori\n"
         f"Version: {PROJECT_VERSION}\n"
         "Requires-Python: >=3.11,<3.14\n"
         "License-Expression: MIT\n"
+        "Description-Content-Type: text/markdown\n"
         "License-File: LICENSE\n"
         "License-File: THIRD_PARTY_NOTICES.md\n"
         "License-File: licenses/CPYTHON-3.12-LICENSE.txt\n"
@@ -54,13 +56,64 @@ def metadata(*, dependency=False, extra=""):
         f"{extra}"
         f"{requires}\n"
     ).encode()
+    return header + ((ROOT / "README.md").read_bytes() if body is None else body)
+
+
+def jpeg_dimensions(payload: bytes) -> tuple[int, int]:
+    if not payload.startswith(b"\xff\xd8"):
+        raise ValueError("not a JPEG stream")
+    standalone = {0x01, 0xD8, 0xD9, *range(0xD0, 0xD8)}
+    start_of_frame = {
+        0xC0,
+        0xC1,
+        0xC2,
+        0xC3,
+        0xC5,
+        0xC6,
+        0xC7,
+        0xC9,
+        0xCA,
+        0xCB,
+        0xCD,
+        0xCE,
+        0xCF,
+    }
+    offset = 2
+    while offset < len(payload):
+        if payload[offset] != 0xFF:
+            raise ValueError("invalid JPEG marker prefix")
+        while offset < len(payload) and payload[offset] == 0xFF:
+            offset += 1
+        if offset >= len(payload):
+            break
+        marker = payload[offset]
+        offset += 1
+        if marker in standalone:
+            continue
+        if offset + 2 > len(payload):
+            break
+        length = int.from_bytes(payload[offset : offset + 2], "big")
+        if length < 2 or offset + length > len(payload):
+            raise ValueError("invalid JPEG segment length")
+        if marker in start_of_frame:
+            if length < 7:
+                raise ValueError("invalid JPEG start-of-frame segment")
+            height = int.from_bytes(payload[offset + 3 : offset + 5], "big")
+            width = int.from_bytes(payload[offset + 5 : offset + 7], "big")
+            if width < 1 or height < 1:
+                raise ValueError("invalid JPEG dimensions")
+            return width, height
+        if marker == 0xDA:
+            break
+        offset += length
+    raise ValueError("JPEG dimensions not found")
 
 
 class ReleaseVerificationTests(unittest.TestCase):
     def test_release_contract_version_tracks_every_decision_record(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "13")
+        self.assertEqual(release_verify.VERIFIER_VERSION, "15")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v10"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v12"
         )
         expected = {
             path.relative_to(ROOT).as_posix()
@@ -86,6 +139,8 @@ class ReleaseVerificationTests(unittest.TestCase):
             "MANIFEST.in",
             "README.md",
             "README_zh.md",
+            "README_ja.md",
+            "README_ko.md",
             "LICENSE",
             "SECURITY.md",
             "THIRD_PARTY_NOTICES.md",
@@ -107,6 +162,139 @@ class ReleaseVerificationTests(unittest.TestCase):
         after_digest, after_count = release_verify._source_tree(self.source)
         self.assertEqual(after_count, before_count)
         self.assertNotEqual(after_digest, before_digest)
+
+    def test_multilingual_readmes_and_real_screenshot_inventory_are_bound(self):
+        readmes = {
+            "README.md": "One kernel. Many puppets.",
+            "README_zh.md": "一核牵万机",
+            "README_ja.md": "一つの核、多彩な傀儡。",
+            "README_ko.md": "하나의 핵, 수많은 꼭두각시.",
+        }
+        screenshot_references = {}
+        for name, marker in readmes.items():
+            text = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn(marker, text)
+            for peer in readmes:
+                if peer != name:
+                    self.assertIn(peer, text)
+            screenshot_references[name] = set(
+                re.findall(r"docs/assets/screenshots/([^\"') ]+\.jpg)", text)
+            )
+        self.assertTrue(screenshot_references["README.md"])
+        self.assertTrue(
+            all(
+                references == screenshot_references["README.md"]
+                for references in screenshot_references.values()
+            )
+        )
+
+        with (ROOT / "pyproject.toml").open("rb") as stream:
+            self.assertEqual(tomllib.load(stream)["project"]["readme"], "README.md")
+        manifest_lines = {
+            line.strip()
+            for line in (ROOT / "MANIFEST.in").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        self.assertTrue(
+            {f"include {name}" for name in readmes} <= manifest_lines
+        )
+        for relative, expected_count in (
+            ("Dockerfile", 1),
+            (".github/workflows/ci.yml", 2),
+            (".github/workflows/testpypi.yml", 1),
+            ("docs/RELEASE.md", 1),
+        ):
+            surface = (ROOT / relative).read_text(encoding="utf-8")
+            for translated in ("README_zh.md", "README_ja.md", "README_ko.md"):
+                self.assertEqual(
+                    surface.count(translated),
+                    expected_count,
+                    f"{relative} must copy {translated} on every release source path",
+                )
+        self.assertEqual(release_verify.MAX_WHEEL_BYTES, 250 * 1024)
+
+        manifest_path = ROOT / "docs" / "assets" / "screenshots-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["schema_version"], 1)
+        self.assertTrue(manifest["real_server_journey"])
+        self.assertEqual(manifest["browser"]["console_entries_after_journey"], 0)
+
+        commit = manifest["runtime_source_commit"]
+        self.assertRegex(commit, r"\A[0-9a-f]{40}\Z")
+        self.assertEqual(manifest["run"]["durable_event_count"], 17)
+        self.assertEqual(manifest["workflow"]["preflight_model_calls"], 0)
+        self.assertEqual(manifest["workflow"]["preflight_tool_dispatches"], 0)
+
+        expected_paths = {
+            path.relative_to(ROOT).as_posix()
+            for path in (ROOT / "docs" / "assets" / "screenshots").glob("*.jpg")
+        }
+        entries = manifest["captures"]
+        declared_paths = {entry["path"] for entry in entries}
+        self.assertEqual(declared_paths, expected_paths)
+        self.assertEqual(len(entries), len(declared_paths))
+        release_assets = set(release_verify.RELEASE_ASSETS)
+        self.assertEqual(
+            release_assets,
+            {
+                "README_zh.md",
+                "README_ja.md",
+                "README_ko.md",
+                "docs/assets/readme-hero.svg",
+                "docs/assets/screenshots-manifest.json",
+                *expected_paths,
+            },
+        )
+
+        for entry in entries:
+            path = ROOT / entry["path"]
+            payload = path.read_bytes()
+            self.assertEqual(entry["media_type"], "image/jpeg")
+            self.assertEqual(entry["bytes"], len(payload))
+            self.assertEqual(entry["sha256"], hashlib.sha256(payload).hexdigest())
+            self.assertEqual(
+                entry["actual_pixels"],
+                dict(zip(("width", "height"), jpeg_dimensions(payload))),
+            )
+            self.assertTrue(path.name.endswith(f"-{commit[:7]}.jpg"))
+            self.assertGreater(entry["requested_viewport"]["width"], 0)
+            self.assertGreater(entry["requested_viewport"]["height"], 0)
+            self.assertIsInstance(entry["reduced_motion"], bool)
+            self.assertTrue(entry["scenario"].strip())
+
+    def test_locked_container_build_normalizes_sdist_file_modes(self):
+        surfaces = {
+            "docs/RELEASE.md": "/tmp/sasori",
+            ".github/workflows/ci.yml": "/tmp/sasori /tmp/sasori-core",
+            ".github/workflows/testpypi.yml": "/tmp/sasori /tmp/sasori-core",
+        }
+        for relative, roots in surfaces.items():
+            with self.subTest(surface=relative):
+                surface = (ROOT / relative).read_text(encoding="utf-8")
+                directory_mode = f"find {roots} -type d -exec chmod 0755 {{}} +"
+                file_mode = f"find {roots} -type f -exec chmod 0644 {{}} +"
+                self.assertEqual(surface.count(directory_mode), 1)
+                self.assertEqual(surface.count(file_mode), 1)
+                self.assertLess(
+                    surface.index("-prune -exec rm -rf -- {} +"),
+                    surface.index(directory_mode),
+                )
+
+    def test_project_metadata_requires_the_file_backed_readme(self):
+        pyproject = self.source / "pyproject.toml"
+        original = pyproject.read_text(encoding="utf-8")
+        pyproject.write_text(
+            original.replace(
+                'readme = "README.md"',
+                'readme = {text = "stale", content-type = "text/markdown"}',
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            release_verify.ReleaseVerificationError,
+            "project metadata violates the release contract",
+        ):
+            release_verify._project(self.source)
 
     def test_docker_context_must_exclude_secrets(self):
         dockerignore = self.source / ".dockerignore"
@@ -185,6 +373,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         metadata_extra="",
         wheel_extra="",
         extra_dist_info=False,
+        metadata_body=None,
         compression=zipfile.ZIP_DEFLATED,
         archive_comment=b"",
         dist_info_first=False,
@@ -196,7 +385,9 @@ class ReleaseVerificationTests(unittest.TestCase):
         files.update(
             {
                 f"{dist_info}/METADATA": metadata(
-                    dependency=dependency, extra=metadata_extra
+                    dependency=dependency,
+                    extra=metadata_extra,
+                    body=metadata_body,
                 ),
                 f"{dist_info}/WHEEL": (
                     "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\n"
@@ -248,7 +439,12 @@ class ReleaseVerificationTests(unittest.TestCase):
         return path
 
     def sdist(
-        self, *, traversal=False, extra_directory=False, valid_directories=False
+        self,
+        *,
+        traversal=False,
+        extra_directory=False,
+        valid_directories=False,
+        metadata_body=None,
     ):
         path = self.root / f"sasori-{PROJECT_VERSION}.tar.gz"
         root = f"sasori-{PROJECT_VERSION}"
@@ -263,7 +459,7 @@ class ReleaseVerificationTests(unittest.TestCase):
                 *release_verify.RELEASE_ASSETS,
             )
         }
-        files[f"{root}/PKG-INFO"] = metadata()
+        files[f"{root}/PKG-INFO"] = metadata(body=metadata_body)
         files.update(
             {
                 f"{root}/src/{name}": value
@@ -346,6 +542,24 @@ class ReleaseVerificationTests(unittest.TestCase):
                     release_verify._project(self.source),
                 )
 
+    def test_wheel_and_sdist_metadata_bind_the_exact_readme_body(self):
+        project = release_verify._project(self.source)
+        for body in (b"", b"# stale or substituted project page\n"):
+            with self.subTest(kind="wheel", body=body), self.assertRaisesRegex(
+                release_verify.ReleaseVerificationError,
+                "description does not match README.md",
+            ):
+                release_verify.verify_wheel(
+                    self.wheel(metadata_body=body), self.source, project
+                )
+            with self.subTest(kind="sdist", body=body), self.assertRaisesRegex(
+                release_verify.ReleaseVerificationError,
+                "description does not match README.md",
+            ):
+                release_verify.verify_sdist(
+                    self.sdist(metadata_body=body), self.source, project
+                )
+
     def test_wheel_compression_contract_requires_canonical_mixed_streams(self):
         project = release_verify._project(self.source)
         accepted = release_verify.verify_wheel(
@@ -396,6 +610,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         cases = (
             {"metadata_extra": "Name: other\n"},
             {"metadata_extra": "License-Expression: Apache-2.0\n"},
+            {"metadata_extra": "Description-Content-Type: text/plain\n"},
             {"metadata_extra": "License-File: EXTRA\n"},
             {"wheel_extra": "Tag: py3-none-any\n"},
             {"wheel_extra": "Unknown: value\n"},

@@ -43,12 +43,14 @@ docker run --rm --init `
     export PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
     mkdir -p /tmp/sasori
     cp /source/pyproject.toml /source/MANIFEST.in /source/README.md \
-       /source/README_zh.md \
+       /source/README_zh.md /source/README_ja.md /source/README_ko.md \
        /source/LICENSE /source/SECURITY.md /source/THIRD_PARTY_NOTICES.md \
        /source/requirements-build.txt /tmp/sasori/
     cp -a /source/docs /source/licenses /source/src /tmp/sasori/
     find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
       -prune -exec rm -rf -- {} +
+    find /tmp/sasori -type d -exec chmod 0755 {} +
+    find /tmp/sasori -type f -exec chmod 0644 {} +
     cd /tmp/sasori
     mkdir -p /out/build-wheelhouse
     python -m pip download \

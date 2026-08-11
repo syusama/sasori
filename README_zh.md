@@ -1,538 +1,257 @@
 <p align="center">
-  <img src="docs/assets/readme-hero.svg" alt="Sasori — 一核牵万机" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/readme-hero.svg" alt="Sasori —— 一核牵万机" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 到 3.13">
-  <img src="https://img.shields.io/badge/核心运行依赖-0-C69A52" alt="核心零依赖">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-B52A32" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/sasori--core-运行依赖%200-C69A52" alt="核心零运行依赖">
+  <img src="https://img.shields.io/badge/测试-531%20项-B52A32" alt="531 项确定性测试">
+  <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-20242A" alt="MIT License"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
-  <a href="#30-秒启动">快速开始</a> ·
-  <a href="docs/FOUNDATION.md">架构</a> ·
-  <a href="docs/MEMORY.md">Memory</a> ·
-  <a href="docs/BENCHMARK-LEAGENT-TOFU.md">LeAgent / ToFu 对标</a> ·
-  <a href="docs/RELEASE.md">发布证据</a>
+  <a href="https://github.com/syusama/sasori/blob/main/README.md">English</a> ·
+  <strong>简体中文</strong> ·
+  <a href="https://github.com/syusama/sasori/blob/main/README_ja.md">日本語</a> ·
+  <a href="https://github.com/syusama/sasori/blob/main/README_ko.md">한국어</a>
 </p>
 
-## 一核牵万机
+<h1 align="center">一核牵万机</h1>
 
-**Sasori 是一个 Python-first 的开源 AI Agent Framework：用一个小而可读的
-内核，牵引可恢复的运行、显式的工具副作用、按需装配的模块，以及独具风格的
-本地 Workbench。**
+<p align="center"><strong>一枚小到可以从头读到尾的 Python Agent 核心，也能生长为完整、可靠、高颜值的 AI 工作台——而且永远只有一条运行时主线。</strong></p>
 
-Sasori 意为“蠍”。项目借用了“傀儡术”的设计隐喻：一套机关控制多具可替换的
-傀儡，每根操控线都有明确归属，每个危险动作都停在人类闸门前。品牌视觉为原创
-机械蠍，不使用动漫画面或复制的角色素材。
+Sasori 既是一把快准狠的机关短刃，也是一座可以不断装配的傀儡工房。
+最小形态只有一个零依赖 Loop/Harness、一种模型和你真正需要的工具；需要时再装上
+SQLite、Provider、插件、Workflow、Memory、Artifact、HTTP/SSE 与 Workbench。
+Python、CLI、HTTP 和 UI 拉动的是同一组傀儡线，不会在产品层暗藏第二套引擎。
 
-它既可以是一把快准狠的瑞士军刀——一个 `Harness`、一个模型、几件需要的工具；
-也可以成为应用、插件、HTTP 服务与完整界面的运行底座。轻量和大而全不是两套
-Runtime：Python、CLI、HTTP 与 Workbench 全部驱动同一条单 Agent Loop。
+名字的灵感来自《火影忍者》中追求“永恒艺术”的傀儡师——赤砂之蝎：精密的机关、
+可替换的武装、华丽而危险的傀儡术。Sasori 不复制角色形象，而是把这层精神翻译成
+软件：**核心必须经典可读，模块必须随拆随用，危险动作必须看得见，每次运行必须留下
+可以审计的证据。**
 
-> Sasori 会明确区分当前能力与路线图。它现在是可靠的单机 G1 地基，还不是公共
-> 多租户控制面、分布式执行器、非受信代码沙箱、通用 DAG Workflow Engine 或中央市场。
-> [Current / Next](#current--next) 不会混写。
+> 当前边界：Sasori 是经过验证的单机、单 owner 预发布候选，不是已经完成的公共
+> 多租户控制面、分布式执行器、不可信代码沙箱或中央插件市场。
 
-## 10 秒看懂 Sasori
+## 两个发行包，一枚机关心脏
 
-| 你关心的事 | Sasori 的答案 |
-|---|---|
-| 内核能不能从头读完 | `sasori` 只拥有 contracts、单 Loop、事件投影与 Harness；核心仅用 Python 标准库 |
-| 坏工具调用会不会误执行 | malformed / truncated 永不执行；异常成为显式 tool result；取消继续向上传播 |
-| 真实副作用如何控制 | 工具必须声明 `read_only`、`idempotent` 或 `side_effecting`；非只读动作需要 revision 与人工决定 |
-| 崩溃后结果不确定怎么办 | 调用前先持久化 dispatch intent；歧义结果停在 `effect_unknown`，等待人工核验恢复 |
-| 多入口会不会各写一套逻辑 | Python、CLI、HTTP、应用与 Workbench 都汇入 `Harness.run()` / `resume()` |
-| 静态 Workflow 会不会另起炉灶 | strict data/JSON 与小型 Python builder 生成同一个 immutable serial `WorkflowSpec`；zero-execution preflight 输出有界 detached manifest；Studio 可通过 strong-ETag CAS 耐久保存 immutable revision，但不会激活或运行它；Python、CLI、HTTP 与 Workbench 仍共享同一 Runtime 和公共 run projection |
-| 上下文快装不下时 | 默认做确定性结构投影；可选具名 compactor 选择冷历史时不拆散 tool call/result 原子，完整耐久 transcript 始终不改写 |
-| Memory 如何避免玄学 | 可选 `sasori_memory` 用独立 SQLite 保存 immutable revisions，完整 fixed scope 在排序前过滤，每次 mutation 都走 Harness approval/idempotency |
-| 交付物如何耐久化 | 可选 `sasori_artifacts` 把 immutable bytes、metadata 与公共事件绑定到精确 run，不扩张 Loop |
-| 如何从小框架长成大产品 | Provider、SQLite、RAG、MCP、Git、workspace、apps、catalog、server、UI 全在核心外装配 |
-| 如何证明不是 PPT | fake model、provider conformance、进程崩溃、reducer 竞态、真实浏览器、包与容器门禁 |
-| 国内网络如何交付 | DaoCloud 基础镜像、清华 PyPI 默认源、digest/hash 锁定、真实国内源容器工作流 |
+| | `sasori-core` | `sasori` |
+|---|---|---|
+| Python 导入 | `sasori_core` | `sasori` 及可选顶层模块 |
+| 定位 | 嵌入式、权威的单 Agent 运行时 | 大而全的框架装配包 |
+| 包含 | 合同、唯一 Loop/Harness、版本化公开投影、存储无关 `RunStore`、`EphemeralRunStore`、测试工具 | 精确同版本核心，以及 SQLite、Provider、CLI、HTTP/SSE、插件、Workflow、Memory、Artifact、应用、Workbench、市场脚手架 |
+| 运行依赖 | **0** | 精确依赖 `sasori-core==0.1.0.dev1` |
+| 不包含 | Provider SDK、数据库、HTTP、RAG、多 Agent、UI、市场 | 不允许出现第二个 Loop 或影子 Harness |
 
-## 30 秒启动
+正式包名不会含糊：
 
-先运行不需要任何模型密钥的确定性 Incident 应用：
-
-```bash
-git clone https://github.com/syusama/sasori.git
-cd sasori
-python -m pip install -e .
-sasori-server --host 127.0.0.1 --port 8080 \
-  --db ./sasori-runs.sqlite3 \
-  --artifact-root ./sasori-artifacts \
-  --app incident=sasori_apps.incident:create_harness \
-  --publish-final-artifact \
-  --trusted-loopback-no-auth
+```text
+PyPI distribution: sasori-core       Python import: sasori_core
+PyPI distribution: sasori            Python import: sasori
 ```
 
-打开 **http://127.0.0.1:8080**。提交一条事件，检查待执行的 `record_action`，
-批准后再显式恢复。批准本身不会偷偷执行副作用。
+在 `0.1.0.dev1` 通过 Hosted CI 与 TestPyPI 双包门之前，请从当前仓库安装候选：
 
-`--trusted-loopback-no-auth` 只允许显式 loopback 地址。正常使用或容器部署应配置
-本地 bearer-token 文件。
+```bash
+# 最小核心
+python -m pip install ./packages/sasori-core
 
-## 最小但完整的 Agent
+# 完整框架：先安装本地精确核心，再避免去远端解析同名候选
+python -m pip install ./packages/sasori-core
+python -m pip install --no-deps .
+```
+
+## 30 秒跑起最小 Agent
 
 ```python
 import asyncio
 
-from sasori import Harness, Message, ModelReply, Tool, ToolCall
+from sasori_core import Harness, Message, ModelReply, Tool, ToolCall
 
 
-def lookup(topic: str) -> str:
-    return f"evidence for {topic}"
+def inspect(topic: str) -> str:
+    return f"verified evidence for {topic}"
 
 
 class DemoModel:
     async def complete(self, messages, tools):
         if messages[-1].role == "user":
             return ModelReply(
-                tool_calls=(ToolCall("lookup-1", "lookup", {"topic": "Sasori"}),)
+                tool_calls=(ToolCall("inspect-1", "inspect", {"topic": "Sasori"}),)
             )
-        return ModelReply(content=f"Grounded result: {messages[-1].content}")
+        return ModelReply(content=f"Grounded: {messages[-1].content}")
 
 
 async def main():
     with Harness(
         DemoModel(),
-        (Tool("lookup", lookup, effect="read_only"),),
+        (Tool("inspect", inspect, effect="read_only"),),
     ) as agent:
-        result = await agent.run((Message("user", "Research Sasori"),))
+        result = await agent.run((Message("user", "Inspect the mechanism"),))
     print(result.final_message.content)
-    print([event.type for event in result.events])
 
 
 asyncio.run(main())
 ```
 
-同步工具通过 `asyncio.to_thread` 执行，不阻塞 event loop。Timeout 会停止 Sasori
-继续等待，但 Python 不能强制杀死任意 worker thread 或远端模型请求；Sasori 不会
-把它宣传成 hard kill。
+模型可以只实现一次性 `complete()`，流式能力完全可选且与 Provider 无关。严格语法是：
 
-## 架构：只有一根主线
+```text
+start → deltas* → 恰好一个 done / error / aborted → 迭代器结束
+```
+
+被截断、只有 partial、超限、非法 UTF-8、超深、循环引用或结构错误的工具调用都会
+失败关闭，绝不执行。
+
+## 真实产品，不是概念渲染
+
+下面每张图都来自真实 Sasori 服务，运行时代码固定在
+[`b10b787`](https://github.com/syusama/sasori/commit/b10b787f93f2b5d29cd35c30dee17bbdc9e4de7b)。
+真实浏览器完成了 SQLite 持久化、人工审批、显式继续、一次可审计副作用、冷历史、
+Artifact 校验、能力投影、Workflow 预检与 Catalog 封存。每张图的源码 commit、请求
+视口、实际像素、字节数与 SHA-256 都在
+[截图证据清单](docs/assets/screenshots-manifest.json) 中。
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-command-1600x1000-b10b787.jpg" alt="Sasori 真实指挥中心" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-approval-1600x1000-b10b787.jpg" alt="人工审批门"></td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-explicit-resume-1600x1000-b10b787.jpg" alt="审批后的显式继续"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>审批只记录意图，不会偷偷执行副作用。</sub></td>
+    <td align="center"><sub>只有显式继续之后，机关才真正动作。</sub></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-catalog-1600x1000-b10b787.jpg" alt="持久 Workflow Catalog 与权威显影清单"></td>
+    <td><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-capabilities-1600x1000-b10b787.jpg" alt="能力与权限检查器"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>严格 JSON 预检、不可变 revision、强 ETag CAS；零运行。</sub></td>
+    <td align="center"><sub>Skill、Tool、MCP、Provider、插件与真实信任边界。</sub></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-artifact-1600x1000-b10b787.jpg" alt="不可变、已校验 Artifact"></td>
+    <td><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-b10b787.jpg" alt="持久运行完成态"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-b10b787.jpg" alt="Sasori 移动端指挥" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-b10b787.jpg" alt="Sasori 移动端能力检查器" width="375"></td>
+  </tr>
+</table>
+
+原创视觉体系叫 **赤砂机关工房**：黑漆、黄铜、朱砂、刻度、傀儡线和不可变卷宗。
+Proma 是产品密度和三栏工作台的对标，不是素材库；Sasori 不复制其 AGPL 源码、CSS、
+文案、Logo、截图或资产。
+
+## 一条控制主线
 
 ```mermaid
 flowchart LR
-    P["Python API"] --> H["Harness"]
-    C["CLI"] --> H
-    S["HTTP / SSE"] --> H
-    W["Puppet Workbench"] --> S
-    A["第一方应用"] --> H
-
-    H --> L["Single-agent loop"]
-    L --> M["Model contract"]
-    L --> T["Tool contract"]
-    L --> E["Versioned event projection"]
-    L --> R["Run store contract"]
-
-    M -. 可选 .-> P1["OpenAI / Anthropic"]
-    M -. 可选 .-> CX["结构投影 + 语义压缩"]
-    M -. 可选 .-> MM["Durable bounded Memory adapter"]
-    T -. 可选 .-> X["Workspace / Web / RAG / Git / MCP"]
-    T -. 可选 .-> MT["Memory search / remember / forget"]
-    R -. 可选 .-> SQ["SQLite durability"]
-    MM -. 独立权威库 .-> MSQ["Memory SQLite"]
+    PY["Python API"] --> H["Harness"]
+    CLI["CLI"] --> H
+    APP["第一方应用"] --> H
+    WEB["HTTP / SSE / Workbench"] --> H
+    H --> LOOP["唯一 run_agent_loop"]
+    LOOP --> MODEL["Model 合同"]
+    LOOP --> TOOL["Tool 合同"]
+    LOOP --> EVENT["版本化公开事件"]
+    LOOP --> STORE["RunStore 端口"]
+    MODEL -. 可选 .-> PROVIDERS["OpenAI / Anthropic"]
+    TOOL -. 可选 .-> PLUGINS["Workspace / Web / RAG / Git / MCP"]
+    STORE -. 可选 .-> SQLITE["SQLite 持久化"]
+    WEB -. 可选 .-> PRODUCT["赤砂 Workbench"]
 ```
 
-实线属于核心；虚线模块可替换、按需安装，并留在 Loop 外。Workbench 背后没有
-第二套“产品专用 Loop”。
+实线属于 `sasori-core`；虚线模块全部可替换并留在核心之外。
 
-## 恢复不是一个布尔开关
+## 真正重要的运行时不变量
 
-```mermaid
-stateDiagram-v2
-    [*] --> running
-    running --> awaiting_approval: 非只读工具
-    awaiting_approval --> awaiting_resume: 批准或拒绝已记录
-    awaiting_resume --> running: 显式 resume
-    running --> effect_unknown: 已 dispatch，结果不确定
-    effect_unknown --> awaiting_resume: 人工记录结果 / 失败 / 授权重试
-    running --> completed
-    running --> failed
-    running --> cancelled
-```
+- **唯一 Loop/Harness：** Python、CLI、HTTP、Workflow、UI 汇合到同一路径。
+- **事件是投影：** 公开事件是版本化语义事实，不是可变内部对象的序列化。
+- **副作用显式：** Tool 必须声明 `read_only`、`idempotent` 或
+  `side_effecting`；非只读调用带 revision 并进入审批。
+- **审批不等于执行：** 先持久化批准/拒绝，再由操作者显式继续。
+- **恢复不撒谎：** checkpoint/resume 是步骤边界恢复，不是 exactly-once；外部结果
+  不确定时停在 `effect_unknown`，按指纹人工裁决。
+- **取消是协作式：** 传播取消，但不声称远端模型或同步线程已经被强行停止。
+- **插件公开信任：** 已安装 Python entry point 是宿主可信代码，不是沙箱；MCP 由
+  服务端 transport 元数据分类，前端不猜。
+- **状态完全隔离：** 模型/工具拿到的可变值不能回写持久参数、审批、重试或其他
+  store adapter 的视图。
 
-Sasori 在一个 SQLite 事务里提交 step revision、接受的模型回复、工具 ledger、
-可恢复 checkpoint 与追加写事件。Event sink 只在 commit 后运行，而且是
-best-effort；消费者用 `(run_id, seq)` 修复缺口。
+## 当前候选实际交付
 
-工具执行前，dispatch intent 已经持久化。重启后：
-
-- 已提交的结果直接复用；
-- 结果不明的只读工作可以重试；
-- 幂等工作只能带同一 idempotency key 重试；
-- 普通副作用停在 `effect_unknown`；
-- 操作者必须提交精确 fingerprint 与审计原因，才能记录核验结果、标记失败或
-  明确授权重试。
-
-这是 **step-boundary recovery**，不是 exactly-once。外部副作用仍需要真正的
-idempotency key 或人工恢复策略。完整契约见
-[Foundation](docs/FOUNDATION.md)。
-
-## 压缩模型视图，保留完整原始记录
-
-**上下文更短，原始记录不动。** 长历史可以包一层纯标准库 model adapter：
-
-```python
-from sasori_context import BoundedContextModel, ContextBudget, ContextProjector
-
-model = BoundedContextModel(
-    provider,
-    ContextProjector(
-        ContextBudget(max_units=120_000, reserve_units=20_000, hot_turns=2)
-    ),
-)
-```
-
-默认单位是 canonical UTF-8 JSON bytes，**不是 provider token**。默认投影器保护
-开头的 system message 与最近 turns，把 assistant tool call 和全部匹配结果当作
-不可拆分原子；orphan 或错配历史会 fail closed。已经被 Harness 拒绝的 malformed /
-incomplete 调用只会变成带精确 `error_code` 的普通文本，不再是可执行的 provider
-tool protocol。被移除的历史变成确定性的
-**结构省略标记**，不会把 vendor 私有状态的稳定指纹发给另一模型；这条默认路径不做
-语义事实承诺。
-
-显式启用后，`SemanticCompactionModel` 只把选中的冷区公共投影交给具名 summarizer，
-且 `tools=()`。Sasori 只接受一个回显整包 source SHA-256 的严格响应，把自由文本作为
-有损、未经事实验证的 assistant 历史注记，再重新测量完整主模型请求。tool call、超时、拒绝、
-畸形/超限输出、source 不匹配或最终预算溢出都会 fail closed，主模型不会继续调用。
-进程内诊断会绑定 summarizer identity/policy digest、source/summary digest、canonical
-source/prompt/summary 字节计数、cache 状态与失败码；它不是耐久公共事件，也不是
-provider token 账单。
-
-Digest 回显只证明这段注记对应哪一整包请求，不证明其中任何句子可由 source 推导。
-源文本仍可能影响 summarizer，注记也仍可能影响主模型。Sasori 不会把它写入 approval
-或 effect ledger；主模型提出的每个工具调用仍必须经过 Harness 原有的审批/副作用边界。
-
-SQLite 中的完整 transcript 始终不改写。这是语义压缩，不是长期 Memory、无损压缩或
-无限上下文。详见 [Context](docs/CONTEXT.md)、
-[ADR-0009](docs/ADR-0009-CONTEXT-PROJECTION-BOUNDARY.md) 与
-[ADR-0011](docs/ADR-0011-SEMANTIC-COMPACTION-BOUNDARY.md)。
-
-## 有边界的 Memory，不讲玄学
-
-`sasori_memory` 是核心外、显式 opt-in 的耐久投影。它不会把 transcript、RAG 索引
-或 semantic-compaction cache 换个名字冒充 Memory。一套 record protocol 同时支持
-`episodic`、`semantic`、`procedural` 三种 kind，并提供：
-
-- immutable revision 与 expected-revision CAS；
-- 来自已提交 Harness tool call 的精确 source lineage，以及互相独立的 operation /
-  observation identity；
-- provider call ID 在共享的 1–256 UTF-8 字节、无 NUL 合同内保持 opaque、区分大小写；
-  非法值或 257-byte 值会在审批与执行前停止，也绝不会成为 Memory idempotency key；
-- SQL 先按完整 owner/app/scope/session 过滤，再做确定性 lexical ranking；query、
-  candidate、result、injection 和 final context 都有硬上限，分数明确是
-  `term_coverage_bps` 相关度，不是真实性或置信度；
-- exact item、source 和 whole scope suppression；重放与 generation rebuild 都不能
-  让删除的投影复活；
-- 新索引 generation 完整构建后一次原子切换；
-- 幂等重放会核验 request、operation kind、完整 binding、audit digest、严格结果
-  envelope 与底层 immutable record/suppression，不会把伪造 JSON 当成历史真相；
-- 每个已提交 model/tool phase 只有一次进程内 invocation lease，旧的父 task 或复制
-  context 不能再次调用 Memory。
-
-Research 与 Developer 只有在四项 deployment-owned 配置全部存在时才启用：
-
-```bash
-export SASORI_MEMORY_DB=./sasori-memory.sqlite3
-export SASORI_MEMORY_OWNER_ID=local-owner
-export SASORI_MEMORY_SCOPE_ID=private
-export SASORI_MEMORY_SESSION_ID=default
-```
-
-自动 recall 会把普通长 user turn 确定性地投影到显式 search API 的 byte/term 限制，
-不会因为第 17 个词或大于 2048 bytes 就让整个 Agent 失败。fresh recall 以普通
-assistant data 进入 host-only protected prelude，仍与当前问题、结构投影和语义压缩
-共用同一个最终预算。空间不足时只按稳定 rank 删除完整低位记录并报告
-`omitted_count`；绝不切半一条记录，也不会把本轮 recall 当作旧对话静默删除。
-
-`search_memory` 是 read-only；`remember_memory` 与 `forget_memory` 是 idempotent，
-必须先经过操作者批准。v1 没有后台 extractor：model proposal 保存为
-`model-proposed-unverified`，批准只授权写入，不证明内容为真。被召回文本仍可能
-影响模型；它不会直接成为 system policy、tool call/result、approval、effect
-evidence、公共 event 或 checkpoint，模型新提出的 effect 仍走 Harness 原闸门。
-
-whole-scope forget 后，read 返回带 `scope_status=suppressed` 的版本化空结果，因此
-当前确认回复和后续 run 都能继续；写入与 rebuild 继续拒绝，v1 没有隐式 restore。
-删除只影响 Memory 投影，不会删除 source run、events、artifacts、provider data、
-日志或备份。
-
-这一阶段的身份边界是 `local-single-owner`：每个 runtime 只有固定的 application /
-scope / session namespace。当前 bearer token 认证的是 Sasori instance，不是用户或
-tenant，所以不能宣称 shared SaaS 中的 per-user private Memory。详见
-[Memory](docs/MEMORY.md) 与
-[ADR-0012](docs/ADR-0012-DURABLE-BOUNDED-MEMORY.md)。
-
-## 不让产物拖大核心的 ArtifactRef
-
-可信 Python host 可以在真实 run 建立后显式注册有界交付物：
-
-```python
-from sasori_artifacts import ArtifactStore
-
-artifacts = ArtifactStore(run_store, "./artifacts")
-ref = artifacts.put(
-    run_id,
-    b'{"status":"ready"}',
-    declared_filename="report.json",
-    declared_media_type="application/json",
-)
-```
-
-Blob 按 SHA-256 无覆盖 finalize；immutable metadata row 与
-`artifact.available` 在 run 的真实 durable cursor 上同事务提交。重试幂等；读取在
-发送成功 headers 前，基于同一个已打开文件校验精确 size 与 digest。HTTP
-list/content/HEAD/单 Range 全部按 run association 查询，unknown 与 cross-run ID
-返回相同 404。
-
-当前 Bearer 只认证一个 Sasori instance，不是用户或租户身份。本阶段没有 upload、
-delete、retention/GC 保证、分享 grant 或 active-content preview。详见
-[Artifacts](docs/ARTIFACTS.md) 与
-[ADR-0010](docs/ADR-0010-ARTIFACT-REF-BOUNDARY.md)。
-
-## Puppet Workbench / 蠍之机关室
-
-<p align="center">
-  <img src="docs/assets/workbench.png" alt="Sasori Puppet Workbench 中真实完成的 Incident run、immutable artifact 卡片与安全文本预览" width="100%">
-</p>
-
-这张图来自真实浏览器链路：生产 Workbench → `sasori.server` → Incident Harness
-→ SQLite → 人工批准 → 显式恢复 → 一次外部副作用 → 页面重载 → 冷历史重开。
-该 run 先产生 16 个 Loop events，再由显式 host policy 追加一个
-`artifact.available`；Chrome 验收会真实检查 artifact card、认证预览、下载 fetch
-与冷重开。它不是静态 mockup。
-
-当前 no-build UI 已包含：
-
-- 第一方应用选择、可用性与能力展示；
-- cursor 分页的耐久 run history；
-- 任务输入、REST/SSE 进度、批准/拒绝、显式恢复、人工 effect recovery；
-- live/cold/reconnect 共用 pure reducer 的时间轴；
-- 从版本化 server projection 消费耐久串行 Workflow rail；event reducer 只负责
-  timeline/cursor，不再推导 Workflow 耐久状态；
-- strict-JSON Workflow Studio 向服务器请求权威 detached preflight manifest，
-  通过 strong-ETag CAS 保存 immutable revision，但不会激活或运行 saved definition；
-- 精确 run-scoped artifact cards、认证 UTF-8 text/JSON preview、verified download
-  与 stale-response 隔离；
-- skill、tool effect、plugin identity 与宿主权限披露；
-- 响应式导航、键盘 focus、reduced motion，以及对不可信内容的 text-only 渲染。
-
-## 今天真正交付了什么
-
-| Surface | 当前边界 |
+| 模块 | 已交付边界 |
 |---|---|
-| `sasori` | contracts、single-agent Harness/Loop、版本化 event/run projection、内存 store |
-| `SQLiteStore` | 原子 revision/checkpoint/event、CAS、重启恢复、跨进程单 owner |
-| Providers | 标准库 OpenAI Responses 与 Anthropic Messages；strict schema 与共享 conformance |
-| `sasori_context` | 确定性结构投影；可选具名 semantic compactor；source lineage、有界输出/cache/诊断、显式失败 |
-| `sasori_memory` | 可选 fixed-scope SQLite 权威库；immutable revision/CAS、source lineage、有界 lexical recall、suppression、atomic rebuild、Harness-gated tools |
-| `sasori_artifacts` | immutable content-addressed blobs、run/event association、verified list/content/HEAD/Range |
-| `sasori_flow` | 定义绑定的串行 W0 执行；strict data/JSON/builder authoring；zero-execution compiled manifest preflight；deployment-owner saved catalog、immutable revision 与 strong-ETag CAS；版本化脱敏 Workflow projection；无 activation/DAG/并行/Agent node |
-| CLI | run/status/events/approval/resume/effect；JSON/JSONL 模式 |
-| HTTP/SSE | 本地单 owner 服务、apps、history、durable cursor、只读 Workflow preflight、条件式 saved-Workflow catalog、readiness、Workbench |
-| Applications | 确定性 Incident；需配置的 Research 与 Developer；定义绑定的 Incident Mechanism Workflow |
-| Plugins | workspace、allowlisted HTTPS、SQLite/FTS5 RAG、Git、冻结 MCP stdio；配置后注册第一方 Memory |
-| Catalog | 严格本地 curated index；中央 marketplace 尚未上线 |
-| Delivery | source、wheel、重建 sdist、Compose candidate、SBOM binding、多系统矩阵 |
+| Core | 零依赖合同、Loop/Harness、严格流式协议、审批/恢复、`RunStore`、临时 store、稳定投影、确定性测试 Harness |
+| 持久化 | SQLite revision/event/checkpoint/CAS、重启恢复、单 owner 准入 |
+| Provider | 标准库 OpenAI Responses 与 Anthropic Messages adapter，共用 conformance |
+| Context / Memory | 有界结构化/可选语义压缩；独立固定 scope、不可变 revision 的 SQLite Memory，写入仍走 Harness |
+| 工具 / 插件 | workspace、白名单 HTTPS、SQLite/FTS5 RAG、本地 Git、冻结 MCP stdio、可信 entry point 与权限披露 |
+| Workflow | 严格静态串行定义、零执行权威预检、不可变保存 revision、CAS 冲突/对账、唯一 Harness 执行路径 |
+| 产品 | CLI、HTTP/SSE、Incident、按配置启用的 Research/Developer、Artifact、响应式 Workbench、市场脚手架 |
 
-四种应用只是 composition，不是四套 Runtime：
+更深的合同见 [架构基础](docs/FOUNDATION.md)、[HTTP API](docs/HTTP_API.md)、
+[Workflow](docs/WORKFLOWS.md)、[Memory](docs/MEMORY.md)、
+[Artifact](docs/ARTIFACTS.md) 与 [Pi/Proma 对标](docs/BENCHMARK-PI-PROMA.md)。
 
-- **Incident Chamber**：确定性诊断 + 一个经操作者批准的本地审计动作。
-- **Research Atelier**：已配置 provider + allowlisted web evidence + 保留引用的
-  SQLite/FTS5 retrieval + 可选 fixed-scope Memory。
-- **Puppet Workshop**：已配置 provider + 有界 workspace tools + state-bound Git
-  + 可选冻结 MCP tools 与 fixed-scope Memory。
-- **Incident Mechanism**：定义绑定、串行 `inspect → record` 的 Tool Workflow；
-  复用同一套 approval、effect、recovery 与事件路径，暴露有界公共步骤投影，
-  并可在不执行定义的前提下预览 immutable compiled manifest。Studio 可依据
-  启动时冻结的宿主 Tools 预检草稿，并条件式保存 immutable revision 到
-  deployment-owner catalog，但不能激活、部署、调度或运行它。
+## 先有证据，再用形容词
 
-配置不足会显示 unavailable，不会偷偷用 Incident Demo 冒充成功。
+当前运行时快照已通过：
 
-## Provider 与工具 Schema
+- `531` 项确定性 `unittest`（Windows 没有创建符号链接特权时跳过 `5` 项相关用例）；
+- 桌面、窄屏、reduced-motion 下 `30 / 30` 浏览器验收；
+- `3 / 3` 条真实服务旅程，覆盖审批、继续、Workflow、Catalog、历史、Artifact、权限；
+- 使用 DaoCloud digest 固定 Python 镜像与清华 PyPI 源的国内源 Docker 构建和非 root
+  容器真实工作流；
+- 原始 core wheel、core sdist 重建、精确 bundle+core wheel、bundle sdist 锁定重建的
+  干净安装回环。
 
-`OpenAIResponsesModel` 对接 OpenAI Responses API；
-`AnthropicMessagesModel` 对接 Anthropic Messages。两者都：
+README 元数据会改变 bundle wheel，因此这里故意不写即将过期的最终 hash。
+[发布门](docs/RELEASE.md) 会在 Hosted CI、TestPyPI 和 tag 之前重新构建并绑定精确字节。
+测试才是发布权威；模型生成的计划和漂亮截图都不是。
 
-- 仅用 `urllib`，拒绝重定向、超限/畸形 JSON 与错误 SSE 顺序；
-- 关闭并行工具调用，并在本地验证模型返回参数；
-- 保存 vendor continuation state，但不把 reasoning/thinking 投影成公共事件；
-- 通过同一套 malformed、timeout、429、interrupted stream、duplicate call 与
-  cancellation conformance。
+## 对标，但不照抄
 
-`stream=True` 表示消费并完整验证上游 SSE，再返回最终回复；公共 token streaming
-尚未交付。只有在本地安全配置密钥和 model name，并真实完成两轮工具调用后，才会
-宣称 real-provider smoke 通过。当前仓库 CI 不作该声明。
+- **Pi**（MIT，固定 commit）：学习可读 Loop 和有序 Tool/Event；Sasori 继续做到 Python
+  零依赖核心、真正可执行 Harness、更严格的流终止与显式恢复。
+- **Proma**（AGPL-3.0-only，固定 commit）：学习三栏生产力工作台和 Workflow 可发现性；
+  Sasori 基于自己的事件合同原创实现无构建 UI 与视觉体系。
+- **LeAgent / ToFu：** 吸收产品广度与耐久运行经验，同时强化 effect ambiguity、投影
+  ownership、发行边界和证据门。
 
-## Plugin 是能力，不是魔法
+源码与许可证证据见 [Pi / Proma](docs/BENCHMARK-PI-PROMA.md)、
+[LeAgent / ToFu](docs/BENCHMARK-LEAGENT-TOFU.md) 和
+[第三方声明](THIRD_PARTY_NOTICES.md)。
 
-Python entry-point plugin 是 trusted installed code。导入后，它拥有 Sasori 进程与
-OS 用户的全部权限。Manifest permissions 是 review/disclosure metadata，不是运行
-时 enforcement，所以 Workbench 明确显示 `FULL HOST PROCESS PRIVILEGES` 与
-`enforced=false`。
+## 下一批机关——尚未交付
 
-本地 catalog 会检查 identity、API version、digest、compatibility、execution
-mode、permission declaration 与 upgrade diff。第一方应用直接组合注册，不会动态
-加载外部 entry point。`container` / `supervised_process` 目前只是 manifest mode，
-Sasori 不把它们冒充沙箱。
+- 插件签名、兼容策略和有治理的公开市场；
+- 租户身份、授权、配额、持久队列和分布式 Worker；
+- 对不可信工具提供 CPU、内存、文件系统和网络出口都可验证的隔离；
+- 只有在 effect、取消、审批、replay 合同先被证明后，才扩展 DAG、并行 Workflow 与
+  多 Agent 编排；
+- 团队、数字员工和桌面级大产品，但仍复用唯一 Loop。
 
-启用第三方代码前请阅读：
+## 名称、创作与权利边界
 
-- [ADR-0001：Plugin trust](docs/ADR-0001-PLUGIN-TRUST.md)
-- [ADR-0002：Web fetch](docs/ADR-0002-WEB-FETCH-BOUNDARY.md)
-- [ADR-0003：SQLite RAG](docs/ADR-0003-RAG-SQLITE-BOUNDARY.md)
-- [ADR-0004：Git boundary](docs/ADR-0004-GIT-PLUGIN-BOUNDARY.md)
-- [ADR-0005：MCP stdio](docs/ADR-0005-MCP-STDIO-BOUNDARY.md)
-- [ADR-0007：External plugin host](docs/ADR-0007-TRUSTED-EXTERNAL-PLUGIN-HOST.md)
-- [ADR-0013：Typed Workflow boundary](docs/ADR-0013-TYPED-WORKFLOW-BOUNDARY.md)
-- [ADR-0014：Static serial authoring 与公共 projection](docs/ADR-0014-STATIC-SERIAL-AUTHORING-PUBLIC-PROJECTION.md)
-- [ADR-0015：Static compiled manifest preflight](docs/ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md)
-- [ADR-0016：Static serial Workflow Studio](docs/ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md)
-- [ADR-0017：Durable saved Workflow catalog](docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md)
+Sasori 是独立开源项目，与《火影忍者》、岸本齐史、集英社、东京电视台、Studio
+Pierrot 及相关权利方不存在官方隶属、授权、赞助或背书关系。项目只使用原创的抽象
+机械蝎、傀儡线、机关、精密、可拆模块、赤砂和“永恒艺术”隐喻，不使用官方角色图、
+动画帧、服饰造型、Logo、台词或字体。正式公开发布前仍需独立完成名称与商标检索。
 
-## CLI 与本地服务
+## License 与贡献
 
-```powershell
-sasori --db .\runs.sqlite3 --app sasori_apps.incident:create_harness run "checkout latency is high" --run-id incident-1
-sasori --db .\runs.sqlite3 status incident-1
-sasori --db .\runs.sqlite3 events incident-1 --after 0
-sasori --db .\runs.sqlite3 --app sasori_apps.incident:create_harness approval incident-1 <fingerprint> --approve
-sasori --db .\runs.sqlite3 --app sasori_apps.incident:create_harness resume incident-1
-```
+Sasori 代码使用 [MIT License](LICENSE)。第三方插件保留各自许可证，并作为宿主可信
+代码运行。安全边界见 [SECURITY.md](SECURITY.md)；会改变公共合同的贡献应同时提供
+决策记录与可运行验收证据。
 
-退出码 `3` 表示 run 已耐久暂停，等待显式下一步。批准和人工 effect decision 都不会
-隐式 resume。
-
-`sasori-server` 在所有应用之间最多允许一个 active mutation；第二个请求收到
-`503 runtime_busy`，不会被悄悄塞进内存队列。file-backed store 持有跨进程单
-owner lock。network filesystem、replica、failover、public TLS 与 horizontal
-scheduling 尚未交付。API 见 [HTTP_API.md](docs/HTTP_API.md)。
-
-## Docker：国内源与依赖完整性同时保证
-
-Compose 使用：
-
-- digest-pinned DaoCloud Python base；
-- 清华 PyPI mirror 上带 hash 的 build requirements；
-- non-root、read-only root filesystem、dropped capabilities、
-  `no-new-privileges` 与资源上限；
-- 本地 bearer-token file，而不是把 token 放进 Git 或环境变量。
-
-```powershell
-$env:SASORI_TOKEN_FILE = "C:\secure-local-path\sasori-token"
-$env:SASORI_PORT = "18888"
-docker compose up -d --build --wait
-```
-
-原生 Linux 上，token 应由 operator 与专用 group 持有，权限 `0640`，并把数字 GID
-传给 `SASORI_TOKEN_GID`。Compose file secret 是 bind mount，不能重映射宿主 owner。
-完整流程见 [Release gates](docs/RELEASE.md)。
-
-## 测试才是产品契约
-
-```powershell
-$env:PYTHONPATH = "src"
-python -m unittest discover -s tests -v
-node --test tests/workbench_event_reducer.test.cjs
-python tests/workbench_browser_acceptance.py --require-browser
-python tests/workbench_browser_journey.py --require-browser
-```
-
-UI 改动后可用真实旅程重建 README 证据图：
-
-```powershell
-python tests/workbench_browser_journey.py --require-browser `
-  --screenshot docs/assets/workbench.png
-```
-
-最新已托管验证的实现基线
-[`a3c4870`](https://github.com/syusama/sasori/commit/a3c48709ffbbdec5edc8f9ec420e63fe80635cc7)
-在 [Hosted run 31468469213](https://github.com/syusama/sasori/actions/runs/31468469213)
-中成功完成：五个 job families 的 20 个非 tag jobs 全部通过；仅用于 exact tag 的
-release-bundle job 按设计跳过。实际执行的门禁包括：
-
-- 471 项确定性 source suite 通过 Ubuntu + Windows × Python 3.11 / 3.12 /
-  3.13 matrix；本地 Windows 基线为 `OK (skipped=5)`，仅跳过有明确说明的
-  平台/权限条件；
-- 六种 OS/Python 组合上的 original installed-wheel 与 rebuilt-sdist consumer
-  matrix，以及严格 256,000-byte wheel 上限和 ordinary-push tag 拒绝；
-- locked 国内源 image build 与 fresh-volume Compose 真实旅程，覆盖 Incident、
-  executable Workflow、Memory、artifact 与 saved Workflow catalog；create、精确
-  CAS update、stale-writer refusal、historical read、restart 全程不改变
-  run/event/action authority；
-- SBOM、image binding 与审计证据上传；
-- real Chrome fixture 在 desktop 与 390×844 reduced-motion 两种尺寸通过
-  29 个 cases，并在 Ubuntu/Python 3.12 跑通真实 saved Studio、Incident 与
-  Typed Workflow 旅程，包含浏览器端 canonical SHA-256 binding 和 fail-closed
-  per-record recovery。
-
-该 ordinary main branch run **没有**创建 tag、TestPyPI/PyPI publication、
-exact-tag bundle、签名 attestation、GitHub Release、registry image 或正式 release。
-Exact-tag provenance 仍是单独的发布门禁。
-
-该 run 正式晋级 Workflow W1.3。在 W0-W1.2 之上，Sasori 现在拥有独立的
-deployment-owner saved-authoring catalog：immutable revisions、由精确 strong ETag
-CAS 保护的 mutable head、稳定分页、精确 historical read，以及 zero-execution 的
-current-Tool compatibility verdict。Workbench 对打开的 definition 做 canonical
-SHA-256 binding，按 Catalog ID 隔离 recovery，冲突时保留草稿；歧义 mutation
-固定返回不可自动重试的 `504 workflow_catalog_outcome_unknown`，只允许一次只读
-GET reconciliation，绝不自动重复 PUT。
-
-这**不是** activation、run-from-draft/run-from-saved、delete/restore/purge、metadata
-editing、sharing、tenant ownership/RBAC、visual DAG、并行/分支执行、Agent node、
-subflow、distributed scheduler、exactly-once、sandbox、签名 provenance、
-production readiness 或真实 provider 质量证据；这些门禁仍然开放。
-
-## Current / Next
-
-| Current：可用且有测试 | Next：尚不宣称 |
-|---|---|
-| 标准库轻核 | Artifact access grant、版本链与 lifecycle/GC |
-| immutable run-scoped ArtifactRef + 安全文本/JSON 预览 | 通过专项内容校验门禁后的安全 PDF/image preview |
-| 单 Agent Loop 与一个 Runtime path | multi-user Memory 所需的可信 per-request user/tenant identity |
-| 本地 single-owner durable bounded Memory | 自动低信任 extraction、conflict policy、embedding/rerank、TTL/export/restore |
-| 版本化耐久事件与纯 UI reducer | 动态 skill selection 与受审市场 |
-| approval/effect 恢复 + strict static 串行 authoring、权威 Studio preflight、immutable manifest 预览、deployment-owner saved catalog 的 immutable revision/strong-ETag CAS/history，以及公共步骤投影 | 分别门禁 activation/run-from-draft/run-from-saved、delete/restore/metadata、tenant ownership/RBAC、DAG/分支/并行 ready set/Agent node/subflow |
-| OpenAI + Anthropic conformance | 通过共享套件后的更多 providers |
-| 结构投影 + 可选整包请求绑定、未经事实验证的语义注记 | Project Charter/Board 与多 Agent orchestration |
-| CLI、HTTP/SSE、四种应用、Workbench | 安全 versioned GenUI 与更丰富产品面 |
-| single-owner SQLite/Compose | leased durable executor 与真正隔离边界 |
-
-完整源码对标、反模式、P0/P1/P2 顺序与验收门禁见
-[Sasori × LeAgent × ToFu](docs/BENCHMARK-LEAGENT-TOFU.md)。
-
-## 七条设计戒律
-
-1. **只有一条 Loop。** Adapter 和产品可以组合它，不能复制它。
-2. **Durable before visible。** 用户看到的进度不能跑在 commit truth 前面。
-3. **副作用必须显式。** read-only、idempotent、side-effecting 拥有不同的重试权。
-4. **Invalid means inert。** 截断或结构无效的工具调用永远不执行。
-5. **核心保持小。** Provider SDK、persistence、HTTP、RAG、orchestration、UI、
-   marketplace 留在核心外。
-6. **信任边界必须说人话。** Path containment 不是 sandbox；entry point 是 trusted
-   code；cancel 是 cooperative。
-7. **证据大于形容词。** 真实路径和失败路径通过可运行验收后，能力才算 shipped。
-
-## 参与贡献
-
-Sasori 先建小内核，再长大生态。尤其欢迎：
-
-- 把 recovery invariant 变成可执行 regression；
-- 通过共享 conformance 的 provider adapter；
-- 留在 core 外且写清 trust boundary 的 extension；
-- 有确定性验收的第一方 app 或 curated plugin；
-- 对 Puppet Workbench 的无障碍、响应式、视觉与真实浏览器改进。
-
-修改 public events、recovery、golden trace 或 plugin permissions 前，请先阅读
-[AGENTS.md](AGENTS.md)、相关 ADR 与 [Foundation](docs/FOUNDATION.md)。
-
-## 安全与许可证
-
-安全问题请通过 [SECURITY.md](SECURITY.md) 中的私密渠道报告。Sasori 代码与第一方
-资产使用 [MIT License](LICENSE)，来源与第三方许可边界记录在
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+**造一具傀儡，亮出每根线，让结果真正留下来。**

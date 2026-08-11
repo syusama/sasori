@@ -23,8 +23,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "13"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v10"
+VERIFIER_VERSION = "15"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v12"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -79,8 +79,20 @@ RELEASE_DOCS = (
 )
 RELEASE_ASSETS = (
     "README_zh.md",
+    "README_ja.md",
+    "README_ko.md",
     "docs/assets/readme-hero.svg",
-    "docs/assets/workbench.png",
+    "docs/assets/screenshots-manifest.json",
+    "docs/assets/screenshots/workbench-approval-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-artifact-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-capabilities-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-command-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-completed-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-explicit-resume-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-mobile-390x844-b10b787.jpg",
+    "docs/assets/screenshots/workbench-mobile-inspector-390x844-b10b787.jpg",
+    "docs/assets/screenshots/workbench-workflow-catalog-1600x1000-b10b787.jpg",
+    "docs/assets/screenshots/workbench-workflow-preflight-1600x1000-b10b787.jpg",
 )
 TOP_LEVEL_PACKAGES = (
     "sasori",
@@ -245,9 +257,17 @@ def _inventory(files: dict[str, bytes]) -> str:
     return digest.hexdigest()
 
 
-def _metadata(value: bytes, where: str) -> tuple[str, str, str]:
+def _metadata(
+    value: bytes, where: str, expected_readme: bytes
+) -> tuple[str, str, str]:
     message = BytesParser(policy=policy.default).parsebytes(value)
-    for field in ("Name", "Version", "Requires-Python", "License-Expression"):
+    for field in (
+        "Name",
+        "Version",
+        "Requires-Python",
+        "License-Expression",
+        "Description-Content-Type",
+    ):
         if len(message.get_all(field, [])) != 1:
             raise ReleaseVerificationError(
                 f"{where} must declare exactly one {field}", 3
@@ -266,6 +286,10 @@ def _metadata(value: bytes, where: str) -> tuple[str, str, str]:
         )
     if str(message.get("License-Expression", "")) != "MIT":
         raise ReleaseVerificationError(f"invalid {where} license", 3)
+    if str(message.get("Description-Content-Type", "")) != "text/markdown":
+        raise ReleaseVerificationError(
+            f"invalid {where} Description-Content-Type", 3
+        )
     if [str(item) for item in message.get_all("License-File", [])] != list(
         LICENSE_FILES
     ):
@@ -278,6 +302,29 @@ def _metadata(value: bytes, where: str) -> tuple[str, str, str]:
     }:
         raise ReleaseVerificationError(
             f"{where} project URLs do not match the release contract", 3
+        )
+    if b"\r\n\r\n" in value:
+        description = value.split(b"\r\n\r\n", 1)[1]
+    elif b"\n\n" in value:
+        description = value.split(b"\n\n", 1)[1]
+    else:
+        raise ReleaseVerificationError(
+            f"{where} is missing its description body", 3
+        )
+    try:
+        normalized_description = description.decode("utf-8").replace("\r\n", "\n")
+        normalized_readme = expected_readme.decode("utf-8").replace("\r\n", "\n")
+    except UnicodeDecodeError as exc:
+        raise ReleaseVerificationError(
+            f"{where} description must be strict UTF-8", 3
+        ) from exc
+    if "\r" in normalized_description or "\r" in normalized_readme:
+        raise ReleaseVerificationError(
+            f"{where} description has unsupported line endings", 3
+        )
+    if normalized_description != normalized_readme:
+        raise ReleaseVerificationError(
+            f"{where} description does not match README.md", 3
         )
     return name, version, requires_python
 
@@ -450,7 +497,9 @@ def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict
     if dist_infos != {expected_dist_info}:
         raise ReleaseVerificationError("wheel must have one exact dist-info directory", 3)
     name, version, requires_python = _metadata(
-        files.get(f"{expected_dist_info}/METADATA", b""), "wheel METADATA"
+        files.get(f"{expected_dist_info}/METADATA", b""),
+        "wheel METADATA",
+        (source_root / "README.md").read_bytes(),
     )
     expected_dist_info_files = {
         f"{expected_dist_info}/METADATA",
@@ -576,7 +625,11 @@ def verify_sdist(path: Path, source_root: Path, project: dict[str, str]) -> dict
     ):
         if files.get(f"{root}/{filename}") != (source_root / filename).read_bytes():
             raise ReleaseVerificationError(f"sdist {filename} does not match source", 3)
-    name, version, requires_python = _metadata(files.get(f"{root}/PKG-INFO", b""), "sdist PKG-INFO")
+    name, version, requires_python = _metadata(
+        files.get(f"{root}/PKG-INFO", b""),
+        "sdist PKG-INFO",
+        (source_root / "README.md").read_bytes(),
+    )
     source_payload = _source_payload(source_root)
     for relative, value in source_payload.items():
         if files.get(f"{root}/src/{relative}") != value:
@@ -644,7 +697,7 @@ def _project(source_root: Path) -> dict[str, str]:
         f"sasori-core=={result['version']}"
     ] or project.get("license-files") != [
         "LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*"
-    ]:
+    ] or project.get("readme") != "README.md":
         raise ReleaseVerificationError("project metadata violates the release contract", 3)
     if project.get("urls") != PROJECT_URLS:
         raise ReleaseVerificationError("project URLs violate the release contract", 3)

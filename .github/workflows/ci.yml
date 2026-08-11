@@ -885,13 +885,15 @@ jobs:
               export PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
               mkdir -p /tmp/sasori /tmp/sasori-core /out/sasori-core
               cp /source/pyproject.toml /source/MANIFEST.in /source/README.md \
-                 /source/README_zh.md \
+                 /source/README_zh.md /source/README_ja.md /source/README_ko.md \
                  /source/LICENSE /source/SECURITY.md /source/THIRD_PARTY_NOTICES.md \
                  /source/requirements-build.txt /tmp/sasori/
               cp -a /source/docs /source/licenses /source/src /tmp/sasori/
               cp -a /source/packages/sasori-core/. /tmp/sasori-core/
-              find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+              find /tmp/sasori /tmp/sasori-core -type d \( -name "*.egg-info" -o -name __pycache__ \) \
                 -prune -exec rm -rf -- {} +
+              find /tmp/sasori /tmp/sasori-core -type d -exec chmod 0755 {} +
+              find /tmp/sasori /tmp/sasori-core -type f -exec chmod 0644 {} +
               cd /tmp/sasori
               python -m pip download \
                 --require-hashes \
@@ -963,6 +965,8 @@ jobs:
             MANIFEST.in \
             README.md \
             README_zh.md \
+            README_ja.md \
+            README_ko.md \
             LICENSE \
             SECURITY.md \
             THIRD_PARTY_NOTICES.md \

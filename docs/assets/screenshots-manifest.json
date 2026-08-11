@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "runtime_source_commit": "b10b787f93f2b5d29cd35c30dee17bbdc9e4de7b",
+  "captured_on": "2026-08-11",
+  "locale": "zh-CN",
+  "theme": "red-sand-atelier-dark",
+  "real_server_journey": true,
+  "browser": {
+    "surface": "Microsoft Edge extension",
+    "name": "Microsoft Edge",
+    "version": "151.0.4129.72",
+    "engine": "Chromium",
+    "engine_version": "151.0.7922.76",
+    "platform": "Windows",
+    "console_entries_after_journey": 0
+  },
+  "run": {
+    "run_id": "run-8d7bfea9-9899-41f6-863f-196ec324fcf3",
+    "task": "生产 API 延迟突增，请完成诊断、生成审计记录并等待人工批准。",
+    "terminal_status": "completed",
+    "durable_event_count": 17,
+    "lifecycle": [
+      "approval_required",
+      "approved",
+      "resume_required",
+      "explicit_resume",
+      "completed"
+    ],
+    "artifact": {
+      "filename": "run-8d7bfea9-9899-41f6-863f-196ec324fcf3-result.md",
+      "bytes": 305,
+      "event_seq": 17,
+      "sha256": "f25bb6b8127909f5e62280106fa53f366fea464a2a6a6b5b3066ecc1736f5997"
+    }
+  },
+  "workflow": {
+    "catalog_id": "wfcat_5ccdf79ed84a48f29224224798a5e047",
+    "workflow_id": "studio-inspect_incident",
+    "revision": 1,
+    "definition_sha256": "f94e8df7adb5e254efda8de255d496b768b3c5eef42872cd3019a8d9b0395ed6",
+    "preflight_model_calls": 0,
+    "preflight_tool_dispatches": 0
+  },
+  "captures": [
+    {
+      "path": "docs/assets/screenshots/workbench-command-1600x1000-b10b787.jpg",
+      "scenario": "desktop command center bound to the completed durable Incident run",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1577, "height": 813},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 101216,
+      "sha256": "fb93ac63e010b6f715196db340bf87e8a165c0fc77e93cb7f57750497178d162"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-approval-1600x1000-b10b787.jpg",
+      "scenario": "human approval gate before any side effect executes",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1577, "height": 813},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 94925,
+      "sha256": "b9a9e88bf681a3a18ffdbdf660684ff3ef6b846757d8d3a619b4b9d02eb10070"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-explicit-resume-1600x1000-b10b787.jpg",
+      "scenario": "resume-required state after the approval decision is committed",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1577, "height": 813},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 90624,
+      "sha256": "5775413efbd491e2acc01dbefce47511b6556783e455ef11bde7cd06096585a1"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-completed-1600x1000-b10b787.jpg",
+      "scenario": "completed durable run after explicit resume and one audited effect",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1577, "height": 813},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 100445,
+      "sha256": "e7dfcedce85548fb28bab602081b7cc93d274b5a5178023c85729e0877faed52"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-artifact-1600x1000-b10b787.jpg",
+      "scenario": "immutable run artifact with safe preview and digest evidence",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1577, "height": 813},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 97087,
+      "sha256": "56fef225adec42626f3812c6a1de1979c3acf2014d1671bd49625b052ad4e8a7"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-capabilities-1600x1000-b10b787.jpg",
+      "scenario": "server-owned Skills, Tools, MCP transport, Provider, Plugin and trust projection",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1577, "height": 813},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 102417,
+      "sha256": "5e5cb86743162f9522c35e3320eae2cc91f047fb74f3d2cfc356320b3fff9a05"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-workflow-preflight-1600x1000-b10b787.jpg",
+      "scenario": "authoritative strict-JSON Workflow preflight with zero model calls and zero Tool dispatches",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1592, "height": 821},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 118737,
+      "sha256": "ab8c292734222e9f90e7df71a66853e9c9265b2902b27f646fcee70201765778"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-workflow-catalog-1600x1000-b10b787.jpg",
+      "scenario": "durable Workflow Catalog revision 1 saved through strong-ETag CAS without execution",
+      "requested_viewport": {"width": 1600, "height": 1000},
+      "actual_pixels": {"width": 1592, "height": 821},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 116236,
+      "sha256": "9cba9cd499b18df74e856f835f071e40db04c9eecbf76a64415030f91d29c858"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-mobile-390x844-b10b787.jpg",
+      "scenario": "responsive mobile command surface showing the same completed durable run",
+      "requested_viewport": {"width": 390, "height": 844},
+      "actual_pixels": {"width": 390, "height": 844},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 39966,
+      "sha256": "ae124a119b3308a1c63eda2bbcc17e7c3e367bfecdb35bdbff0f8d0cd358d70e"
+    },
+    {
+      "path": "docs/assets/screenshots/workbench-mobile-inspector-390x844-b10b787.jpg",
+      "scenario": "responsive mobile capability and effective-permission inspector",
+      "requested_viewport": {"width": 390, "height": 844},
+      "actual_pixels": {"width": 375, "height": 812},
+      "reduced_motion": false,
+      "media_type": "image/jpeg",
+      "bytes": 29539,
+      "sha256": "b25b705e7d673266f1c2c2eef2778329719f383ef3411036936656cbc83f2fe7"
+    }
+  ]
+}

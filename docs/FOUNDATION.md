@@ -298,7 +298,8 @@ Ideas and invariants may be independently implemented. Copying or line-by-line t
 
 - Supported Python: 3.11-3.13.
 - Core required runtime dependencies: 0.
-- Core wheel target: under 250 KiB until measurements justify changing it.
+- `sasori-core` wheel hard ceiling: below 128 KiB (131,072 bytes); the complete
+  `sasori` bundle has a separate below-256,000-byte release gate.
 - No unhandled branch in the Loop; coverage percentage is secondary to explicit failure cases.
 - At least two materially different providers pass the same conformance suite before claiming provider neutrality.
 - Windows and Linux core tests cannot require Bash, WSL, administrator symlink rights, Docker, or network.
