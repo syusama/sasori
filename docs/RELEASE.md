@@ -603,7 +603,75 @@ Keep the named data volume during restart/owner testing. Do not publish a public
 deployment without the additional TLS, isolation, authentication, limits,
 backup, monitoring, and secret-management controls in `SECURITY.md`.
 
-## 6. Publish gate
+## 6. Manual TestPyPI prerelease gate
+
+TestPyPI is the required public-package round trip before the formal release
+tag. It is deliberately a manual, untagged candidate workflow rather than a
+tag or release workflow. First push the candidate workflow and source revision
+to `main`, then require the ordinary `.github/workflows/ci.yml` `push` run for
+that exact commit to finish successfully. Do not create `v{project.version}`
+yet.
+
+Configure a TestPyPI Trusted Publisher, or a pending publisher when the project
+does not exist yet, with these exact fields:
+
+```text
+PyPI project name: sasori
+GitHub owner:       syusama
+Repository name:   sasori
+Workflow name:     testpypi.yml
+Environment name:  testpypi
+```
+
+The GitHub environment name and workflow filename are security identities, not
+display labels; case, spelling, repository owner, and repository must match.
+The workflow obtains a short-lived OIDC credential only inside the protected
+`publish` job. Do not add a TestPyPI password, API token, repository secret, or
+workflow input carrying a credential.
+
+From GitHub Actions, manually run `TestPyPI prerelease` on `main` with:
+
+```text
+commit:  the exact 40-character main commit
+version: the exact pyproject.toml version, currently 0.1.0.dev0
+```
+
+`.github/workflows/testpypi.yml` rejects a non-`main` ref, a commit or version
+mismatch, any tag at `HEAD`, a dirty checkout, an unsuccessful or ambiguous
+ordinary main-push CI result, a non-exact artifact inventory, mismatched local
+manifest/provenance, and a TestPyPI release key that already contains the exact
+version. `skip-existing` is false: an attempted replay is a failure, never a
+successful verification. TestPyPI versions and filenames are not reusable, so
+never upload the same version twice and never delete files as a retry strategy.
+
+The build job uses the digest-pinned DaoCloud base declared by the `Dockerfile`,
+the configurable Tsinghua Python index, and the hash-locked build wheelhouse. It
+requires the branch verifier to return exit `5`,
+`release_eligible=false`, and `source_state=clean_untagged_local_candidate`.
+That result is intentional: a pre-tag package can be verified for TestPyPI but
+cannot be represented as an exact-tag formal release.
+
+The protected publish job rechecks the same commit, version, CI run, manifest,
+provenance, candidate hashes, and pre-upload version absence before requesting
+OIDC. After upload it waits for the TestPyPI JSON index, requires exactly one
+wheel and one sdist with the candidate filenames, byte sizes, SHA-256 values,
+and `yanked=false`, and then downloads each exact distribution through the
+TestPyPI Simple API. A clean environment installs and smokes the downloaded
+wheel; an isolated consumer rebuilds, verifies, installs, and smokes the
+downloaded sdist. The workflow records pre-publish, publish-preflight, index,
+and final round-trip JSON as the seven-day
+`sasori-testpypi-evidence-{commit}` artifact.
+
+Only after that exact workflow run succeeds should maintainers recheck every
+remaining publish gate and create the formal tag. A successful TestPyPI upload
+is not a PyPI release, GitHub Release, registry image, production-readiness
+claim, or exact-tag release candidate. The PEP 740 package attestations emitted
+by the TestPyPI Trusted Publishing action bind the uploaded distributions to
+that workflow invocation; they do not replace Sasori's separate exact-tag
+eight-file bundle, subject verification, or GitHub/Sigstore build-provenance
+gate.
+
+## 7. Publish gate
 
 Before uploading or tagging a release, all of the following must be true:
 
@@ -638,7 +706,9 @@ Before uploading or tagging a release, all of the following must be true:
 - `catalog/index.json` changes only after hosting, review, and provenance are
   real.
 
-Artifact-signing formats beyond the GitHub/Sigstore provenance statement, PyPI
-Trusted Publishing, rollback, and central marketplace publication are not
-implemented by the local verifier. Add them only when a real hosting and
-maintainer-operating contract exists.
+Artifact-signing formats beyond the GitHub/Sigstore provenance statement,
+production PyPI Trusted Publishing, rollback, and central marketplace
+publication are not implemented by the local verifier. TestPyPI Trusted
+Publishing is implemented only by the manual environment-protected prerelease
+workflow above. Add production publication mechanisms only when a real hosting
+and maintainer-operating contract exists.

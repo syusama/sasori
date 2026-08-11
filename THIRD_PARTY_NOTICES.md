@@ -32,6 +32,18 @@ CPython revision is included verbatim in
 Sasori runtime dependency and is not copied from the Docker builder into the
 runtime layer as a project dependency.
 
+`pypa/gh-action-pypi-publish` is used by the manual TestPyPI prerelease
+workflow at commit `dc37677b2e1c63e2034f94d8a5b11f265b73ba33`:
+
+<https://github.com/pypa/gh-action-pypi-publish/tree/dc37677b2e1c63e2034f94d8a5b11f265b73ba33>
+
+It is made available under the BSD 3-Clause License. The action is not a Sasori
+wheel or runtime dependency and is not included in the runtime image. It runs
+only in the environment-protected publish job and receives that job's
+short-lived GitHub OIDC permission for TestPyPI Trusted Publishing. Its PEP 740
+package attestations are TestPyPI publication evidence, not Sasori's separate
+exact-tag release-bundle provenance or a production PyPI publication.
+
 Anchore Syft `1.50.0` is an Apache-2.0-licensed CI inventory tool downloaded
 from the fixed upstream release:
 

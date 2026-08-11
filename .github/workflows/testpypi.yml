@@ -1,0 +1,362 @@
+name: TestPyPI prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Exact 40-character main commit to publish
+        required: true
+        type: string
+      version:
+        description: Exact pyproject.toml version to publish
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: testpypi-sasori
+  cancel-in-progress: false
+
+env:
+  PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  build:
+    name: Build and preflight exact TestPyPI candidate
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.project.outputs.version }}
+
+    steps:
+      - name: Check out the selected main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Validate the exact untagged request
+        id: project
+        shell: bash
+        env:
+          REQUESTED_COMMIT: ${{ inputs.commit }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$REQUESTED_COMMIT" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git tag --points-at HEAD)"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          version="$(python - <<'PY'
+          import re
+          import tomllib
+
+          with open("pyproject.toml", "rb") as stream:
+              project = tomllib.load(stream)["project"]
+          version = project["version"]
+          if project["name"] != "sasori" or not isinstance(version, str) or not re.fullmatch(
+              r"[A-Za-z0-9][A-Za-z0-9._+-]*", version
+          ):
+              raise SystemExit("project name or version is invalid")
+          print(version)
+          PY
+          )"
+          test "$REQUESTED_VERSION" = "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build wheel and source archive in the locked mainland-source container
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(sed -n 's/^ARG PYTHON_BASE=//p' Dockerfile)"
+          [[ "$image" =~ ^docker\.m\.daocloud\.io/library/python:[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]
+          mkdir -p "$GITHUB_WORKSPACE/dist/build-wheelhouse"
+          docker run --rm --init \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/source,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
+            --entrypoint sh \
+            "$image" \
+            -ceu '
+              export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+              export PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+              mkdir -p /tmp/sasori
+              cp /source/pyproject.toml /source/MANIFEST.in /source/README.md \
+                 /source/README_zh.md \
+                 /source/LICENSE /source/SECURITY.md /source/THIRD_PARTY_NOTICES.md \
+                 /source/requirements-build.txt /tmp/sasori/
+              cp -a /source/docs /source/licenses /source/src /tmp/sasori/
+              find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+                -prune -exec rm -rf -- {} +
+              cd /tmp/sasori
+              python -m pip download \
+                --require-hashes \
+                --only-binary=:all: \
+                --no-deps \
+                --dest /out/build-wheelhouse \
+                -r requirements-build.txt
+              set -- /out/build-wheelhouse/*.whl
+              test "$#" -eq 1
+              test -f "$1"
+              test "${1%-py3-none-any.whl}" != "$1"
+              python -m pip --isolated --no-cache-dir install \
+                --no-index \
+                --find-links /out/build-wheelhouse \
+                --only-binary=:all: \
+                --require-hashes \
+                -r requirements-build.txt
+              python -m pip --isolated --no-cache-dir wheel \
+                --no-index --no-build-isolation --no-deps --wheel-dir /out .
+              python - <<PY
+          from setuptools.build_meta import build_sdist
+          print(build_sdist(chr(47)+chr(111)+chr(117)+chr(116)))
+          PY
+            '
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          test "${#wheels[@]}" -eq 1 && test "${#sdists[@]}" -eq 1
+          python scripts/repack_wheel.py --wheel "${wheels[0]}"
+
+      - name: Verify and stage exactly two untagged distributions
+        shell: bash
+        env:
+          VERSION: ${{ steps.project.outputs.version }}
+        run: |
+          set -euo pipefail
+          wheel="dist/sasori-${VERSION}-py3-none-any.whl"
+          sdist="dist/sasori-${VERSION}.tar.gz"
+          test -f "$wheel" && test -f "$sdist"
+          set +e
+          python scripts/release_verify.py \
+            --wheel "$wheel" \
+            --sdist "$sdist" \
+            --source-root . \
+            --output dist/release-metadata \
+            --allow-dirty-local
+          code=$?
+          set -e
+          test "$code" -eq 5
+          mkdir -p dist/testpypi-upload
+          cp "$wheel" "$sdist" dist/testpypi-upload/
+          find src -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+            -prune -exec rm -rf -- {} +
+          rm -rf build
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Require exact successful main CI and an unused TestPyPI version
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.project.outputs.version }}
+        run: |
+          set -euo pipefail
+          python scripts/testpypi_roundtrip.py preflight \
+            --source-root . \
+            --upload-dir dist/testpypi-upload \
+            --metadata-root dist/release-metadata \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-version "$VERSION" \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --output dist/testpypi-evidence/prepublish.json
+
+      - name: Transfer the exact candidate to the protected publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-testpypi-candidate-${{ github.sha }}
+          path: |
+            dist/testpypi-upload
+            dist/release-metadata
+            dist/testpypi-evidence/prepublish.json
+            dist/build-wheelhouse
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    name: Publish and verify TestPyPI round trip
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/sasori/${{ needs.build.outputs.version }}/
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out the exact candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download the exact preflighted candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-testpypi-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/sasori-testpypi-candidate
+
+      - name: Reconcile commit, CI, metadata, hashes, and version absence
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
+          test "$GITHUB_SHA" = "${{ inputs.commit }}"
+          test "$VERSION" = "${{ inputs.version }}"
+          python scripts/testpypi_roundtrip.py preflight \
+            --source-root . \
+            --upload-dir "$candidate/testpypi-upload" \
+            --metadata-root "$candidate/release-metadata" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-version "$VERSION" \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --output "$candidate/testpypi-evidence/publish-preflight.json"
+          rm -rf dist
+          mkdir -p dist
+          cp -a "$candidate/testpypi-upload" dist/
+
+      - name: Publish the exact candidate with TestPyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1, 2026-08-11
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/testpypi-upload
+          verify-metadata: "true"
+          skip-existing: "false"
+          verbose: "true"
+          print-hash: "true"
+          attestations: "true"
+
+      - name: Wait for exact TestPyPI index hashes
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
+          python scripts/testpypi_roundtrip.py wait \
+            --upload-dir "$candidate/testpypi-upload" \
+            --expected-version "$VERSION" \
+            --attempts 18 \
+            --delay-seconds 10 \
+            --output "$candidate/testpypi-evidence/index.json"
+
+      - name: Download the exact wheel and sdist through the TestPyPI index
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
+          python -m pip --isolated --no-cache-dir install \
+            --no-index \
+            --find-links "$candidate/build-wheelhouse" \
+            --only-binary=:all: \
+            --require-hashes \
+            -r requirements-build.txt
+          mkdir -p "$RUNNER_TEMP/testpypi-wheel" "$RUNNER_TEMP/testpypi-sdist"
+          python -m pip --isolated --no-cache-dir download \
+            --no-deps \
+            --only-binary=:all: \
+            --index-url https://test.pypi.org/simple/ \
+            --dest "$RUNNER_TEMP/testpypi-wheel" \
+            "sasori==$VERSION"
+          python -m pip --isolated --no-cache-dir download \
+            --no-deps \
+            --no-binary=:all: \
+            --no-build-isolation \
+            --index-url https://test.pypi.org/simple/ \
+            --dest "$RUNNER_TEMP/testpypi-sdist" \
+            "sasori==$VERSION"
+
+      - name: Install the index-downloaded wheel and run the package smoke
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          wheel="$RUNNER_TEMP/testpypi-wheel/sasori-${VERSION}-py3-none-any.whl"
+          test -f "$wheel"
+          python -m venv "$RUNNER_TEMP/testpypi-wheel-venv"
+          "$RUNNER_TEMP/testpypi-wheel-venv/bin/python" -m pip --isolated install \
+            --no-index --no-deps "$wheel"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/testpypi-wheel-venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/installed_wheel_smoke.py"
+          printf 'PASS\n' > "$RUNNER_TEMP/testpypi-wheel-smoke"
+
+      - name: Rebuild the index-downloaded sdist and run the package smoke
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
+          sdist="$RUNNER_TEMP/testpypi-sdist/sasori-${VERSION}.tar.gz"
+          test -f "$sdist"
+          python scripts/sdist_consumer_smoke.py \
+            --sdist "$sdist" \
+            --build-lock requirements-build.txt \
+            --build-wheelhouse "$candidate/build-wheelhouse" \
+            --consumer-check scripts/installed_wheel_smoke.py \
+            --wheel-repacker scripts/repack_wheel.py \
+            --release-verifier scripts/release_verify.py \
+            --source-root .
+          printf 'PASS\n' > "$RUNNER_TEMP/testpypi-sdist-smoke"
+
+      - name: Finalize exact round-trip evidence and source cleanliness
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
+          rm -rf .github/.tmp build
+          find src -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+            -prune -exec rm -rf -- {} +
+          python scripts/testpypi_roundtrip.py finalize \
+            --source-root . \
+            --upload-dir "$candidate/testpypi-upload" \
+            --wheel-download-dir "$RUNNER_TEMP/testpypi-wheel" \
+            --sdist-download-dir "$RUNNER_TEMP/testpypi-sdist" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-version "$VERSION" \
+            --index-evidence "$candidate/testpypi-evidence/index.json" \
+            --wheel-smoke-marker "$RUNNER_TEMP/testpypi-wheel-smoke" \
+            --sdist-smoke-marker "$RUNNER_TEMP/testpypi-sdist-smoke" \
+            --output "$candidate/testpypi-evidence/roundtrip.json"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Upload audited TestPyPI round-trip evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-testpypi-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/sasori-testpypi-candidate/testpypi-evidence/*.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
