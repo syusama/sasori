@@ -279,6 +279,15 @@ class ReleaseVerificationTests(unittest.TestCase):
                     surface.index("-prune -exec rm -rf -- {} +"),
                     surface.index(directory_mode),
                 )
+                if relative != "docs/RELEASE.md":
+                    host_directories = (
+                        'mkdir -p "$GITHUB_WORKSPACE/dist/build-wheelhouse" '
+                        '"$GITHUB_WORKSPACE/dist/sasori-core"'
+                    )
+                    self.assertEqual(surface.count(host_directories), 1)
+                    self.assertLess(
+                        surface.index(host_directories), surface.index("docker run")
+                    )
 
     def test_project_metadata_requires_the_file_backed_readme(self):
         pyproject = self.source / "pyproject.toml"

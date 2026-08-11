@@ -874,7 +874,7 @@ jobs:
           set -euo pipefail
           image="$(sed -n 's/^ARG PYTHON_BASE=//p' Dockerfile)"
           [[ "$image" =~ ^docker\.m\.daocloud\.io/library/python:[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]
-          mkdir -p "$GITHUB_WORKSPACE/dist/build-wheelhouse"
+          mkdir -p "$GITHUB_WORKSPACE/dist/build-wheelhouse" "$GITHUB_WORKSPACE/dist/sasori-core"
           docker run --rm --init \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/source,readonly" \
             --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
