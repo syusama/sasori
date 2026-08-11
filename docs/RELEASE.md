@@ -625,9 +625,13 @@ Environment name:  testpypi
 
 The GitHub environment name and workflow filename are security identities, not
 display labels; case, spelling, repository owner, and repository must match.
-The workflow obtains a short-lived OIDC credential only inside the protected
-`publish` job. Do not add a TestPyPI password, API token, repository secret, or
-workflow input carrying a credential.
+The workflow obtains a short-lived OIDC credential only inside the
+environment-scoped `publish` job. The TestPyPI publisher identity requires the
+exact environment name even when repository-level reviewer or deployment
+protection rules have not been configured. Add those GitHub protection rules
+when the repository owner and account plan support them, but do not claim they
+exist without verifying repository settings. Do not add a TestPyPI password,
+API token, repository secret, or workflow input carrying a credential.
 
 From GitHub Actions, manually run `TestPyPI prerelease` on `main` with:
 
@@ -651,15 +655,15 @@ requires the branch verifier to return exit `5`,
 That result is intentional: a pre-tag package can be verified for TestPyPI but
 cannot be represented as an exact-tag formal release.
 
-The protected publish job rechecks the same commit, version, CI run, manifest,
-provenance, candidate hashes, and pre-upload version absence before requesting
-OIDC. After upload it waits for the TestPyPI JSON index, requires exactly one
-wheel and one sdist with the candidate filenames, byte sizes, SHA-256 values,
-and `yanked=false`, and then downloads each exact distribution through the
-TestPyPI Simple API. A clean environment installs and smokes the downloaded
-wheel; an isolated consumer rebuilds, verifies, installs, and smokes the
-downloaded sdist. The workflow records pre-publish, publish-preflight, index,
-and final round-trip JSON as the seven-day
+The environment-scoped publish job rechecks the same commit, version, CI run,
+manifest, provenance, candidate hashes, and pre-upload version absence before
+requesting OIDC. After upload it waits for the TestPyPI JSON index, requires
+exactly one wheel and one sdist with the candidate filenames, byte sizes,
+SHA-256 values, and `yanked=false`, and then downloads each exact distribution
+through the TestPyPI Simple API. A clean environment installs and smokes the
+downloaded wheel; an isolated consumer rebuilds, verifies, installs, and smokes
+the downloaded sdist. The workflow records pre-publish, publish-preflight,
+index, and final round-trip JSON as the seven-day
 `sasori-testpypi-evidence-{commit}` artifact.
 
 Only after that exact workflow run succeeds should maintainers recheck every
@@ -709,6 +713,6 @@ Before uploading or tagging a release, all of the following must be true:
 Artifact-signing formats beyond the GitHub/Sigstore provenance statement,
 production PyPI Trusted Publishing, rollback, and central marketplace
 publication are not implemented by the local verifier. TestPyPI Trusted
-Publishing is implemented only by the manual environment-protected prerelease
+Publishing is implemented only by the manual environment-scoped prerelease
 workflow above. Add production publication mechanisms only when a real hosting
 and maintainer-operating contract exists.

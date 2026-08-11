@@ -39,7 +39,7 @@ workflow at commit `dc37677b2e1c63e2034f94d8a5b11f265b73ba33`:
 
 It is made available under the BSD 3-Clause License. The action is not a Sasori
 wheel or runtime dependency and is not included in the runtime image. It runs
-only in the environment-protected publish job and receives that job's
+only in the environment-scoped publish job and receives that job's
 short-lived GitHub OIDC permission for TestPyPI Trusted Publishing. Its PEP 740
 package attestations are TestPyPI publication evidence, not Sasori's separate
 exact-tag release-bundle provenance or a production PyPI publication.
