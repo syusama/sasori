@@ -857,10 +857,14 @@ jobs:
 
           with open("pyproject.toml", "rb") as stream:
               version = tomllib.load(stream)["project"]["version"]
+          with open("packages/sasori-core/pyproject.toml", "rb") as stream:
+              core_version = tomllib.load(stream)["project"]["version"]
           if not isinstance(version, str) or not re.fullmatch(
               r"[A-Za-z0-9][A-Za-z0-9._+-]*", version
           ):
               raise SystemExit("project version is unsafe for an artifact name")
+          if core_version != version:
+              raise SystemExit("sasori and sasori-core versions must be lockstep")
           print(f"version={version}")
           PY
 
@@ -879,12 +883,13 @@ jobs:
             -ceu '
               export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
               export PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
-              mkdir -p /tmp/sasori
+              mkdir -p /tmp/sasori /tmp/sasori-core /out/sasori-core
               cp /source/pyproject.toml /source/MANIFEST.in /source/README.md \
                  /source/README_zh.md \
                  /source/LICENSE /source/SECURITY.md /source/THIRD_PARTY_NOTICES.md \
                  /source/requirements-build.txt /tmp/sasori/
               cp -a /source/docs /source/licenses /source/src /tmp/sasori/
+              cp -a /source/packages/sasori-core/. /tmp/sasori-core/
               find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
                 -prune -exec rm -rf -- {} +
               cd /tmp/sasori
@@ -904,6 +909,15 @@ jobs:
                 --only-binary=:all: \
                 --require-hashes \
                 -r requirements-build.txt
+              cd /tmp/sasori-core
+              python -m pip --isolated --no-cache-dir wheel \
+                --no-index --no-build-isolation --no-deps \
+                --wheel-dir /out/sasori-core .
+              python - <<PY
+          from setuptools.build_meta import build_sdist
+          print(build_sdist(chr(47)+"out"+chr(47)+"sasori-core"))
+          PY
+              cd /tmp/sasori
               python -m pip --isolated --no-cache-dir wheel \
                 --no-index --no-build-isolation --no-deps --wheel-dir /out .
               python - <<PY
@@ -915,6 +929,21 @@ jobs:
           wheels=(dist/*.whl)
           test "${#wheels[@]}" -eq 1
           python scripts/repack_wheel.py --wheel "${wheels[0]}"
+
+      - name: Verify the independent zero-dependency core artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          core_wheels=(dist/sasori-core/*.whl)
+          core_sdists=(dist/sasori-core/*.tar.gz)
+          test "${#core_wheels[@]}" -eq 1 && test "${#core_sdists[@]}" -eq 1
+          python scripts/repack_wheel.py --wheel "${core_wheels[0]}"
+          python packages/sasori-core/scripts/release_verify.py \
+            --wheel "${core_wheels[0]}" \
+            --sdist "${core_sdists[0]}" \
+            --project-root packages/sasori-core \
+            --output dist/sasori-core-verification.json
 
       - name: Verify unversioned artifacts are not release eligible
         if: ${{ github.ref_type != 'tag' }}
@@ -1011,6 +1040,24 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      - name: Upload sasori-core wheel for installation and rebuild matrices
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-core-wheel
+          path: dist/sasori-core/*.whl
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload sasori-core source archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-core-sdist
+          path: dist/sasori-core/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
       - name: Upload source archive for rebuild matrix
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1064,13 +1111,22 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: sasori-wheel
-          path: dist
+          path: dist/bundle
+
+      - name: Download the exact sasori-core wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-core-wheel
+          path: dist/core
 
       - name: Run installed-wheel smoke outside the checkout
         shell: pwsh
         run: |
-          $wheels = @(Get-ChildItem -LiteralPath dist -Filter *.whl)
-          if ($wheels.Count -ne 1) { throw "expected exactly one wheel" }
+          $bundleWheels = @(Get-ChildItem -LiteralPath dist/bundle -Filter *.whl)
+          $coreWheels = @(Get-ChildItem -LiteralPath dist/core -Filter *.whl)
+          if ($bundleWheels.Count -ne 1 -or $coreWheels.Count -ne 1) {
+            throw "expected one bundle wheel and one core wheel"
+          }
           $smokeRoot = Join-Path $env:RUNNER_TEMP ("sasori-wheel-smoke-" + [guid]::NewGuid().ToString("N"))
           python -m venv $smokeRoot
           if ($LASTEXITCODE -ne 0) { throw "smoke environment creation failed" }
@@ -1079,7 +1135,8 @@ jobs:
           } else {
             $smokePython = Join-Path $smokeRoot "bin/python"
           }
-          & $smokePython -m pip install --no-index --no-deps $wheels[0].FullName
+          & $smokePython -m pip install --no-index --no-deps `
+            $coreWheels[0].FullName $bundleWheels[0].FullName
           if ($LASTEXITCODE -ne 0) { throw "wheel installation failed" }
           Push-Location $env:RUNNER_TEMP
           try {
@@ -1132,15 +1189,25 @@ jobs:
           name: sasori-build-wheelhouse-${{ github.sha }}
           path: ${{ runner.temp }}/sasori-build-wheelhouse
 
+      - name: Download the exact sasori-core wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-core-wheel
+          path: ${{ runner.temp }}/sasori-core-wheel
+
       - name: Rebuild and smoke the source archive outside the checkout
         shell: pwsh
         run: |
           $sdistRoot = Join-Path $env:RUNNER_TEMP "sasori-sdist"
           $wheelhouseRoot = Join-Path $env:RUNNER_TEMP "sasori-build-wheelhouse"
+          $coreRoot = Join-Path $env:RUNNER_TEMP "sasori-core-wheel"
           $sdists = @(Get-ChildItem -LiteralPath $sdistRoot -Filter *.tar.gz)
+          $coreWheels = @(Get-ChildItem -LiteralPath $coreRoot -Filter *.whl)
           if ($sdists.Count -ne 1) { throw "expected exactly one source archive" }
+          if ($coreWheels.Count -ne 1) { throw "expected exactly one core wheel" }
           python scripts/sdist_consumer_smoke.py `
             --sdist $sdists[0].FullName `
+            --core-wheel $coreWheels[0].FullName `
             --build-lock requirements-build.txt `
             --build-wheelhouse $wheelhouseRoot `
             --consumer-check scripts/installed_wheel_smoke.py `
@@ -1152,6 +1219,120 @@ jobs:
       - name: Ensure consumer smoke did not change tracked files
         run: git diff --exit-code HEAD --
 
+  core-package-smoke:
+    name: "sasori-core wheel + rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Check out the exact core consumer contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download the exact sasori-core wheel and source archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: sasori-core-*
+          path: ${{ runner.temp }}/sasori-core-candidate
+          merge-multiple: true
+
+      - name: Download the locked build wheelhouse
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sasori-build-wheelhouse-${{ github.sha }}
+          path: ${{ runner.temp }}/sasori-build-wheelhouse
+
+      - name: Verify, install, rebuild, reverify, and smoke sasori-core alone
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:RUNNER_TEMP "sasori-core-candidate"
+          $wheelhouse = Join-Path $env:RUNNER_TEMP "sasori-build-wheelhouse"
+          $wheels = @(Get-ChildItem -LiteralPath $candidate -Filter *.whl)
+          $sdists = @(Get-ChildItem -LiteralPath $candidate -Filter *.tar.gz)
+          if ($wheels.Count -ne 1 -or $sdists.Count -ne 1) {
+            throw "expected one exact core wheel and one exact core sdist"
+          }
+          python packages/sasori-core/scripts/release_verify.py `
+            --wheel $wheels[0].FullName `
+            --sdist $sdists[0].FullName `
+            --project-root packages/sasori-core
+          if ($LASTEXITCODE -ne 0) { throw "original core artifact verification failed" }
+
+          $originalVenv = Join-Path $env:RUNNER_TEMP "sasori-core-original-venv"
+          python -m venv $originalVenv
+          if ($IsWindows) {
+            $originalPython = Join-Path $originalVenv "Scripts/python.exe"
+          } else {
+            $originalPython = Join-Path $originalVenv "bin/python"
+          }
+          & $originalPython -m pip install --no-index --no-deps $wheels[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "original core wheel installation failed" }
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $originalPython (Join-Path $env:GITHUB_WORKSPACE "packages/sasori-core/scripts/installed_smoke.py")
+            if ($LASTEXITCODE -ne 0) { throw "original core wheel smoke failed" }
+          } finally {
+            Pop-Location
+          }
+
+          python -m pip --isolated --no-cache-dir install `
+            --no-index --find-links $wheelhouse `
+            --only-binary=:all: --require-hashes -r requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { throw "locked core rebuild tooling install failed" }
+          $rebuiltRoot = Join-Path $env:RUNNER_TEMP "sasori-core-rebuilt"
+          New-Item -ItemType Directory -Path $rebuiltRoot | Out-Null
+          python -m pip --isolated --no-cache-dir wheel `
+            --no-index --no-build-isolation --no-deps `
+            --wheel-dir $rebuiltRoot $sdists[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "core sdist rebuild failed" }
+          $rebuilt = @(Get-ChildItem -LiteralPath $rebuiltRoot -Filter *.whl)
+          if ($rebuilt.Count -ne 1) { throw "expected one rebuilt core wheel" }
+          python scripts/repack_wheel.py --wheel $rebuilt[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "rebuilt core wheel repack failed" }
+          python packages/sasori-core/scripts/release_verify.py `
+            --wheel $rebuilt[0].FullName `
+            --sdist $sdists[0].FullName `
+            --project-root packages/sasori-core
+          if ($LASTEXITCODE -ne 0) { throw "rebuilt core artifact verification failed" }
+
+          $rebuiltVenv = Join-Path $env:RUNNER_TEMP "sasori-core-rebuilt-venv"
+          python -m venv $rebuiltVenv
+          if ($IsWindows) {
+            $rebuiltPython = Join-Path $rebuiltVenv "Scripts/python.exe"
+          } else {
+            $rebuiltPython = Join-Path $rebuiltVenv "bin/python"
+          }
+          & $rebuiltPython -m pip install --no-index --no-deps $rebuilt[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "rebuilt core wheel installation failed" }
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $rebuiltPython (Join-Path $env:GITHUB_WORKSPACE "packages/sasori-core/scripts/installed_smoke.py")
+            if ($LASTEXITCODE -ne 0) { throw "rebuilt core wheel smoke failed" }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Ensure the core consumer did not change tracked files
+        run: git diff --exit-code HEAD --
+
   release-bundle:
     name: Exact-tag release candidate bundle
     if: ${{ github.ref_type == 'tag' }}
@@ -1161,6 +1342,7 @@ jobs:
       - container
       - wheel-smoke
       - sdist-smoke
+      - core-package-smoke
     permissions:
       attestations: write
       contents: read
@@ -1186,6 +1368,13 @@ jobs:
           name: sasori-release-candidate-${{ github.sha }}
           path: ${{ runner.temp }}/sasori-release-candidate
 
+      - name: Download the exact sasori-core wheel and source archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: sasori-core-*
+          path: ${{ runner.temp }}/sasori-core-release-candidate
+          merge-multiple: true
+
       - name: Reverify the final candidate inventory and subjects
         shell: bash
         env:
@@ -1196,8 +1385,15 @@ jobs:
             --bundle-root "$RUNNER_TEMP/sasori-release-candidate" \
             --source-root . \
             --trigger-tag "$SASORI_TRIGGER_TAG"
+          core_wheel="$RUNNER_TEMP/sasori-core-release-candidate/sasori_core-${{ needs.package.outputs.version }}-py3-none-any.whl"
+          core_sdist="$RUNNER_TEMP/sasori-core-release-candidate/sasori_core-${{ needs.package.outputs.version }}.tar.gz"
+          python packages/sasori-core/scripts/release_verify.py \
+            --wheel "$core_wheel" \
+            --sdist "$core_sdist" \
+            --project-root packages/sasori-core \
+            --output "$RUNNER_TEMP/sasori-core-release-candidate/core-verification.json"
 
-      - name: Attest the exact eight-file release candidate
+      - name: Attest the exact bundle and core release candidates
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
@@ -1209,12 +1405,24 @@ jobs:
             ${{ runner.temp }}/sasori-release-candidate/LICENSE
             ${{ runner.temp }}/sasori-release-candidate/THIRD_PARTY_NOTICES.md
             ${{ runner.temp }}/sasori-release-candidate/licenses/CPYTHON-3.12-LICENSE.txt
+            ${{ runner.temp }}/sasori-core-release-candidate/sasori_core-${{ needs.package.outputs.version }}-py3-none-any.whl
+            ${{ runner.temp }}/sasori-core-release-candidate/sasori_core-${{ needs.package.outputs.version }}.tar.gz
+            ${{ runner.temp }}/sasori-core-release-candidate/core-verification.json
 
       - name: Upload the gated release candidate bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sasori-${{ needs.package.outputs.version }}-release-bundle
           path: ${{ runner.temp }}/sasori-release-candidate
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload the gated sasori-core release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sasori-core-${{ needs.package.outputs.version }}-release-candidate
+          path: ${{ runner.temp }}/sasori-core-release-candidate
           if-no-files-found: error
           retention-days: 30
           compression-level: 0

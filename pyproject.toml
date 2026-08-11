@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sasori"
-version = "0.1.0.dev0"
+version = "0.1.0.dev1"
 description = "A small, inspectable Python runtime for tool-using agents"
 readme = { text = "[Sasori](https://github.com/syusama/sasori) is a small, dependency-free Python Agent runtime. Plugins are trusted code.", content-type = "text/markdown" }
 requires-python = ">=3.11,<3.14"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*"]
-dependencies = []
+dependencies = ["sasori-core==0.1.0.dev1"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -37,6 +37,7 @@ sasori-catalog = "sasori_market.catalog:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+exclude = ["sasori_core", "sasori_core.*"]
 
 [tool.setuptools.package-data]
 sasori_web = ["*.html", "*.css", "*.js", "*.svg"]

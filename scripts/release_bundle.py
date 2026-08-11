@@ -292,7 +292,11 @@ def verify_bundle(
         manifest.get("schema_version") != 1
         or manifest.get("kind") != "sasori.artifact-manifest"
         or not isinstance(manifest_project, dict)
-        or manifest_project != {**project, "runtime_dependencies": []}
+        or manifest_project
+        != {
+            **project,
+            "runtime_dependencies": [f"sasori-core=={project['version']}"],
+        }
         or manifest.get("build_inputs") != build_inputs
         or not isinstance(verification, dict)
         or verification.get("release_eligible") is not True

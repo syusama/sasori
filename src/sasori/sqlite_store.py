@@ -6,36 +6,20 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from .contracts import Event, Message, ModelReply, ToolCall
+from sasori_core.contracts import Event, Message, ModelReply, ToolCall
+from sasori_core.store import (
+    ApprovalConflict,
+    ApprovalMismatch,
+    CallRecord,
+    ConcurrentRunError,
+    DuplicateCallIdError,
+    RunAlreadyExists,
+    RunNotFound,
+    Snapshot,
+    StoredEvent,
+    StoreError,
+)
 from ._sqlite_lock import acquire_process_lock, release_process_lock
-
-
-class StoreError(Exception):
-    pass
-
-
-class RunNotFound(StoreError):
-    pass
-
-
-class RunAlreadyExists(StoreError):
-    pass
-
-
-class ConcurrentRunError(StoreError):
-    pass
-
-
-class DuplicateCallIdError(StoreError):
-    pass
-
-
-class ApprovalMismatch(StoreError):
-    pass
-
-
-class ApprovalConflict(StoreError):
-    pass
 
 
 class SchemaVersionError(StoreError):
@@ -61,43 +45,6 @@ def _acquire_process_lock(path: str):
 
 def _release_process_lock(stream) -> None:
     release_process_lock(stream)
-
-
-@dataclass(frozen=True, slots=True)
-class Snapshot:
-    run_id: str
-    revision: int
-    generation: int
-    status: str
-    step: int
-    history: tuple[Message, ...]
-    accepted_reply: ModelReply | None = None
-    final_message: Message | None = None
-    app_id: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class CallRecord:
-    run_id: str
-    step: int
-    ordinal: int
-    call_id: str | None
-    fingerprint: str
-    name: str | None
-    arguments: object
-    arguments_valid: bool
-    complete: bool
-    effect: str
-    idempotency_key: str | None
-    tool_revision: str
-    status: str = "pending"
-    result: Message | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class StoredEvent:
-    seq: int
-    event: Event
 
 
 @dataclass(frozen=True, slots=True)

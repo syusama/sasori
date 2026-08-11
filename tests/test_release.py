@@ -35,7 +35,9 @@ REPACK_SPEC.loader.exec_module(repack_wheel)
 
 
 def metadata(*, dependency=False, extra=""):
-    requires = "Requires-Dist: unwanted>=1\n" if dependency else ""
+    requires = f"Requires-Dist: sasori-core=={PROJECT_VERSION}\n"
+    if dependency:
+        requires += "Requires-Dist: unwanted>=1\n"
     return (
         "Metadata-Version: 2.4\n"
         "Name: sasori\n"
@@ -55,14 +57,22 @@ def metadata(*, dependency=False, extra=""):
 
 
 class ReleaseVerificationTests(unittest.TestCase):
-    def test_release_contract_version_tracks_saved_workflow_inventory(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "12")
+    def test_release_contract_version_tracks_every_decision_record(self):
+        self.assertEqual(release_verify.VERIFIER_VERSION, "13")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v9"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v10"
         )
-        self.assertIn(
-            "docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md",
-            release_verify.RELEASE_DOCS,
+        expected = {
+            path.relative_to(ROOT).as_posix()
+            for path in (ROOT / "docs").glob("ADR-*.md")
+        }
+        declared = {
+            path for path in release_verify.RELEASE_DOCS if path.startswith("docs/ADR-")
+        }
+        self.assertEqual(
+            declared,
+            expected,
+            "every accepted ADR must be an exact release source-tree input",
         )
 
     def setUp(self):
@@ -155,8 +165,8 @@ class ReleaseVerificationTests(unittest.TestCase):
         original = dockerfile.read_text(encoding="utf-8")
         for marker in (
             "COPY pyproject.toml MANIFEST.in ",
-            'find src -type d \\( -name "*.egg-info" -o -name "__pycache__" \\)',
-            'find src -type f \\( -name "*.pyc" -o -name "*.pyo" \\) -delete',
+            'find src packages -type d \\( -name "*.egg-info" -o -name "__pycache__" \\)',
+            'find src packages -type f \\( -name "*.pyc" -o -name "*.pyo" \\) -delete',
         ):
             with self.subTest(marker=marker):
                 dockerfile.write_text(original.replace(marker, "removed", 1), encoding="utf-8")
@@ -292,7 +302,10 @@ class ReleaseVerificationTests(unittest.TestCase):
             self.wheel(), self.sdist(), self.source, output
         )
         self.assertEqual([item["kind"] for item in manifest["artifacts"]], ["wheel", "sdist"])
-        self.assertEqual(manifest["project"]["runtime_dependencies"], [])
+        self.assertEqual(
+            manifest["project"]["runtime_dependencies"],
+            [f"sasori-core=={PROJECT_VERSION}"],
+        )
         self.assertEqual(spdx["spdxVersion"], "SPDX-2.3")
         package_by_id = {item["SPDXID"]: item for item in spdx["packages"]}
         for artifact in manifest["artifacts"]:
@@ -558,7 +571,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         )
         marker = "\n  sdist-smoke:\n"
         self.assertEqual(workflow.count(marker), 1)
-        smoke = workflow.split(marker, 1)[1].split("\n  release-bundle:\n", 1)[0]
+        smoke = workflow.split(marker, 1)[1].split("\n  core-package-smoke:\n", 1)[0]
         for required in (
             'name: "Rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"',
             "name: sasori-sdist",
@@ -583,6 +596,26 @@ class ReleaseVerificationTests(unittest.TestCase):
                 self.assertEqual(smoke.count(value), 1)
         self.assertNotIn("pypi", smoke.lower())
         self.assertNotIn("tuna", smoke.lower())
+
+    def test_ci_rebuilds_and_smokes_sasori_core_as_a_standalone_distribution(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
+        marker = "\n  core-package-smoke:\n"
+        self.assertEqual(workflow.count(marker), 1)
+        smoke = workflow.split(marker, 1)[1].split("\n  release-bundle:\n", 1)[0]
+        for required in (
+            'name: "sasori-core wheel + rebuilt sdist / ${{ matrix.os }} / Python ${{ matrix.python-version }}"',
+            "pattern: sasori-core-*",
+            "packages/sasori-core/scripts/release_verify.py",
+            "packages/sasori-core/scripts/installed_smoke.py",
+            "--no-index --no-deps $wheels[0].FullName",
+            "--no-index --no-build-isolation --no-deps",
+            "--no-index --no-deps $rebuilt[0].FullName",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, smoke)
+        for value in ("ubuntu-24.04", "windows-2025", '"3.11"', '"3.12"', '"3.13"'):
+            with self.subTest(matrix_value=value):
+                self.assertEqual(smoke.count(value), 1)
 
     def test_spdx_rejects_duplicate_checksum_algorithms(self):
         manifest, spdx, _ = release_verify.verify_release(

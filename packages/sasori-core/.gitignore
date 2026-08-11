@@ -1,0 +1,5 @@
+/build/
+/dist/
+/dist-new/
+/src/*.egg-info/
+/*.egg-info/

@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 PACKAGES = (
+    "sasori_core",
     "sasori",
     "sasori_apps",
     "sasori_artifacts",
@@ -30,12 +31,14 @@ SCRIPTS = ("sasori", "sasori-server", "sasori-catalog")
 WEB_RESOURCES = (
     "index.html",
     "app.0.1.0.css",
+    "app.0.2.0.css",
     "artifacts.0.1.0.css",
     "app.0.1.1.js",
     "event-reducer.0.1.0.js",
     "app.0.1.2.js",
     "app.0.1.3.js",
     "app.0.1.4.js",
+    "app.0.2.0.js",
     "workflow.0.1.0.css",
     "workflow.0.1.0.js",
     "workflow.0.2.0.js",
@@ -65,8 +68,16 @@ def main() -> int:
     distribution = importlib.metadata.distribution("sasori")
     if distribution.metadata["Name"] != "sasori" or distribution.version != expected_version:
         raise RuntimeError("installed Sasori identity is invalid")
-    if distribution.requires:
-        raise RuntimeError("installed Sasori unexpectedly declares runtime dependencies")
+    expected_dependency = f"sasori-core=={expected_version}"
+    if distribution.requires != [expected_dependency]:
+        raise RuntimeError("installed Sasori core dependency is not exact")
+    core_distribution = importlib.metadata.distribution("sasori-core")
+    if (
+        core_distribution.metadata["Name"] != "sasori-core"
+        or core_distribution.version != expected_version
+        or core_distribution.requires
+    ):
+        raise RuntimeError("installed sasori-core identity is invalid")
 
     prefix = Path(sys.prefix)
     _require_under_prefix(distribution.locate_file(""), prefix, "distribution")

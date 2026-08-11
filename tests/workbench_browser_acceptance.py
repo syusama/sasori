@@ -94,10 +94,12 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
             name = self.path.removeprefix("/assets/")
             if "/" in name or "\\" in name or name not in {
                 "app.0.1.0.css",
+                "app.0.2.0.css",
                 "artifacts.0.1.0.css",
                 "app.0.1.2.js",
                 "app.0.1.3.js",
                 "app.0.1.4.js",
+                "app.0.2.0.js",
                 "workflow.0.1.0.css",
                 "workflow.0.1.0.js",
                 "workflow.0.2.0.js",
@@ -624,7 +626,8 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "event-reducer.0.1.0.js",
             "app.0.1.2.js",
             "app.0.1.3.js",
-            "app.0.1.4.js",
+            "app.0.2.0.css",
+            "app.0.2.0.js",
             "workflow.0.2.0.js",
             "workflow-manifest.0.1.0.js",
             "workflow-studio.0.1.0.css",

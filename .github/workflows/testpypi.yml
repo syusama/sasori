@@ -69,11 +69,19 @@ jobs:
 
           with open("pyproject.toml", "rb") as stream:
               project = tomllib.load(stream)["project"]
+          with open("packages/sasori-core/pyproject.toml", "rb") as stream:
+              core_project = tomllib.load(stream)["project"]
           version = project["version"]
           if project["name"] != "sasori" or not isinstance(version, str) or not re.fullmatch(
               r"[A-Za-z0-9][A-Za-z0-9._+-]*", version
           ):
               raise SystemExit("project name or version is invalid")
+          if (
+              core_project.get("name") != "sasori-core"
+              or core_project.get("version") != version
+              or core_project.get("dependencies") != []
+          ):
+              raise SystemExit("sasori-core is not an aligned zero-dependency project")
           print(version)
           PY
           )"
@@ -95,12 +103,13 @@ jobs:
             -ceu '
               export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
               export PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
-              mkdir -p /tmp/sasori
+              mkdir -p /tmp/sasori /tmp/sasori-core /out/sasori-core
               cp /source/pyproject.toml /source/MANIFEST.in /source/README.md \
                  /source/README_zh.md \
                  /source/LICENSE /source/SECURITY.md /source/THIRD_PARTY_NOTICES.md \
                  /source/requirements-build.txt /tmp/sasori/
               cp -a /source/docs /source/licenses /source/src /tmp/sasori/
+              cp -a /source/packages/sasori-core/. /tmp/sasori-core/
               find /tmp/sasori -type d \( -name "*.egg-info" -o -name __pycache__ \) \
                 -prune -exec rm -rf -- {} +
               cd /tmp/sasori
@@ -120,6 +129,15 @@ jobs:
                 --only-binary=:all: \
                 --require-hashes \
                 -r requirements-build.txt
+              cd /tmp/sasori-core
+              python -m pip --isolated --no-cache-dir wheel \
+                --no-index --no-build-isolation --no-deps \
+                --wheel-dir /out/sasori-core .
+              python - <<PY
+          from setuptools.build_meta import build_sdist
+          print(build_sdist(chr(47)+"out"+chr(47)+"sasori-core"))
+          PY
+              cd /tmp/sasori
               python -m pip --isolated --no-cache-dir wheel \
                 --no-index --no-build-isolation --no-deps --wheel-dir /out .
               python - <<PY
@@ -132,8 +150,11 @@ jobs:
           sdists=(dist/*.tar.gz)
           test "${#wheels[@]}" -eq 1 && test "${#sdists[@]}" -eq 1
           python scripts/repack_wheel.py --wheel "${wheels[0]}"
+          core_wheels=(dist/sasori-core/*.whl)
+          test "${#core_wheels[@]}" -eq 1
+          python scripts/repack_wheel.py --wheel "${core_wheels[0]}"
 
-      - name: Verify and stage exactly two untagged distributions
+      - name: Verify and stage the exact core and bundle distributions
         shell: bash
         env:
           VERSION: ${{ steps.project.outputs.version }}
@@ -141,7 +162,15 @@ jobs:
           set -euo pipefail
           wheel="dist/sasori-${VERSION}-py3-none-any.whl"
           sdist="dist/sasori-${VERSION}.tar.gz"
+          core_wheel="dist/sasori-core/sasori_core-${VERSION}-py3-none-any.whl"
+          core_sdist="dist/sasori-core/sasori_core-${VERSION}.tar.gz"
           test -f "$wheel" && test -f "$sdist"
+          test -f "$core_wheel" && test -f "$core_sdist"
+          python packages/sasori-core/scripts/release_verify.py \
+            --wheel "$core_wheel" \
+            --sdist "$core_sdist" \
+            --project-root packages/sasori-core \
+            --output dist/core-release-verification.json
           set +e
           python scripts/release_verify.py \
             --wheel "$wheel" \
@@ -152,9 +181,14 @@ jobs:
           code=$?
           set -e
           test "$code" -eq 5
-          mkdir -p dist/testpypi-upload
-          cp "$wheel" "$sdist" dist/testpypi-upload/
-          find src -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+          mkdir -p \
+            dist/testpypi-upload \
+            dist/testpypi-core-upload \
+            dist/testpypi-bundle-upload
+          cp "$wheel" "$sdist" dist/testpypi-bundle-upload/
+          cp "$core_wheel" "$core_sdist" dist/testpypi-core-upload/
+          cp "$wheel" "$sdist" "$core_wheel" "$core_sdist" dist/testpypi-upload/
+          find src packages -type d \( -name "*.egg-info" -o -name __pycache__ \) \
             -prune -exec rm -rf -- {} +
           rm -rf build
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
@@ -168,12 +202,17 @@ jobs:
           set -euo pipefail
           python scripts/testpypi_roundtrip.py preflight \
             --source-root . \
-            --upload-dir dist/testpypi-upload \
+            --upload-dir dist/testpypi-bundle-upload \
             --metadata-root dist/release-metadata \
             --expected-commit "$GITHUB_SHA" \
             --expected-version "$VERSION" \
             --github-repository "$GITHUB_REPOSITORY" \
             --output dist/testpypi-evidence/prepublish.json
+          python scripts/core_testpypi_roundtrip.py preflight \
+            --project-root packages/sasori-core \
+            --artifact-dir dist/testpypi-core-upload \
+            --expected-version "$VERSION" \
+            --output dist/testpypi-evidence/core-prepublish.json
 
       - name: Transfer the exact candidate to the environment-scoped publish job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -181,7 +220,10 @@ jobs:
           name: sasori-testpypi-candidate-${{ github.sha }}
           path: |
             dist/testpypi-upload
+            dist/testpypi-core-upload
+            dist/testpypi-bundle-upload
             dist/release-metadata
+            dist/core-release-verification.json
             dist/testpypi-evidence/prepublish.json
             dist/build-wheelhouse
           if-no-files-found: error
@@ -231,12 +273,17 @@ jobs:
           test "$VERSION" = "${{ inputs.version }}"
           python scripts/testpypi_roundtrip.py preflight \
             --source-root . \
-            --upload-dir "$candidate/testpypi-upload" \
+            --upload-dir "$candidate/testpypi-bundle-upload" \
             --metadata-root "$candidate/release-metadata" \
             --expected-commit "$GITHUB_SHA" \
             --expected-version "$VERSION" \
             --github-repository "$GITHUB_REPOSITORY" \
             --output "$candidate/testpypi-evidence/publish-preflight.json"
+          python scripts/core_testpypi_roundtrip.py preflight \
+            --project-root packages/sasori-core \
+            --artifact-dir "$candidate/testpypi-core-upload" \
+            --expected-version "$VERSION" \
+            --output "$candidate/testpypi-evidence/core-publish-preflight.json"
           rm -rf dist
           mkdir -p dist
           cp -a "$candidate/testpypi-upload" dist/
@@ -260,11 +307,17 @@ jobs:
           set -euo pipefail
           candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
           python scripts/testpypi_roundtrip.py wait \
-            --upload-dir "$candidate/testpypi-upload" \
+            --upload-dir "$candidate/testpypi-bundle-upload" \
             --expected-version "$VERSION" \
             --attempts 18 \
             --delay-seconds 10 \
             --output "$candidate/testpypi-evidence/index.json"
+          python scripts/core_testpypi_roundtrip.py wait \
+            --artifact-dir "$candidate/testpypi-core-upload" \
+            --expected-version "$VERSION" \
+            --attempts 18 \
+            --delay-seconds 10 \
+            --output "$candidate/testpypi-evidence/core-index.json"
 
       - name: Download the exact wheel and sdist through the TestPyPI index
         shell: bash
@@ -280,6 +333,20 @@ jobs:
             --require-hashes \
             -r requirements-build.txt
           mkdir -p "$RUNNER_TEMP/testpypi-wheel" "$RUNNER_TEMP/testpypi-sdist"
+          mkdir -p "$RUNNER_TEMP/testpypi-core-wheel" "$RUNNER_TEMP/testpypi-core-sdist"
+          python -m pip --isolated --no-cache-dir download \
+            --no-deps \
+            --only-binary=:all: \
+            --index-url https://test.pypi.org/simple/ \
+            --dest "$RUNNER_TEMP/testpypi-core-wheel" \
+            "sasori-core==$VERSION"
+          python -m pip --isolated --no-cache-dir download \
+            --no-deps \
+            --no-binary=:all: \
+            --no-build-isolation \
+            --index-url https://test.pypi.org/simple/ \
+            --dest "$RUNNER_TEMP/testpypi-core-sdist" \
+            "sasori-core==$VERSION"
           python -m pip --isolated --no-cache-dir download \
             --no-deps \
             --only-binary=:all: \
@@ -301,14 +368,30 @@ jobs:
         run: |
           set -euo pipefail
           wheel="$RUNNER_TEMP/testpypi-wheel/sasori-${VERSION}-py3-none-any.whl"
-          test -f "$wheel"
+          core_wheel="$RUNNER_TEMP/testpypi-core-wheel/sasori_core-${VERSION}-py3-none-any.whl"
+          test -f "$wheel" && test -f "$core_wheel"
           python -m venv "$RUNNER_TEMP/testpypi-wheel-venv"
           "$RUNNER_TEMP/testpypi-wheel-venv/bin/python" -m pip --isolated install \
-            --no-index --no-deps "$wheel"
+            --no-index --no-deps "$core_wheel" "$wheel"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/testpypi-wheel-venv/bin/python" \
             "$GITHUB_WORKSPACE/scripts/installed_wheel_smoke.py"
           printf 'PASS\n' > "$RUNNER_TEMP/testpypi-wheel-smoke"
+
+      - name: Run the index-downloaded sasori-core wheel smoke
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          core_wheel="$RUNNER_TEMP/testpypi-core-wheel/sasori_core-${VERSION}-py3-none-any.whl"
+          python -m venv "$RUNNER_TEMP/testpypi-core-wheel-venv"
+          "$RUNNER_TEMP/testpypi-core-wheel-venv/bin/python" -m pip --isolated install \
+            --no-index --no-deps "$core_wheel"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/testpypi-core-wheel-venv/bin/python" \
+            "$GITHUB_WORKSPACE/packages/sasori-core/scripts/installed_smoke.py"
+          printf 'PASS\n' > "$RUNNER_TEMP/testpypi-core-wheel-smoke"
 
       - name: Rebuild the index-downloaded sdist and run the package smoke
         shell: bash
@@ -321,6 +404,7 @@ jobs:
           test -f "$sdist"
           python scripts/sdist_consumer_smoke.py \
             --sdist "$sdist" \
+            --core-wheel "$RUNNER_TEMP/testpypi-core-wheel/sasori_core-${VERSION}-py3-none-any.whl" \
             --build-lock requirements-build.txt \
             --build-wheelhouse "$candidate/build-wheelhouse" \
             --consumer-check scripts/installed_wheel_smoke.py \
@@ -328,6 +412,37 @@ jobs:
             --release-verifier scripts/release_verify.py \
             --source-root .
           printf 'PASS\n' > "$RUNNER_TEMP/testpypi-sdist-smoke"
+
+      - name: Rebuild the index-downloaded sasori-core sdist and run its smoke
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
+          core_sdist="$RUNNER_TEMP/testpypi-core-sdist/sasori_core-${VERSION}.tar.gz"
+          core_rebuild="$RUNNER_TEMP/testpypi-core-rebuild"
+          mkdir -p "$core_rebuild"
+          python -m pip --isolated --no-cache-dir install \
+            --no-index --find-links "$candidate/build-wheelhouse" \
+            --only-binary=:all: --require-hashes -r requirements-build.txt
+          python -m pip --isolated --no-cache-dir wheel \
+            --no-index --no-build-isolation --no-deps \
+            --wheel-dir "$core_rebuild" "$core_sdist"
+          rebuilt="$core_rebuild/sasori_core-${VERSION}-py3-none-any.whl"
+          test -f "$rebuilt"
+          python scripts/repack_wheel.py --wheel "$rebuilt"
+          python packages/sasori-core/scripts/release_verify.py \
+            --wheel "$rebuilt" \
+            --sdist "$core_sdist" \
+            --project-root packages/sasori-core
+          python -m venv "$RUNNER_TEMP/testpypi-core-sdist-venv"
+          "$RUNNER_TEMP/testpypi-core-sdist-venv/bin/python" -m pip --isolated install \
+            --no-index --no-deps "$rebuilt"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/testpypi-core-sdist-venv/bin/python" \
+            "$GITHUB_WORKSPACE/packages/sasori-core/scripts/installed_smoke.py"
+          printf 'PASS\n' > "$RUNNER_TEMP/testpypi-core-sdist-smoke"
 
       - name: Finalize exact round-trip evidence and source cleanliness
         shell: bash
@@ -337,11 +452,11 @@ jobs:
           set -euo pipefail
           candidate="$RUNNER_TEMP/sasori-testpypi-candidate"
           rm -rf .github/.tmp build
-          find src -type d \( -name "*.egg-info" -o -name __pycache__ \) \
+          find src packages -type d \( -name "*.egg-info" -o -name __pycache__ \) \
             -prune -exec rm -rf -- {} +
           python scripts/testpypi_roundtrip.py finalize \
             --source-root . \
-            --upload-dir "$candidate/testpypi-upload" \
+            --upload-dir "$candidate/testpypi-bundle-upload" \
             --wheel-download-dir "$RUNNER_TEMP/testpypi-wheel" \
             --sdist-download-dir "$RUNNER_TEMP/testpypi-sdist" \
             --expected-commit "$GITHUB_SHA" \
@@ -350,6 +465,14 @@ jobs:
             --wheel-smoke-marker "$RUNNER_TEMP/testpypi-wheel-smoke" \
             --sdist-smoke-marker "$RUNNER_TEMP/testpypi-sdist-smoke" \
             --output "$candidate/testpypi-evidence/roundtrip.json"
+          python scripts/core_testpypi_roundtrip.py finalize \
+            --artifact-dir "$candidate/testpypi-core-upload" \
+            --wheel-dir "$RUNNER_TEMP/testpypi-core-wheel" \
+            --sdist-dir "$RUNNER_TEMP/testpypi-core-sdist" \
+            --expected-version "$VERSION" \
+            --wheel-smoke-marker "$RUNNER_TEMP/testpypi-core-wheel-smoke" \
+            --sdist-smoke-marker "$RUNNER_TEMP/testpypi-core-sdist-smoke" \
+            --output "$candidate/testpypi-evidence/core-roundtrip.json"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
       - name: Upload audited TestPyPI round-trip evidence

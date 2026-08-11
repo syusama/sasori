@@ -230,13 +230,15 @@ class WorkflowSpecTests(unittest.TestCase):
             resolve_arguments(payload_step, {}, {})
 
     def test_architecture_keeps_one_core_loop_store_and_public_boundary(self):
-        source_root = Path(__file__).parents[1] / "src"
-        # The HTTP server is an adapter and may integrate the core-external
-        # Workflow package. Kernel modules must keep the dependency one-way.
+        repository = Path(__file__).parents[1]
+        source_root = repository / "src"
+        # ADR-0018 makes packages/sasori-core the canonical kernel. The
+        # batteries-included sasori facade may compose core-external products,
+        # including Workflow and HTTP, but the independent core may not.
         core_files = tuple(
-            path
-            for path in (source_root / "sasori").rglob("*.py")
-            if path.name != "server.py"
+            (repository / "packages" / "sasori-core" / "src" / "sasori_core").rglob(
+                "*.py"
+            )
         )
         flow_files = tuple((source_root / "sasori_flow").rglob("*.py"))
 

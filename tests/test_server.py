@@ -469,6 +469,16 @@ class ServerTests(unittest.TestCase):
         )
         self.assertNotIn("system_prompt", json.dumps(catalog))
 
+        incident_plugins = by_id["incident"]["plugins"]
+        self.assertTrue(incident_plugins)
+        self.assertTrue(
+            all(
+                plugin["capability_kind"] == "plugin"
+                and plugin["transport_type"] is None
+                for plugin in incident_plugins
+            )
+        )
+
         status, error, _ = self.request(
             server, "POST", "/v1/runs", {"run_id": "missing-app", "input": "x"}
         )
@@ -543,6 +553,40 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(
             (status, error["error"]["code"]), (409, "app_binding_missing")
         )
+
+    def test_app_catalog_projects_authoritative_mcp_transport_type(self):
+        class StaticModel:
+            async def complete(self, messages, tools):
+                return ModelReply(content="ready")
+
+        self.module.developer = lambda store: Harness(
+            StaticModel(),
+            (Tool("custom_remote_tool", lambda: "ok", effect="read_only"),),
+            store=store,
+        )
+        server = create_server(
+            "127.0.0.1",
+            0,
+            database=self.db,
+            apps={"developer": "sasori_server_test_app:developer"},
+            trusted_loopback_no_auth=True,
+            sse_max_seconds=2,
+            sse_keepalive_seconds=0.1,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.servers.append((server, thread))
+
+        status, catalog, _ = self.request(server, "GET", "/v1/apps")
+        self.assertEqual(status, 200)
+        plugin = next(
+            item
+            for item in catalog["apps"][2]["plugins"]
+            if item["capability_kind"] == "mcp_transport"
+        )
+        self.assertEqual(plugin["id"], "configured-mcp-stdio")
+        self.assertEqual(plugin["capability_kind"], "mcp_transport")
+        self.assertEqual(plugin["transport_type"], "stdio")
 
     def test_workflow_preflight_is_exact_detached_and_zero_execution(self):
         calls = {"model": 0, "tool": 0, "idempotency": 0}
@@ -1534,12 +1578,14 @@ class ServerTests(unittest.TestCase):
         assets = {}
         for path, content_type in (
             ("/assets/app.0.1.0.css", "text/css"),
+            ("/assets/app.0.2.0.css", "text/css"),
             ("/assets/artifacts.0.1.0.css", "text/css"),
             ("/assets/app.0.1.1.js", "text/javascript"),
             ("/assets/event-reducer.0.1.0.js", "text/javascript"),
             ("/assets/app.0.1.2.js", "text/javascript"),
             ("/assets/app.0.1.3.js", "text/javascript"),
             ("/assets/app.0.1.4.js", "text/javascript"),
+            ("/assets/app.0.2.0.js", "text/javascript"),
             ("/assets/workflow.0.1.0.css", "text/css"),
             ("/assets/workflow.0.1.0.js", "text/javascript"),
             ("/assets/workflow.0.2.0.js", "text/javascript"),
@@ -1567,10 +1613,10 @@ class ServerTests(unittest.TestCase):
         )
         self.assertLess(
             page.index("/assets/app.0.1.3.js"),
-            page.index("/assets/app.0.1.4.js"),
+            page.index("/assets/app.0.2.0.js"),
         )
         self.assertLess(
-            page.index("/assets/app.0.1.4.js"),
+            page.index("/assets/app.0.2.0.js"),
             page.index("/assets/workflow.0.2.0.js"),
         )
         self.assertLess(
@@ -1613,6 +1659,13 @@ class ServerTests(unittest.TestCase):
         self.assertIn("state.run.state !== \"cancelled\"", recovery_script)
         self.assertIn("retry.remove()", recovery_script)
         self.assertNotIn("innerHTML", recovery_script)
+        shell_script = assets["/assets/app.0.2.0.js"]
+        self.assertIn("Red Sand Atelier shell.", shell_script)
+        self.assertNotIn(
+            "innerHTML", shell_script.split("Red Sand Atelier shell.", 1)[1]
+        )
+        shell_styles = assets["/assets/app.0.2.0.css"]
+        self.assertIn("Red Sand Atelier shell", shell_styles)
         workflow_script = assets["/assets/workflow.0.2.0.js"]
         self.assertIn("state.run.workflow", workflow_script)
         self.assertIn(
@@ -1677,6 +1730,8 @@ class ServerTests(unittest.TestCase):
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.3.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/app.0.1.4.js?v=1")
+        self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
+        status, error, _ = self.request(server, "GET", "/assets/app.0.2.0.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))
         status, error, _ = self.request(server, "GET", "/assets/workflow.0.2.0.js?v=1")
         self.assertEqual((status, error["error"]["code"]), (404, "not_found"))

@@ -489,9 +489,17 @@ class TestPyPIReleaseTests(unittest.TestCase):
         self.assertIn('attestations: "true"', workflow)
         self.assertIn(r"docker\.m\.daocloud\.io/library/python:", workflow)
         self.assertIn("https://pypi.tuna.tsinghua.edu.cn/simple", workflow)
-        self.assertEqual(workflow.count("testpypi_roundtrip.py preflight"), 2)
-        self.assertIn("testpypi_roundtrip.py wait", workflow)
-        self.assertIn("testpypi_roundtrip.py finalize", workflow)
+        self.assertEqual(
+            workflow.count("python scripts/testpypi_roundtrip.py preflight"), 2
+        )
+        self.assertEqual(
+            workflow.count("python scripts/core_testpypi_roundtrip.py preflight"),
+            2,
+        )
+        self.assertIn("python scripts/testpypi_roundtrip.py wait", workflow)
+        self.assertIn("python scripts/core_testpypi_roundtrip.py wait", workflow)
+        self.assertIn("python scripts/testpypi_roundtrip.py finalize", workflow)
+        self.assertIn("python scripts/core_testpypi_roundtrip.py finalize", workflow)
         self.assertIn("scripts/installed_wheel_smoke.py", workflow)
         self.assertIn("scripts/sdist_consumer_smoke.py", workflow)
         self.assertIn('test "$code" -eq 5', workflow)
@@ -506,6 +514,8 @@ class TestPyPIReleaseTests(unittest.TestCase):
         )
         for path in (
             "candidate/testpypi-upload",
+            "candidate/testpypi-core-upload",
+            "candidate/testpypi-bundle-upload",
             "candidate/release-metadata",
             "candidate/testpypi-evidence",
             "candidate/build-wheelhouse",

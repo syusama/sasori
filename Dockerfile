@@ -10,11 +10,23 @@ COPY requirements-build.txt ./
 RUN python -m pip install --require-hashes -r requirements-build.txt
 COPY pyproject.toml MANIFEST.in README.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY licenses ./licenses
+COPY packages/sasori-core ./packages/sasori-core
+COPY scripts/repack_wheel.py ./scripts/repack_wheel.py
 COPY src ./src
-RUN find src -type d \( -name "*.egg-info" -o -name "__pycache__" \) \
+RUN find src packages -type d \( -name "*.egg-info" -o -name "__pycache__" \) \
       -prune -exec rm -rf -- {} + \
-    && find src -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete \
-    && python -m pip wheel --no-build-isolation --no-deps --wheel-dir /wheels .
+    && find src packages -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete \
+    && python -m pip wheel --no-build-isolation --no-deps \
+         --wheel-dir /wheels packages/sasori-core \
+    && set -- /wheels/sasori_core-*-py3-none-any.whl \
+    && test "$#" -eq 1 \
+    && python scripts/repack_wheel.py --wheel "$1" \
+    && python -m pip wheel --no-build-isolation --no-deps --wheel-dir /wheels . \
+    && set -- /wheels/sasori-*-py3-none-any.whl \
+    && test "$#" -eq 1 \
+    && python scripts/repack_wheel.py --wheel "$1" \
+    && set -- /wheels/*.whl \
+    && test "$#" -eq 2
 
 FROM ${PYTHON_BASE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,7 +36,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SASORI_ARTIFACT_ROOT=/data/artifacts \
     SASORI_ACTION_LOG=/data/incident-actions.jsonl
 COPY --from=builder /wheels /wheels
-RUN python -m pip install --no-cache-dir --no-deps /wheels/*.whl \
+RUN set -- /wheels/*.whl \
+    && test "$#" -eq 2 \
+    && python -m pip install --no-index --no-cache-dir --no-deps "$1" "$2" \
     && rm -rf /wheels \
     && mkdir -p /data \
     && chown 10001:10001 /data

@@ -131,6 +131,8 @@ def _permissions(manifest: PluginManifest) -> dict[str, object]:
         "id": manifest.plugin_id,
         "name": manifest.name,
         "version": manifest.version,
+        "capability_kind": "plugin",
+        "transport_type": None,
         "execution_mode": manifest.execution.mode,
         "requested_permissions": {
             "filesystem_read": list(requested.filesystem_read),
@@ -160,6 +162,8 @@ def _plugins(app_id: str, tool_names: set[str]) -> list[dict[str, object]]:
                 "id": "com.sasori.memory",
                 "name": "Sasori Durable bounded Memory",
                 "version": "0.1.0.dev0",
+                "capability_kind": "plugin",
+                "transport_type": None,
                 "execution_mode": "trusted_process",
                 "requested_permissions": {
                     "filesystem_read": ["configured:memory.sqlite3"],
@@ -178,6 +182,8 @@ def _plugins(app_id: str, tool_names: set[str]) -> list[dict[str, object]]:
                 "id": "sasori_apps.incident",
                 "name": "Sasori Incident App",
                 "version": "0.1.0.dev0",
+                "capability_kind": "plugin",
+                "transport_type": None,
                 "execution_mode": "trusted_process",
                 "requested_permissions": {
                     "filesystem_read": [],
@@ -196,6 +202,8 @@ def _plugins(app_id: str, tool_names: set[str]) -> list[dict[str, object]]:
                 "id": "com.sasori.flow",
                 "name": "Sasori Typed Workflow",
                 "version": "0.1.0.dev0",
+                "capability_kind": "plugin",
+                "transport_type": None,
                 "execution_mode": "trusted_process",
                 "requested_permissions": {
                     "filesystem_read": [],
@@ -214,6 +222,8 @@ def _plugins(app_id: str, tool_names: set[str]) -> list[dict[str, object]]:
                 "id": "configured-mcp-stdio",
                 "name": "Configured MCP stdio",
                 "version": None,
+                "capability_kind": "mcp_transport",
+                "transport_type": "stdio",
                 "execution_mode": "trusted_process",
                 "requested_permissions": None,
                 "effective_access": FULL_HOST_PROCESS_PRIVILEGES,

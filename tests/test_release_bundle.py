@@ -140,7 +140,10 @@ class ReleaseBundleTests(unittest.TestCase):
         manifest = {
             "schema_version": 1,
             "kind": "sasori.artifact-manifest",
-            "project": {**project, "runtime_dependencies": []},
+            "project": {
+                **project,
+                "runtime_dependencies": [f"sasori-core=={PROJECT_VERSION}"],
+            },
             "artifacts": artifacts,
             "build_inputs": self.build_inputs,
             "verification": {
@@ -547,14 +550,17 @@ class ReleaseBundleTests(unittest.TestCase):
             with self.subTest(permission=permission):
                 self.assertIn(f"      {permission}\n", bundle)
         subjects = (
-            "sasori-${{ needs.package.outputs.version }}-py3-none-any.whl",
-            "sasori-${{ needs.package.outputs.version }}.tar.gz",
-            "artifact-manifest.json",
-            "sasori-${{ needs.package.outputs.version }}.spdx.json",
-            "provenance.local.json",
-            "LICENSE",
-            "THIRD_PARTY_NOTICES.md",
-            "licenses/CPYTHON-3.12-LICENSE.txt",
+            "${{ runner.temp }}/sasori-release-candidate/sasori-${{ needs.package.outputs.version }}-py3-none-any.whl",
+            "${{ runner.temp }}/sasori-release-candidate/sasori-${{ needs.package.outputs.version }}.tar.gz",
+            "${{ runner.temp }}/sasori-release-candidate/artifact-manifest.json",
+            "${{ runner.temp }}/sasori-release-candidate/sasori-${{ needs.package.outputs.version }}.spdx.json",
+            "${{ runner.temp }}/sasori-release-candidate/provenance.local.json",
+            "${{ runner.temp }}/sasori-release-candidate/LICENSE",
+            "${{ runner.temp }}/sasori-release-candidate/THIRD_PARTY_NOTICES.md",
+            "${{ runner.temp }}/sasori-release-candidate/licenses/CPYTHON-3.12-LICENSE.txt",
+            "${{ runner.temp }}/sasori-core-release-candidate/sasori_core-${{ needs.package.outputs.version }}-py3-none-any.whl",
+            "${{ runner.temp }}/sasori-core-release-candidate/sasori_core-${{ needs.package.outputs.version }}.tar.gz",
+            "${{ runner.temp }}/sasori-core-release-candidate/core-verification.json",
         )
         self.assertIn("subject-path: |", bundle)
         subject_block = bundle.split("          subject-path: |\n", 1)[1].split(
@@ -565,14 +571,11 @@ class ReleaseBundleTests(unittest.TestCase):
         )
         self.assertEqual(
             subject_lines,
-            tuple(
-                "${{ runner.temp }}/sasori-release-candidate/" + subject
-                for subject in subjects
-            ),
+            subjects,
         )
         self.assertFalse(any("*" in subject for subject in subject_lines))
         attest_step = bundle.split(
-            "      - name: Attest the exact eight-file release candidate\n", 1
+            "      - name: Attest the exact bundle and core release candidates\n", 1
         )[1].split(
             "\n      - name: Upload the gated release candidate bundle", 1
         )[0]

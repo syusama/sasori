@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sasori-core"
+version = "0.1.0.dev1"
+description = "Sasori's dependency-free, storage-neutral single-agent runtime"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Documentation = "https://github.com/syusama/sasori/blob/main/docs/ADR-0018-SASORI-CORE-PACKAGE-BOUNDARY.md"
+Homepage = "https://github.com/syusama/sasori"
+Issues = "https://github.com/syusama/sasori/issues"
+Repository = "https://github.com/syusama/sasori"
+
+[tool.setuptools.packages.find]
+where = ["src"]

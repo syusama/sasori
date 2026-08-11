@@ -22,6 +22,7 @@ from .catalog import (
 )
 from .projection import (
     MAX_WORKFLOW_PROJECTION_BYTES,
+    validate_workflow_projection_extension,
     workflow_public_projection,
     workflow_public_run_projection,
 )
@@ -102,6 +103,7 @@ __all__ = [
     "plain_json",
     "preflight_workflow",
     "resolve_arguments",
+    "validate_workflow_projection_extension",
     "workflow_app_id",
     "workflow_public_projection",
     "workflow_public_run_projection",

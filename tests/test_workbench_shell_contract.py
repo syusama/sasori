@@ -24,8 +24,8 @@ class WorkbenchShellContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.html = (WEB / "index.html").read_text(encoding="utf-8")
-        cls.css = (WEB / "app.0.1.0.css").read_text(encoding="utf-8")
-        script = (WEB / "app.0.1.4.js").read_text(encoding="utf-8")
+        cls.css = (WEB / "app.0.2.0.css").read_text(encoding="utf-8")
+        script = (WEB / "app.0.2.0.js").read_text(encoding="utf-8")
         cls.shell_script = script.split("Red Sand Atelier shell.", 1)[1]
         cls.document = _Document()
         cls.document.feed(cls.html)
@@ -92,7 +92,8 @@ class WorkbenchShellContractTests(unittest.TestCase):
             filters,
             ["all", "skills", "tools", "mcp", "providers", "plugins"],
         )
-        self.assertIn("(app.plugins || []).filter", self.shell_script)
+        self.assertIn('plugin.capability_kind === "mcp_transport"', self.shell_script)
+        self.assertNotIn("/mcp/i", self.shell_script)
         self.assertIn("没有投影独立 MCP transport", self.shell_script)
         self.assertIn("不会把普通插件冒充为 MCP", self.shell_script)
         self.assertNotIn("fetch(", self.shell_script)

@@ -23,8 +23,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "12"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v9"
+VERIFIER_VERSION = "13"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v10"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -64,8 +64,11 @@ RELEASE_DOCS = (
     "docs/ADR-0015-STATIC-WORKFLOW-MANIFEST-PREFLIGHT.md",
     "docs/ADR-0016-STATIC-SERIAL-WORKFLOW-STUDIO.md",
     "docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md",
+    "docs/ADR-0018-SASORI-CORE-PACKAGE-BOUNDARY.md",
+    "docs/ADR-0019-CORE-LOOP-STREAM-SETTLEMENT.md",
     "docs/ARTIFACTS.md",
     "docs/BENCHMARK-LEAGENT-TOFU.md",
+    "docs/BENCHMARK-PI-PROMA.md",
     "docs/CONTEXT.md",
     "docs/FOUNDATION.md",
     "docs/HTTP_API.md",
@@ -154,6 +157,7 @@ SDIST_EGG_INFO_FILES = {
     "SOURCES.txt",
     "dependency_links.txt",
     "entry_points.txt",
+    "requires.txt",
     "top_level.txt",
 }
 SPDX_PACKAGE_PURPOSES = {
@@ -255,8 +259,11 @@ def _metadata(value: bytes, where: str) -> tuple[str, str, str]:
         raise ReleaseVerificationError(f"invalid {where} name/version", 3)
     if requires_python.replace(" ", "") not in (">=3.11,<3.14", "<3.14,>=3.11"):
         raise ReleaseVerificationError(f"invalid {where} Requires-Python", 3)
-    if message.get_all("Requires-Dist", []):
-        raise ReleaseVerificationError(f"{where} has runtime dependencies", 3)
+    expected_dependency = f"sasori-core=={version}"
+    if message.get_all("Requires-Dist", []) != [expected_dependency]:
+        raise ReleaseVerificationError(
+            f"{where} must depend on exact {expected_dependency}", 3
+        )
     if str(message.get("License-Expression", "")) != "MIT":
         raise ReleaseVerificationError(f"invalid {where} license", 3)
     if [str(item) for item in message.get_all("License-File", [])] != list(
@@ -290,6 +297,7 @@ def _source_payload(source_root: Path) -> dict[str, bytes]:
         for path in source.rglob("*")
         if path.is_file()
         and ".egg-info" not in path.parts
+        and path.relative_to(source).parts[0] != "sasori_core"
         and path.suffix.casefold() in {".py", ".html", ".css", ".js", ".svg"}
     }
     required = {f"{package}/__init__.py" for package in TOP_LEVEL_PACKAGES}
@@ -632,7 +640,9 @@ def _project(source_root: Path) -> dict[str, str]:
         "version": result["version"],
         "requires_python": ">=3.11,<3.14",
         "license_expression": "MIT",
-    } or not result["version"] or project.get("dependencies") != [] or project.get("license-files") != [
+    } or not result["version"] or project.get("dependencies") != [
+        f"sasori-core=={result['version']}"
+    ] or project.get("license-files") != [
         "LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*"
     ]:
         raise ReleaseVerificationError("project metadata violates the release contract", 3)
@@ -683,8 +693,9 @@ def _build_inputs(source_root: Path) -> dict[str, object]:
         marker in docker
         for marker in (
             "COPY pyproject.toml MANIFEST.in ",
-            'find src -type d \\( -name "*.egg-info" -o -name "__pycache__" \\)',
-            'find src -type f \\( -name "*.pyc" -o -name "*.pyo" \\) -delete',
+            'find src packages -type d \\( -name "*.egg-info" -o -name "__pycache__" \\)',
+            'find src packages -type f \\( -name "*.pyc" -o -name "*.pyo" \\) -delete',
+            "--wheel-dir /wheels packages/sasori-core",
         )
     ):
         raise ReleaseVerificationError(
@@ -975,7 +986,10 @@ def verify_release(
     manifest = {
         "schema_version": 1,
         "kind": "sasori.artifact-manifest",
-        "project": {**project, "runtime_dependencies": []},
+        "project": {
+            **project,
+            "runtime_dependencies": [f"sasori-core=={project['version']}"],
+        },
         "artifacts": artifacts,
         "build_inputs": build,
         "verification": {

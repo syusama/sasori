@@ -36,6 +36,8 @@ class InstalledOriginTests(unittest.TestCase):
         )
         self.assertIn("workflow-studio.0.2.0.css", installed_smoke.WEB_RESOURCES)
         self.assertIn("workflow-studio.0.2.0.js", installed_smoke.WEB_RESOURCES)
+        self.assertIn("app.0.2.0.css", installed_smoke.WEB_RESOURCES)
+        self.assertIn("app.0.2.0.js", installed_smoke.WEB_RESOURCES)
 
     def test_origin_must_resolve_under_the_exact_consumer_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -66,6 +68,7 @@ class SdistConsumerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.sdist = self.root / f"sasori-{PROJECT_VERSION}.tar.gz"
+        self.core_wheel = self.root / f"sasori_core-{PROJECT_VERSION}-py3-none-any.whl"
         self.lock = self.root / "requirements-build.txt"
         self.wheelhouse = self.root / "build-wheelhouse"
         self.wheelhouse.mkdir()
@@ -80,6 +83,7 @@ class SdistConsumerTests(unittest.TestCase):
         self.source.mkdir()
         for path in (
             self.sdist,
+            self.core_wheel,
             self.lock,
             self.check,
             self.repacker,
@@ -144,6 +148,7 @@ class SdistConsumerTests(unittest.TestCase):
         with mock.patch.object(sdist_smoke, "_run", side_effect=fake_run):
             evidence = sdist_smoke.run_smoke(
                 self.sdist,
+                self.core_wheel,
                 self.lock,
                 self.wheelhouse,
                 self.check,
@@ -156,6 +161,7 @@ class SdistConsumerTests(unittest.TestCase):
             evidence,
             {
                 "source_archive": self.sdist.name,
+                "core_wheel": self.core_wheel.name,
                 "build_wheel": self.build_wheel.name,
                 "rebuilt_wheel": f"sasori-{PROJECT_VERSION}-py3-none-any.whl",
                 "release_verifier_exit": 5,
@@ -184,6 +190,7 @@ class SdistConsumerTests(unittest.TestCase):
         self.assertIn("--isolated", commands[6])
         self.assertIn("--no-cache-dir", commands[6])
         self.assertIn("--no-deps", commands[6])
+        self.assertIn(self.core_wheel.resolve(), commands[6])
         self.assertNotEqual(commands[1][0], commands[6][0])
         for _, cwd, environment, _ in calls:
             self.assertNotEqual(cwd.resolve(), ROOT.resolve())
@@ -211,6 +218,7 @@ class SdistConsumerTests(unittest.TestCase):
         ), self.assertRaisesRegex(RuntimeError, "exactly one regular wheel"):
             sdist_smoke.run_smoke(
                 self.sdist,
+                self.core_wheel,
                 self.lock,
                 self.wheelhouse,
                 self.check,
@@ -227,6 +235,7 @@ class SdistConsumerTests(unittest.TestCase):
         ) as run, self.assertRaisesRegex(RuntimeError, "filename is invalid"):
             sdist_smoke.run_smoke(
                 invalid,
+                self.core_wheel,
                 self.lock,
                 self.wheelhouse,
                 self.check,
@@ -278,6 +287,7 @@ class SdistConsumerTests(unittest.TestCase):
             ) as run, self.assertRaisesRegex(RuntimeError, "build wheelhouse"):
                 sdist_smoke.run_smoke(
                     self.sdist,
+                    self.core_wheel,
                     self.lock,
                     wheelhouse,
                     self.check,
@@ -299,6 +309,7 @@ class SdistConsumerTests(unittest.TestCase):
         ):
             sdist_smoke.run_smoke(
                 self.sdist,
+                self.core_wheel,
                 self.lock,
                 self.wheelhouse,
                 self.check,
@@ -320,6 +331,7 @@ class SdistConsumerTests(unittest.TestCase):
         ):
             sdist_smoke.run_smoke(
                 self.sdist,
+                self.core_wheel,
                 self.lock,
                 self.wheelhouse,
                 self.check,

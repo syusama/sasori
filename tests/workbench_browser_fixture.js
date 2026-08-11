@@ -49,6 +49,8 @@
       id: "com.sasori.memory",
       name: "Sasori Durable bounded Memory",
       version: "0.1.0.dev0",
+      capability_kind: "plugin",
+      transport_type: null,
       execution_mode: "trusted_process",
       requested_permissions: {
         filesystem_read: ["configured:memory.sqlite3"],
@@ -142,6 +144,8 @@
       id: "com.sasori.flow",
       name: "Sasori Typed Workflow",
       version: "0.1.0.dev0",
+      capability_kind: "plugin",
+      transport_type: null,
       execution_mode: "trusted_process",
       requested_permissions: {
         filesystem_read: [],
@@ -1100,6 +1104,15 @@
         "narrow Workbench hid the Workflow Studio focus return target");
       assert(document.documentElement.scrollWidth <= global.innerWidth,
         `narrow Workbench overflows horizontally at ${global.innerWidth}px`);
+      const composerBounds = document.querySelector("#task-form").getBoundingClientRect();
+      const mobileNavBounds = document.querySelector(".mobile-nav").getBoundingClientRect();
+      assert(composerBounds.left >= 0 && composerBounds.right <= global.innerWidth,
+        "narrow Run composer is clipped horizontally");
+      assert(mobileNavBounds.left >= 0 && mobileNavBounds.right <= global.innerWidth &&
+        mobileNavBounds.top >= 0 && mobileNavBounds.bottom <= global.innerHeight,
+      "narrow bottom navigation is clipped by the viewport");
+      assert(composerBounds.bottom <= mobileNavBounds.top + 1,
+        "narrow Run composer is obscured by bottom navigation");
     }
 
     const prompt = document.querySelector("[data-prompt]");
@@ -1114,6 +1127,10 @@
       document.activeElement === document.querySelector("#surface-tab"),
     "Capability Center navigation did not open the real inspector tab");
     const mcpFilter = document.querySelector('[data-capability-filter="mcp"]');
+    for (const filter of document.querySelectorAll("[data-capability-filter]")) {
+      assert(filter.getBoundingClientRect().height >= 44,
+        "Capability Center filter is below the 44px touch target");
+    }
     mcpFilter.click();
     const mcp = document.querySelector('[data-capability="mcp"]');
     assert(mcp && !mcp.hidden && mcp.textContent.includes("没有投影独立 MCP transport"),
@@ -1529,6 +1546,29 @@
       () => document.activeElement === document.querySelector("#studio-editor"),
       "Workflow Studio did not focus its editor on open",
     );
+    assert(studio.getAttribute("role") === "dialog" &&
+      studio.getAttribute("aria-modal") === "true" &&
+      document.querySelector("#workbench-shell").inert &&
+      document.querySelector(".topbar").inert,
+    "Workflow Studio did not isolate its modal accessibility boundary");
+    const focusable = [...studio.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    )].filter((item) => !item.hidden && item.getClientRects().length);
+    const firstFocusable = focusable[0];
+    const lastFocusable = focusable.at(-1);
+    lastFocusable.focus();
+    lastFocusable.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Tab", bubbles: true, cancelable: true,
+    }));
+    assert(document.activeElement === firstFocusable,
+      "Workflow Studio Tab escaped after its last focusable control");
+    firstFocusable.focus();
+    firstFocusable.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Tab", shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    assert(document.activeElement === lastFocusable,
+      "Workflow Studio Shift+Tab escaped before its first focusable control");
+    document.querySelector("#studio-editor").focus();
     const profile = new URLSearchParams(global.location.hash.slice(1)).get("profile");
     if (profile && profile.startsWith("narrow")) {
       assert(global.matchMedia("(max-width: 700px)").matches,
@@ -1590,6 +1630,9 @@
     );
     assert(document.querySelector("#studio-button").getAttribute("aria-expanded") === "false",
       "Escape did not restore the Workflow Studio disclosure state");
+    assert(!document.querySelector("#workbench-shell").inert &&
+      !document.querySelector(".topbar").inert,
+    "Workflow Studio close did not restore background accessibility");
     assert(document.querySelector('[data-workbench-destination="command"]')
       .getAttribute("aria-current") === "page",
     "Escape did not restore the Command Center navigation state");
