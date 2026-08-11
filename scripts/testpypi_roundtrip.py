@@ -21,6 +21,10 @@ PROJECT_NAME = "sasori"
 TESTPYPI_JSON_URL = "https://test.pypi.org/pypi/sasori/json"
 GITHUB_API_ROOT = "https://api.github.com"
 UNTAGGED_SOURCE_STATE = "clean_untagged_local_candidate"
+MANIFEST_KIND_BY_PACKAGE_TYPE = {
+    "bdist_wheel": "wheel",
+    "sdist": "sdist",
+}
 MAX_JSON_BYTES = 4 * 1024 * 1024
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -168,12 +172,14 @@ def _metadata_inventory(
     if project.get("version") != version or not isinstance(artifacts, list):
         raise TestPyPIGateError("artifact manifest version or inventory is invalid")
     by_kind = {item.get("kind"): item for item in artifacts if isinstance(item, dict)}
-    if len(artifacts) != len(expected_artifacts) or set(by_kind) != set(
-        expected_artifacts
+    if set(expected_artifacts) != set(MANIFEST_KIND_BY_PACKAGE_TYPE):
+        raise TestPyPIGateError("upload artifact kinds are not exact")
+    if len(artifacts) != len(MANIFEST_KIND_BY_PACKAGE_TYPE) or set(by_kind) != set(
+        MANIFEST_KIND_BY_PACKAGE_TYPE.values()
     ):
         raise TestPyPIGateError("artifact manifest kinds are not exact")
-    for kind, expected in expected_artifacts.items():
-        item = by_kind[kind]
+    for package_type, expected in expected_artifacts.items():
+        item = by_kind[MANIFEST_KIND_BY_PACKAGE_TYPE[package_type]]
         if any(
             item.get(field) != expected[field]
             for field in ("filename", "sha256", "size")

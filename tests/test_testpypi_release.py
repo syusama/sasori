@@ -88,7 +88,11 @@ class TestPyPIReleaseTests(unittest.TestCase):
         manifest = {
             "project": {"name": "sasori", "version": VERSION},
             "artifacts": artifacts
-            or [inventory[kind] | {"kind": kind} for kind in sorted(inventory)],
+            or [
+                inventory[kind]
+                | {"kind": testpypi.MANIFEST_KIND_BY_PACKAGE_TYPE[kind]}
+                for kind in sorted(inventory)
+            ],
         }
         provenance = provenance or {
             "release_eligible": False,
@@ -348,7 +352,7 @@ class TestPyPIReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(testpypi.TestPyPIGateError, "invalid"):
             testpypi._require_pass_marker(marker, "smoke")
 
-    def test_metadata_binds_exact_clean_untagged_candidate(self):
+    def test_metadata_binds_release_manifest_kinds_to_testpypi_inventory(self):
         inventory = self._inventory()
         metadata = self.root / "metadata"
         self._write_metadata(metadata, inventory)
@@ -357,11 +361,18 @@ class TestPyPIReleaseTests(unittest.TestCase):
         self.assertFalse(result["release_eligible"])
 
         duplicated = [
-            inventory["bdist_wheel"] | {"kind": "bdist_wheel"},
-            inventory["bdist_wheel"] | {"kind": "bdist_wheel"},
+            inventory["bdist_wheel"] | {"kind": "wheel"},
+            inventory["bdist_wheel"] | {"kind": "wheel"},
             inventory["sdist"] | {"kind": "sdist"},
         ]
         self._write_metadata(metadata, inventory, artifacts=duplicated)
+        with self.assertRaisesRegex(testpypi.TestPyPIGateError, "kinds are not exact"):
+            testpypi._metadata_inventory(metadata, VERSION, COMMIT, inventory)
+
+        package_types = [
+            inventory[kind] | {"kind": kind} for kind in sorted(inventory)
+        ]
+        self._write_metadata(metadata, inventory, artifacts=package_types)
         with self.assertRaisesRegex(testpypi.TestPyPIGateError, "kinds are not exact"):
             testpypi._metadata_inventory(metadata, VERSION, COMMIT, inventory)
 
