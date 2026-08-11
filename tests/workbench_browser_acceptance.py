@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import http.server
 import json
 import locale
@@ -8,9 +10,13 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
+import time
+import urllib.parse
+import urllib.request
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +24,7 @@ WEB_ROOT = ROOT / "src" / "sasori_web"
 FIXTURE = Path(__file__).with_name("workbench_browser_fixture.js")
 SCRIPT_MARKER = '<script src="/assets/event-reducer.0.1.0.js" defer></script>'
 EXPECTED = (
-    "PASS:unavailable-workflow,workflow-studio-preflight,workflow-studio-stale-edit,workflow-studio-contract,"
+    "PASS:atelier-shell,unavailable-workflow,workflow-studio-preflight,workflow-studio-stale-edit,workflow-studio-contract,"
     "workflow-studio-malformed-rejection,workflow-studio-rejected,workflow-studio-transport,"
     "workflow-studio-invalid-unicode,"
     "workflow-catalog-save,workflow-catalog-stale-edit,workflow-catalog-conflict,"
@@ -202,6 +208,301 @@ def validate_screenshot(
         )
 
 
+class _DevToolsSocket:
+    """Small standard-library WebSocket client for local Chrome DevTools."""
+
+    _GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, url: str, timeout_seconds: float) -> None:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != "ws" or parsed.hostname is None or parsed.port is None:
+            raise RuntimeError("Chrome returned an invalid local DevTools WebSocket URL")
+        self._socket = socket.create_connection(
+            (parsed.hostname, parsed.port), timeout=timeout_seconds
+        )
+        self._socket.settimeout(timeout_seconds)
+        self._buffer = bytearray()
+        self._next_id = 0
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        target = parsed.path or "/"
+        if parsed.query:
+            target += f"?{parsed.query}"
+        request = (
+            f"GET {target} HTTP/1.1\r\n"
+            f"Host: {parsed.hostname}:{parsed.port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        ).encode("ascii")
+        self._socket.sendall(request)
+        response = self._read_until(b"\r\n\r\n")
+        header, remainder = response.split(b"\r\n\r\n", 1)
+        if not header.startswith(b"HTTP/1.1 101"):
+            raise RuntimeError("Chrome rejected the local DevTools WebSocket upgrade")
+        expected = base64.b64encode(
+            hashlib.sha1(f"{key}{self._GUID}".encode("ascii")).digest()
+        ).decode("ascii")
+        accept = None
+        for line in header.split(b"\r\n")[1:]:
+            name, separator, value = line.partition(b":")
+            if separator and name.strip().lower() == b"sec-websocket-accept":
+                accept = value.strip().decode("ascii", errors="replace")
+                break
+        if accept != expected:
+            raise RuntimeError("Chrome returned an invalid DevTools WebSocket handshake")
+        self._buffer.extend(remainder)
+
+    def _read_until(self, marker: bytes) -> bytes:
+        while marker not in self._buffer:
+            chunk = self._socket.recv(65536)
+            if not chunk:
+                raise RuntimeError("Chrome closed the DevTools connection")
+            self._buffer.extend(chunk)
+        end = self._buffer.index(marker) + len(marker)
+        value = bytes(self._buffer[:end])
+        del self._buffer[:end]
+        return value
+
+    def _read_exact(self, size: int) -> bytes:
+        while len(self._buffer) < size:
+            chunk = self._socket.recv(max(65536, size - len(self._buffer)))
+            if not chunk:
+                raise RuntimeError("Chrome closed the DevTools connection")
+            self._buffer.extend(chunk)
+        value = bytes(self._buffer[:size])
+        del self._buffer[:size]
+        return value
+
+    def _send_frame(self, payload: bytes, opcode: int = 0x1) -> None:
+        size = len(payload)
+        if size < 126:
+            header = bytes((0x80 | opcode, 0x80 | size))
+        elif size <= 0xFFFF:
+            header = bytes((0x80 | opcode, 0xFE)) + size.to_bytes(2, "big")
+        else:
+            header = bytes((0x80 | opcode, 0xFF)) + size.to_bytes(8, "big")
+        mask = os.urandom(4)
+        masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+        self._socket.sendall(header + mask + masked)
+
+    def _read_message(self) -> str:
+        chunks: list[bytes] = []
+        started = False
+        while True:
+            first, second = self._read_exact(2)
+            final = bool(first & 0x80)
+            opcode = first & 0x0F
+            size = second & 0x7F
+            if size == 126:
+                size = int.from_bytes(self._read_exact(2), "big")
+            elif size == 127:
+                size = int.from_bytes(self._read_exact(8), "big")
+            masked = bool(second & 0x80)
+            mask = self._read_exact(4) if masked else None
+            payload = self._read_exact(size)
+            if mask is not None:
+                payload = bytes(
+                    value ^ mask[index % 4] for index, value in enumerate(payload)
+                )
+            if opcode == 0x8:
+                raise RuntimeError("Chrome closed the DevTools WebSocket")
+            if opcode == 0x9:
+                self._send_frame(payload, opcode=0xA)
+                continue
+            if opcode == 0x1:
+                chunks = [payload]
+                started = True
+            elif opcode == 0x0 and started:
+                chunks.append(payload)
+            else:
+                continue
+            if final:
+                return b"".join(chunks).decode("utf-8")
+
+    def command(self, method: str, params: dict[str, object] | None = None) -> dict:
+        self._next_id += 1
+        message_id = self._next_id
+        self._send_frame(
+            json.dumps(
+                {"id": message_id, "method": method, "params": params or {}},
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        while True:
+            message = json.loads(self._read_message())
+            if message.get("id") != message_id:
+                continue
+            if "error" in message:
+                raise RuntimeError(
+                    f"Chrome DevTools command {method} failed: {message['error']}"
+                )
+            result = message.get("result", {})
+            if not isinstance(result, dict):
+                raise RuntimeError(f"Chrome DevTools command {method} was malformed")
+            return result
+
+    def close(self) -> None:
+        try:
+            self._send_frame(b"", opcode=0x8)
+        except OSError:
+            pass
+        self._socket.close()
+
+
+def _free_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _devtools_target(port: int, deadline: float) -> str:
+    url = f"http://127.0.0.1:{port}/json/list"
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=0.4) as response:
+                targets = json.load(response)
+            for target in targets:
+                if target.get("type") == "page" and target.get("webSocketDebuggerUrl"):
+                    return str(target["webSocketDebuggerUrl"])
+        except (OSError, ValueError) as error:
+            last_error = error
+        time.sleep(0.04)
+    raise RuntimeError("Chrome DevTools target did not become available") from last_error
+
+
+def _evaluated_value(client: _DevToolsSocket, expression: str) -> object:
+    result = client.command(
+        "Runtime.evaluate",
+        {"expression": expression, "returnByValue": True, "awaitPromise": True},
+    )
+    remote = result.get("result", {})
+    if not isinstance(remote, dict) or "value" not in remote:
+        return None
+    return remote["value"]
+
+
+def run_emulated_browser_process(
+    binary: Path,
+    port: int,
+    *,
+    viewport: tuple[int, int],
+    extra_arguments: tuple[str, ...] = (),
+    browser_path: str = "/",
+    screenshot: Path | None = None,
+    attempts: int = BROWSER_ATTEMPTS,
+    timeout_seconds: int = BROWSER_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    """Run acceptance at an exact CSS viewport below Chromium's 500px floor."""
+
+    last_error: Exception | None = None
+    for _ in range(attempts):
+        if screenshot is not None:
+            screenshot.unlink(missing_ok=True)
+        debug_port = _free_loopback_port()
+        with tempfile.TemporaryDirectory(prefix="sasori-browser-emulated-") as profile:
+            command = [
+                str(binary),
+                "--headless=new",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-dev-shm-usage",
+                "--disable-extensions",
+                "--disable-gpu",
+                "--disable-sync",
+                "--metrics-recording-only",
+                "--no-first-run",
+                "--no-sandbox",
+                "--remote-allow-origins=*",
+                f"--remote-debugging-port={debug_port}",
+                f"--user-data-dir={profile}",
+                "about:blank",
+            ]
+            command[1:1] = list(extra_arguments)
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            client: _DevToolsSocket | None = None
+            deadline = time.monotonic() + timeout_seconds
+            try:
+                target = _devtools_target(debug_port, deadline)
+                client = _DevToolsSocket(
+                    target, timeout_seconds=max(1.0, deadline - time.monotonic())
+                )
+                client.command("Page.enable")
+                client.command("Runtime.enable")
+                client.command(
+                    "Emulation.setDeviceMetricsOverride",
+                    {
+                        "width": viewport[0],
+                        "height": viewport[1],
+                        "deviceScaleFactor": 1,
+                        "mobile": False,
+                    },
+                )
+                client.command(
+                    "Page.navigate",
+                    {"url": f"http://127.0.0.1:{port}{browser_path}"},
+                )
+                result = None
+                while time.monotonic() < deadline:
+                    try:
+                        result = _evaluated_value(
+                            client,
+                            "document.querySelector('#sasori-browser-result')?.dataset.result || null",
+                        )
+                    except RuntimeError:
+                        result = None
+                    if result in {"passed", "failed"}:
+                        break
+                    time.sleep(0.025)
+                if result not in {"passed", "failed"}:
+                    raise subprocess.TimeoutExpired(command, timeout_seconds)
+                dom = _evaluated_value(client, "document.documentElement.outerHTML")
+                if not isinstance(dom, str):
+                    raise RuntimeError("Chrome DevTools did not return the accepted DOM")
+                if screenshot is not None:
+                    captured = client.command(
+                        "Page.captureScreenshot",
+                        {
+                            "format": "png",
+                            "fromSurface": True,
+                            "captureBeyondViewport": False,
+                        },
+                    )
+                    encoded = captured.get("data")
+                    if not isinstance(encoded, str):
+                        raise RuntimeError("Chrome DevTools screenshot was malformed")
+                    screenshot.write_bytes(base64.b64decode(encoded, validate=True))
+                    validate_screenshot(screenshot, viewport)
+                return subprocess.CompletedProcess(command, 0, stdout=dom, stderr="")
+            except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+                last_error = error
+            finally:
+                if client is not None:
+                    try:
+                        client.command("Browser.close")
+                    except (OSError, RuntimeError):
+                        pass
+                    client.close()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=3)
+    raise RuntimeError(
+        f"emulated browser failed after {attempts} attempts at "
+        f"{viewport[0]}x{viewport[1]}"
+    ) from last_error
+
+
 def run_browser_process(
     binary: Path,
     port: int,
@@ -274,12 +575,22 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             ),
             (
                 "narrow-reduced",
-                run_browser_process(
+                run_emulated_browser_process(
                     binary,
                     server.server_address[1],
-                    window_size=(390, 844),
+                    viewport=(390, 844),
                     extra_arguments=("--force-prefers-reduced-motion",),
                     browser_path="/#profile=narrow-reduced",
+                ),
+            ),
+            (
+                "narrow-360-reduced",
+                run_emulated_browser_process(
+                    binary,
+                    server.server_address[1],
+                    viewport=(360, 800),
+                    extra_arguments=("--force-prefers-reduced-motion",),
+                    browser_path="/#profile=narrow-360-reduced",
                 ),
             ),
         ]
@@ -303,7 +614,11 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             )
     return {
         "browser": browser_version(binary),
-        "browser_profiles": ["desktop-1600x1000", "narrow-390x844-reduced-motion"],
+        "browser_profiles": [
+            "desktop-1600x1000",
+            "narrow-390x844-reduced-motion",
+            "narrow-360x800-reduced-motion",
+        ],
         "cases": EXPECTED.removeprefix("PASS:").split(","),
         "bundled_assets": [
             "event-reducer.0.1.0.js",

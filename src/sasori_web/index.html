@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0b0d10">
-  <title>Sasori · Puppet Workbench</title>
+  <meta name="theme-color" content="#09090b">
+  <title>Sasori · Red Sand Agent Workbench</title>
   <link rel="icon" href="/assets/mark.0.1.0.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/app.0.1.0.css">
   <link rel="stylesheet" href="/assets/artifacts.0.1.0.css">
@@ -14,17 +14,35 @@
   <link rel="stylesheet" href="/assets/workflow-studio.0.2.0.css">
 </head>
 <body>
-  <a class="skip-link" href="#workbench-main">跳到工作区</a>
+  <a class="skip-link" href="#workbench-main">跳到指挥中心</a>
   <div class="grain" aria-hidden="true"></div>
   <div class="puppet-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
   <header class="topbar">
-    <a class="brand" href="#/" aria-label="Sasori 首页">
+    <a class="brand" href="#/" aria-label="Sasori 指挥中心">
       <img src="/assets/mark.0.1.0.svg" alt="" width="42" height="42">
-      <span><strong>SASORI</strong><small>PUPPET WORKBENCH / 蠍之机关室</small></span>
+      <span><strong>SASORI</strong><small>RED SAND ATELIER / 赤砂机关工房</small></span>
     </a>
+
+    <nav class="command-nav" id="command-nav" aria-label="工作台主导航">
+      <button type="button" class="command-nav-item active" data-workbench-destination="command" aria-current="page">
+        <i aria-hidden="true">01</i><span><b>指挥中心</b><small>COMMAND</small></span>
+      </button>
+      <button class="command-nav-item studio-launch" id="studio-button" type="button" data-workbench-destination="workflows" aria-label="打开工作流机关制图台" aria-controls="workflow-studio" aria-expanded="false">
+        <i aria-hidden="true">02</i><span><b>工作流</b><small>WORKFLOWS</small></span>
+      </button>
+      <button type="button" class="command-nav-item" data-workbench-destination="capabilities">
+        <i aria-hidden="true">03</i><span><b>能力中心</b><small>CAPABILITIES</small></span>
+      </button>
+      <button type="button" class="command-nav-item" data-workbench-destination="artifacts">
+        <i aria-hidden="true">04</i><span><b>产物</b><small>ARTIFACTS</small></span>
+      </button>
+      <button type="button" class="command-nav-item" data-workbench-destination="trace">
+        <i aria-hidden="true">05</i><span><b>追踪</b><small>TRACE</small></span>
+      </button>
+    </nav>
+
     <div class="runtime-strip" aria-label="运行时状态">
-      <button class="studio-launch" id="studio-button" type="button" aria-label="打开静态串行机关制图台" aria-controls="workflow-studio" aria-expanded="false"><i aria-hidden="true"></i><span><small>STATIC SERIAL</small><b>机关制图台</b></span></button>
       <span class="signal" id="connection-signal" data-state="idle" role="status" aria-live="polite" aria-atomic="true"><i></i><b id="connection-label">等待连接</b></span>
       <span class="runtime-stat"><small>RUN</small><b id="active-run-label">—</b></span>
       <span class="runtime-stat"><small>SEQ</small><b id="sequence-label">0</b></span>
@@ -45,7 +63,7 @@
     <header class="studio-masthead">
       <div class="studio-title-lockup">
         <span class="studio-kicker">SASORI / DURABLE MECHANISM ARCHIVE · W1.3 CANDIDATE</span>
-        <h1 id="studio-title">静态串行 <em>机关藏经阁</em></h1>
+        <h1 id="studio-title">工作流铸造台 <em>机关藏经阁</em></h1>
         <p>严格图纸沿同一编译边界预检并保存为不可变 revision；可留存、可追溯，但不可激活、不可执行。</p>
       </div>
       <div class="studio-mast-actions">
@@ -68,7 +86,7 @@
       <aside class="studio-catalog-panel" aria-labelledby="studio-catalog-title">
         <header class="studio-panel-heading">
           <span><small>00 / DURABLE ARCHIVE</small><h2 id="studio-catalog-title">机关卷宗</h2></span>
-          <button class="studio-catalog-refresh" id="studio-catalog-refresh" type="button" aria-label="刷新保存的机关卷宗">↻</button>
+          <button class="studio-catalog-refresh" id="studio-catalog-refresh" type="button" aria-label="刷新已保存的机关卷宗">↻</button>
         </header>
         <div class="studio-catalog-command">
           <button class="button brass wide" id="studio-new" type="button"><span>新建图纸</span><i aria-hidden="true">＋</i></button>
@@ -92,7 +110,7 @@
         </header>
 
         <div class="studio-tool-shelf">
-          <div><small>HOST-OWNED TOOL CONTRACTS</small><p>选择一个已加载的普通应用 Tool 生成起始草稿；最终仍由服务端复核。</p></div>
+          <div><small>HOST-OWNED TOOL CONTRACTS</small><p>选择一个已加载的应用 Tool 生成起始草稿；最终仍由服务端复核。</p></div>
           <div class="studio-tool-list" id="studio-tool-list" aria-live="polite"><span class="studio-tool-empty">等待应用目录…</span></div>
         </div>
 
@@ -105,8 +123,8 @@
         <footer class="studio-editor-actions">
           <button class="button ghost" id="studio-reset" type="button">重置草稿</button>
           <span><kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 服务端预检</span>
-          <button class="button studio-preflight" id="studio-preflight" type="button"><span>校验机关</span><i aria-hidden="true">PRE­FLIGHT →</i></button>
-          <button class="button studio-save" id="studio-save" type="button"><span>封存图纸</span><i aria-hidden="true">CAS SAVE ↗</i></button>
+          <button class="button studio-preflight" id="studio-preflight" type="button"><span>校验机关</span><i aria-hidden="true">PRE-FLIGHT →</i></button>
+          <button class="button studio-save" id="studio-save" type="button"><span>封存图纸</span><i aria-hidden="true">CAS SAVE →</i></button>
         </footer>
       </section>
 
@@ -132,8 +150,13 @@
     </footer>
   </section>
 
-  <div class="workbench-shell">
-    <aside class="left-rail" aria-label="数字员工与历史任务">
+  <div class="workbench-shell" id="workbench-shell">
+    <aside class="left-rail" id="left-rail" aria-label="数字员工与运行档案">
+      <div class="rail-masthead">
+        <span class="rail-coordinate">ATELIER / 01</span>
+        <strong>机关库</strong>
+        <p>选择一具数字傀儡，把能力装到同一条轻量 Loop 上。</p>
+      </div>
       <section class="rail-section workers-section">
         <div class="section-heading">
           <span><small>01 / PUPPETS</small><h2>数字员工</h2></span>
@@ -156,13 +179,28 @@
       </section>
     </aside>
 
+    <button class="panel-separator left-separator" id="left-separator" type="button" role="separator" aria-label="调整机关库宽度" aria-controls="left-rail" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="380" aria-valuenow="286" tabindex="0"><span aria-hidden="true"></span></button>
+
     <main class="main-stage" id="workbench-main" tabindex="-1">
       <section class="stage-intro" id="stage-intro">
-        <div class="eyebrow"><span></span> SINGLE LOOP · MANY MECHANISMS</div>
-        <h1>牵引一根线，<br><em>唤醒一座机关。</em></h1>
-        <p>选择数字员工，交付一个清晰任务。每次模型推演、工具动作、人工审批与恢复都会沿同一条可审计时间轴展开。</p>
+        <div class="eyebrow"><span></span> COMMAND CENTER · ONE LOOP / MANY MECHANISMS</div>
+        <h1>一线牵百机，<br><em>让智能成为永恒的艺术。</em></h1>
+        <p>Sasori 把模型、技能、工具、审批与恢复编排成可拆卸的机关。轻装时像一柄精准的工具，展开后就是完整的 Agent 工房。</p>
+        <div class="atelier-metrics" aria-label="当前能力概览">
+          <span><small>RUNTIME</small><b>ONE LOOP</b><i>唯一运行路径</i></span>
+          <span><small>CONTROL</small><b>HUMAN GATE</b><i>关键动作可审计</i></span>
+          <span><small>OUTPUT</small><b>SHA-256</b><i>产物可验证</i></span>
+        </div>
+        <div class="quick-command" aria-labelledby="quick-command-title">
+          <div><small>QUICK CAST</small><h2 id="quick-command-title">从一条清晰指令开始</h2></div>
+          <div class="quick-command-list">
+            <button type="button" data-prompt="分析当前任务，列出风险、执行步骤和验收标准。"><span>01</span>规划并执行复杂任务</button>
+            <button type="button" data-prompt="检查可用工具与权限，选择最小能力组合完成目标。"><span>02</span>按需装配工具与技能</button>
+            <button type="button" data-prompt="生成可核验产物，并说明来源、摘要和完整性信息。"><span>03</span>交付可验证的产物</button>
+          </div>
+        </div>
         <div class="principle-row" aria-label="Sasori 核心原则">
-          <span>01 <b>轻核</b></span><span>02 <b>可拔插</b></span><span>03 <b>人控机关</b></span>
+          <span>01 <b>轻量内核</b></span><span>02 <b>随拆随用</b></span><span>03 <b>人控机关</b></span><span>04 <b>耐久证据</b></span>
         </div>
       </section>
 
@@ -181,24 +219,30 @@
         </div>
         <textarea id="task-input" rows="3" maxlength="20000" placeholder="描述目标、约束与验收标准……" required></textarea>
         <div class="composer-footer">
-          <span class="shortcut"><kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 发起</span>
-          <button class="button lacquer" id="run-button" type="submit" disabled><span>启动机关</span><i aria-hidden="true">↗</i></button>
+          <span class="shortcut"><kbd>/</kbd> 聚焦 · <kbd>Ctrl</kbd><b>+</b><kbd>Enter</kbd> 发起</span>
+          <button class="button lacquer" id="run-button" type="submit" disabled><span>启动机关</span><i aria-hidden="true">→</i></button>
         </div>
       </form>
     </main>
 
-    <aside class="right-rail" id="right-rail" aria-label="运行检查器">
+    <button class="panel-separator right-separator" id="right-separator" type="button" role="separator" aria-label="调整追踪检查器宽度" aria-controls="right-rail" aria-orientation="vertical" aria-valuemin="300" aria-valuemax="520" aria-valuenow="370" tabindex="0"><span aria-hidden="true"></span></button>
+
+    <aside class="right-rail" id="right-rail" aria-label="追踪检查器">
+      <div class="inspector-masthead">
+        <span><small>ATELIER / 03</small><b>追踪检查器</b></span>
+        <i aria-hidden="true">TRACE</i>
+      </div>
       <div class="inspector-tabs" role="tablist" aria-label="检查器视图">
-        <button id="timeline-tab" role="tab" aria-controls="timeline-panel" aria-selected="true" tabindex="0" type="button">时间轴</button>
+        <button id="timeline-tab" role="tab" aria-controls="timeline-panel" aria-selected="true" tabindex="0" type="button">追踪</button>
         <button id="artifacts-tab" role="tab" aria-controls="artifacts-panel" aria-selected="false" tabindex="-1" type="button">产物</button>
-        <button id="surface-tab" role="tab" aria-controls="surface-panel" aria-selected="false" tabindex="-1" type="button">能力面</button>
+        <button id="surface-tab" role="tab" aria-controls="surface-panel" aria-selected="false" tabindex="-1" type="button">能力</button>
       </div>
 
       <section class="inspector-panel timeline-panel" id="timeline-panel" role="tabpanel" aria-labelledby="timeline-tab">
         <div class="inspector-heading"><span><small>TRACE / DURABLE</small><h2>机关行程</h2></span><b id="event-count">0</b></div>
         <div class="operator-action" id="operator-action" hidden></div>
         <ol class="timeline" id="timeline-list">
-          <li class="timeline-empty"><i></i><p>启动任务后，耐久事件会在这里逐格咬合。</p></li>
+          <li class="timeline-empty"><i></i><p>启动任务后，耐久事件会沿这条时间线逐格显现。</p></li>
         </ol>
       </section>
 
@@ -218,16 +262,25 @@
       </section>
 
       <section class="inspector-panel surface-panel" id="surface-panel" role="tabpanel" aria-labelledby="surface-tab" hidden>
-        <div class="inspector-heading"><span><small>SURFACE / CONTRACT</small><h2>能力与权限</h2></span></div>
-        <div id="surface-content"><p class="empty-copy">选择数字员工查看其 skills、tools 与宿主权限披露。</p></div>
+        <div class="inspector-heading"><span><small>CAPABILITY / LOADED CONTRACT</small><h2>能力中心</h2></span></div>
+        <div class="capability-filters" role="toolbar" aria-label="能力类型筛选">
+          <button type="button" data-capability-filter="all" aria-pressed="true">全部</button>
+          <button type="button" data-capability-filter="skills" aria-pressed="false">Skills</button>
+          <button type="button" data-capability-filter="tools" aria-pressed="false">Tools</button>
+          <button type="button" data-capability-filter="mcp" aria-pressed="false">MCP</button>
+          <button type="button" data-capability-filter="providers" aria-pressed="false">Providers</button>
+          <button type="button" data-capability-filter="plugins" aria-pressed="false">Plugins</button>
+        </div>
+        <p class="capability-boundary">只展示应用目录实际投影的已加载能力；宿主未公开的配置不会被猜测。</p>
+        <div id="surface-content"><p class="empty-copy">选择数字员工查看其 skills、tools、模型槽位与宿主权限披露。</p></div>
       </section>
     </aside>
   </div>
 
-  <nav class="mobile-nav" aria-label="移动端视图">
-    <button type="button" data-mobile-view="workers" aria-pressed="false">员工</button>
-    <button type="button" data-mobile-view="stage" class="active" aria-pressed="true">任务</button>
-    <button type="button" data-mobile-view="inspector" aria-pressed="false">行程</button>
+  <nav class="mobile-nav" aria-label="移动端工作台视图">
+    <button type="button" data-mobile-view="workers" aria-pressed="false"><i aria-hidden="true">01</i><span>机关库</span></button>
+    <button type="button" data-mobile-view="stage" class="active" aria-pressed="true"><i aria-hidden="true">02</i><span>指挥</span></button>
+    <button type="button" data-mobile-view="inspector" aria-pressed="false"><i aria-hidden="true">03</i><span>检查器</span></button>
   </nav>
 
   <div class="toast-region" id="toast-region" aria-live="assertive" aria-atomic="true"></div>

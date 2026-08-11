@@ -1053,6 +1053,92 @@
     assert(!document.querySelector("#timeline-list").textContent.includes("fixture.stale"), `${caseName}: stale SSE event reached the timeline`);
   }
 
+  function atelierShellCase() {
+    const destinations = [...document.querySelectorAll("[data-workbench-destination]")];
+    assert(destinations.length === 5, "Atelier command navigation is incomplete");
+    assert(JSON.stringify(destinations.map((item) => item.dataset.workbenchDestination)) ===
+      JSON.stringify(["command", "workflows", "capabilities", "artifacts", "trace"]),
+    "Atelier command navigation order drifted");
+
+    for (const side of ["left", "right"]) {
+      const separator = document.querySelector(`#${side}-separator`);
+      assert(separator.getAttribute("role") === "separator" &&
+        separator.getAttribute("aria-orientation") === "vertical" &&
+        separator.tabIndex === 0, `${side} panel separator is not keyboard reachable`);
+      assert(Number(separator.getAttribute("aria-valuemin")) <
+        Number(separator.getAttribute("aria-valuenow")) &&
+        Number(separator.getAttribute("aria-valuenow")) <
+        Number(separator.getAttribute("aria-valuemax")),
+      `${side} panel separator range is invalid`);
+    }
+
+    if (global.innerWidth > 940) {
+      const left = document.querySelector("#left-separator");
+      left.focus();
+      left.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+      assert(left.getAttribute("aria-valuenow") === "306", "left separator ArrowRight did not resize the panel");
+      left.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
+      assert(left.getAttribute("aria-valuenow") === "220", "left separator Home did not select its minimum");
+      left.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+      assert(left.getAttribute("aria-valuenow") === "380", "left separator End did not select its maximum");
+      left.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      assert(left.getAttribute("aria-valuenow") === "286", "left separator reset is not deterministic");
+
+      const columns = global.getComputedStyle(document.querySelector("#workbench-shell"))
+        .gridTemplateColumns.split(" ");
+      assert(columns.length === 5, "desktop Workbench is not a three-panel layout with two separators");
+    } else {
+      const profile = new URLSearchParams(global.location.hash.slice(1)).get("profile");
+      const expectedWidth = profile === "narrow-360-reduced" ? 360 : 390;
+      assert(global.innerWidth === expectedWidth,
+        `narrow browser viewport is ${global.innerWidth}px, expected ${expectedWidth}px`);
+      assert(global.getComputedStyle(document.querySelector("#left-separator")).display === "none",
+        "narrow Workbench retained a desktop separator");
+      assert(global.getComputedStyle(document.querySelector(".mobile-nav")).display === "grid",
+        "narrow Workbench did not expose hierarchical navigation");
+      assert(global.getComputedStyle(document.querySelector("#studio-button")).display === "flex",
+        "narrow Workbench hid the Workflow Studio focus return target");
+      assert(document.documentElement.scrollWidth <= global.innerWidth,
+        `narrow Workbench overflows horizontally at ${global.innerWidth}px`);
+    }
+
+    const prompt = document.querySelector("[data-prompt]");
+    const input = document.querySelector("#task-input");
+    prompt.click();
+    assert(input.value === prompt.dataset.prompt && document.activeElement === input,
+      "quick command did not populate and focus the real Run composer");
+    input.value = "";
+
+    document.querySelector('[data-workbench-destination="capabilities"]').click();
+    assert(!document.querySelector("#surface-panel").hidden &&
+      document.activeElement === document.querySelector("#surface-tab"),
+    "Capability Center navigation did not open the real inspector tab");
+    const mcpFilter = document.querySelector('[data-capability-filter="mcp"]');
+    mcpFilter.click();
+    const mcp = document.querySelector('[data-capability="mcp"]');
+    assert(mcp && !mcp.hidden && mcp.textContent.includes("没有投影独立 MCP transport"),
+      "Capability Center invented or hid the empty MCP projection");
+    assert([...document.querySelectorAll("#surface-content > *")]
+      .filter((section) => section !== mcp).every((section) => section.hidden),
+    "Capability Center filter leaked unrelated sections");
+
+    const skillsFilter = document.querySelector('[data-capability-filter="skills"]');
+    skillsFilter.focus();
+    skillsFilter.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "ArrowRight", bubbles: true, cancelable: true,
+    }));
+    assert(document.activeElement === document.querySelector('[data-capability-filter="tools"]') &&
+      document.querySelector('[data-capability-filter="tools"]').getAttribute("aria-pressed") === "true",
+    "Capability Center toolbar is not keyboard operable");
+    document.querySelector('[data-capability-filter="all"]').click();
+
+    document.querySelector('[data-workbench-destination="command"]').click();
+    assert(document.body.dataset.mobileView === "stage" &&
+      document.activeElement === document.querySelector("#workbench-main"),
+    "Command Center navigation did not restore the Run surface and focus");
+    record("atelier-shell");
+  }
+
   function assertFreshSameRunView(caseName, input) {
     assert(document.querySelector("#active-run-label").textContent === "run-old", `${caseName}: active run changed`);
     assert(document.querySelector("#run-title").textContent === input, `${caseName}: stale epoch replaced the title`);
@@ -1444,7 +1530,7 @@
       "Workflow Studio did not focus its editor on open",
     );
     const profile = new URLSearchParams(global.location.hash.slice(1)).get("profile");
-    if (profile === "narrow-reduced") {
+    if (profile && profile.startsWith("narrow")) {
       assert(global.matchMedia("(max-width: 700px)").matches,
         "narrow browser profile did not activate its media query");
       assert(global.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -1504,6 +1590,9 @@
     );
     assert(document.querySelector("#studio-button").getAttribute("aria-expanded") === "false",
       "Escape did not restore the Workflow Studio disclosure state");
+    assert(document.querySelector('[data-workbench-destination="command"]')
+      .getAttribute("aria-current") === "page",
+    "Escape did not restore the Command Center navigation state");
     document.querySelector("#studio-button").click();
     await waitFor(
       () => !studio.hidden,
@@ -1675,8 +1764,10 @@
       "Workflow catalog create did not use a collision-resistant catalog identity");
     assert(fixture.lastWorkflowCatalogBody.schema_version === 1,
       "Workflow catalog create did not submit the exact strict definition");
-    assert(document.querySelectorAll(".studio-catalog-card").length === 1,
-      "saved Workflow did not appear in the durable catalog rail");
+    await waitFor(
+      () => document.querySelectorAll(".studio-catalog-card").length === 1,
+      "saved Workflow did not appear in the durable catalog rail",
+    );
     assert(!fixture.requests.some((request) => request.method === "POST" &&
       /\/v1\/runs(?:\/|$)/.test(request.path)),
     "saving a Workflow triggered a run mutation");
@@ -1921,6 +2012,7 @@
         !document.querySelector("#run-button").disabled,
       "production Workbench did not finish initial loading",
     );
+    atelierShellCase();
     unavailableWorkflowCase();
     await workflowStudioCase(fixture);
     await workflowStudioStaleEditCase(fixture);
