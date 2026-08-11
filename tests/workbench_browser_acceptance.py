@@ -32,7 +32,7 @@ EXPECTED = (
     "workflow-catalog-pagination,workflow-catalog-digest-mismatch,workflow-catalog-record-switch,"
     "memory-skill-surface,workflow-surface,"
     "workflow-projection-contract,cancelled-recovery,workflow-refresh-burst,workflow-refresh-switch,"
-    "stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval"
+    "stale-status,same-run-epoch,cold-events,late-sse,artifact-stale,create-run,approval,structured-result"
 )
 BROWSER_TIMEOUT_SECONDS = 35
 BROWSER_ATTEMPTS = 2

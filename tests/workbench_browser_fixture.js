@@ -2048,6 +2048,42 @@
     record("workflow-catalog-record-switch");
   }
 
+  function structuredResultCase(fixture) {
+    state.run = fixture.projection("run-structured", "mobile-safe structured result", "completed", {
+      app_id: "incident",
+      final_message: {
+        role: "assistant",
+        content: JSON.stringify({
+          definition_sha256: "0".repeat(64),
+          output: {
+            step_id: "record",
+            value: "diagnostic captured for a narrow viewport",
+            value_sha256: "1".repeat(64),
+          },
+          status: "succeeded",
+          version: "1",
+          workflow_id: "incident-mechanism",
+          workflow_version: "1",
+        }),
+      },
+    });
+    renderMessages();
+    const resultCard = document.querySelector("#message-stack .structured-result");
+    assert(resultCard && resultCard.textContent.includes("VERIFIED OUTPUT"),
+      "structured Workflow result was not rendered");
+    if (global.innerWidth <= 940) {
+      const resultBounds = resultCard.getBoundingClientRect();
+      const composerBounds = document.querySelector("#task-form").getBoundingClientRect();
+      assert(resultBounds.left >= 0 && resultBounds.right <= global.innerWidth,
+        "structured Workflow result overflows the narrow viewport");
+      assert(resultBounds.bottom <= composerBounds.top + 1,
+        "narrow Run composer obscures the structured Workflow result");
+      assert(document.documentElement.scrollWidth <= global.innerWidth,
+        "structured Workflow result creates horizontal page overflow");
+    }
+    record("structured-result");
+  }
+
   async function run() {
     const fixture = global.__sasoriFixture;
     await waitFor(
@@ -2085,6 +2121,7 @@
     await staleArtifactCase(fixture);
     await acceptedCreateCase(fixture);
     await approvalCase(fixture);
+    structuredResultCase(fixture);
     result.dataset.result = "passed";
     result.textContent = `PASS:${cases.join(",")}`;
     document.title = "Sasori browser acceptance passed";
