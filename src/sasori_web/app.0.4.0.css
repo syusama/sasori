@@ -1,0 +1,6 @@
+/* Owner-supplied Sasori brand mark. Product surfaces stay professional-light. */
+.brand img {
+  border: 1px solid rgba(41, 38, 34, .14);
+  border-radius: 9px;
+  object-fit: cover;
+}

@@ -54,6 +54,23 @@ _HOP_BY_HOP = {
 }
 
 
+def capture_target(capture_view: str) -> tuple[str, str]:
+    try:
+        return {
+            "stage": ('[data-mobile-view="stage"]', ".main-stage"),
+            "inspector": (
+                '[data-workbench-destination="capabilities"]',
+                ".right-rail",
+            ),
+            "studio": (
+                '[data-workbench-destination="workflows"]',
+                "#workflow-studio",
+            ),
+        }[capture_view]
+    except KeyError:
+        raise ValueError("capture_view must be stage, inspector, or studio") from None
+
+
 class JourneyProxyHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     backend: tuple[str, int]
@@ -320,8 +337,9 @@ def run_acceptance(
     reduced_motion: bool = False,
     capture_view: str = "stage",
 ) -> dict[str, object]:
-    if capture_view not in {"stage", "inspector"}:
-        raise ValueError("capture_view must be stage or inspector")
+    mobile_selector, panel_selector = capture_target(capture_view)
+    if viewport is None and capture_view != "stage":
+        raise ValueError("non-stage capture_view requires an exact viewport")
     with tempfile.TemporaryDirectory(prefix="sasori-real-journey-") as directory:
         root = Path(directory)
         database = root / "runs.sqlite3"
@@ -373,14 +391,6 @@ def run_acceptance(
                     timeout_seconds=JOURNEY_BROWSER_TIMEOUT_SECONDS,
                 )
             else:
-                mobile_selector = (
-                    '[data-workbench-destination="capabilities"]'
-                    if capture_view == "inspector"
-                    else '[data-mobile-view="stage"]'
-                )
-                panel_selector = (
-                    ".right-rail" if capture_view == "inspector" else ".main-stage"
-                )
                 post_result_expression = f"""
                     new Promise((resolve) => {{
                       document.querySelector({json.dumps(mobile_selector)}).click();
@@ -500,6 +510,7 @@ def run_acceptance(
                 "app.0.1.3.js",
                 "app.0.2.0.css",
                 "app.0.3.0.css",
+                "app.0.4.0.css",
                 "app.0.2.0.js",
                 "app.0.3.0.js",
                 "workflow.0.2.0.js",
@@ -508,6 +519,7 @@ def run_acceptance(
                 "workflow-studio.0.1.0.js",
                 "workflow-studio.0.2.0.css",
                 "workflow-studio.0.2.0.js",
+                "mark.0.2.0.jpg",
             ],
             "durable": durable,
             "effect": {"count": 2, "summaries": [item["summary"] for item in actions]},
@@ -545,7 +557,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--capture-view",
-        choices=("stage", "inspector"),
+        choices=("stage", "inspector", "studio"),
         default="stage",
         help="select the mobile Workbench surface captured after the journey",
     )

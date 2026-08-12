@@ -62,6 +62,24 @@ class RealJourneyEvidenceTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     journey.strict_actions(self.path)
 
+    def test_capture_targets_are_exact_and_non_stage_requires_a_viewport(self):
+        self.assertEqual(
+            journey.capture_target("stage"),
+            ('[data-mobile-view="stage"]', ".main-stage"),
+        )
+        self.assertEqual(
+            journey.capture_target("inspector"),
+            ('[data-workbench-destination="capabilities"]', ".right-rail"),
+        )
+        self.assertEqual(
+            journey.capture_target("studio"),
+            ('[data-workbench-destination="workflows"]', "#workflow-studio"),
+        )
+        with self.assertRaisesRegex(ValueError, "stage, inspector, or studio"):
+            journey.capture_target("unknown")
+        with self.assertRaisesRegex(ValueError, "requires an exact viewport"):
+            journey.run_acceptance(Path("unused-browser"), capture_view="studio")
+
 
 if __name__ == "__main__":
     unittest.main()

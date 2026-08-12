@@ -81,7 +81,7 @@ RELEASE_ASSETS = (
     "README_zh.md",
     "README_ja.md",
     "README_ko.md",
-    "docs/assets/sasori-banner.png",
+    "docs/assets/sasori-logo.jpg",
     "docs/assets/screenshots-manifest.json",
     "docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg",
     "docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg",
@@ -339,7 +339,7 @@ def _source_payload(source_root: Path) -> dict[str, bytes]:
         if path.is_file()
         and ".egg-info" not in path.parts
         and path.relative_to(source).parts[0] != "sasori_core"
-        and path.suffix.casefold() in {".py", ".html", ".css", ".js", ".svg"}
+        and path.suffix.casefold() in {".py", ".html", ".css", ".js", ".jpg"}
     }
     required = {f"{package}/__init__.py" for package in TOP_LEVEL_PACKAGES}
     if not required.issubset(files):
@@ -546,7 +546,7 @@ def verify_wheel(path: Path, source_root: Path, project: dict[str, str]) -> dict
         raise ReleaseVerificationError("wheel payload does not match the current source tree", 3)
     index = payload.get("sasori_web/index.html", b"").decode("utf-8")
     assets = set(re.findall(r'(?:src|href)=["\']/assets/([^"\']+)', index))
-    if not assets or not {".css", ".js", ".svg"}.issubset({Path(name).suffix for name in assets}):
+    if not assets or not {".css", ".js", ".jpg"}.issubset({Path(name).suffix for name in assets}):
         raise ReleaseVerificationError("Workbench asset references are incomplete", 3)
     if any(f"sasori_web/{name}" not in payload for name in assets):
         raise ReleaseVerificationError("Workbench references a missing wheel asset", 3)

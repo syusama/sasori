@@ -32,6 +32,7 @@ WEB_RESOURCES = (
     "index.html",
     "app.0.2.0.css",
     "app.0.3.0.css",
+    "app.0.4.0.css",
     "artifacts.0.1.0.css",
     "event-reducer.0.1.0.js",
     "app.0.1.2.js",
@@ -45,7 +46,7 @@ WEB_RESOURCES = (
     "workflow-studio.0.1.0.js",
     "workflow-studio.0.2.0.css",
     "workflow-studio.0.2.0.js",
-    "mark.0.1.0.svg",
+    "mark.0.2.0.jpg",
 )
 
 

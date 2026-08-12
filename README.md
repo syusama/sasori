@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori project banner" width="520">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori logo" width="220">
 </p>
 
 Sasori is a Python-first framework for tool-using agents. Its smallest useful
@@ -26,6 +26,12 @@ form is a dependency-free Loop/Harness that can be read end to end. When the
 product needs more, the same runtime can add providers, SQLite, plugins,
 Workflows, Memory, artifacts, HTTP/SSE, and a responsive Workbench—without
 introducing a second execution engine behind the UI.
+
+The name carries a deliberate design metaphor: as Sasori controls an adaptable
+arsenal of puppets, developers should be able to compose models, Tools, Skills,
+Memory, and Workflows with the same freedom and precision. The ambition is not
+to theme the product after a character; it is to treat every Agent as an
+engineered work of art—modular, expressive, dependable, and built to endure.
 
 > **Current boundary:** `0.1.0.dev1` is a verified, single-machine,
 > single-owner prerelease candidate. It is not yet a public multi-tenant
@@ -254,12 +260,12 @@ boundaries.
 The name is inspired by Sasori, the puppet master from *Naruto*: precise
 craftsmanship, modular mechanisms, and a preference for work that endures. That
 reference is limited to the project name, this short origin note, and the
-owner-supplied brand image above; it is not the Workbench's visual theme.
+owner-supplied logo above; it is not the Workbench's visual theme.
 
 Sasori is an independent open-source project and is not affiliated with,
 authorized by, sponsored by, or endorsed by *Naruto*, Masashi Kishimoto,
-Shueisha, TV Tokyo, Studio Pierrot, or their rights holders. The supplied brand
-image is presented as project branding. This repository does not represent it
+Shueisha, TV Tokyo, Studio Pierrot, or their rights holders. The supplied logo
+is presented as project branding. This repository does not represent it
 as official media or assert ownership of third-party rights in it.
 
 ## License and contribution

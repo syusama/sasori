@@ -95,6 +95,7 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
             if "/" in name or "\\" in name or name not in {
                 "app.0.2.0.css",
                 "app.0.3.0.css",
+                "app.0.4.0.css",
                 "app.0.3.0.js",
                 "artifacts.0.1.0.css",
                 "app.0.1.2.js",
@@ -108,14 +109,14 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
                 "workflow-studio.0.2.0.css",
                 "workflow-studio.0.2.0.js",
                 "event-reducer.0.1.0.js",
-                "mark.0.1.0.svg",
+                "mark.0.2.0.jpg",
             }:
                 self.send_error(404)
                 return
             content_type = {
                 ".css": "text/css; charset=utf-8",
                 ".js": "text/javascript; charset=utf-8",
-                ".svg": "image/svg+xml",
+                ".jpg": "image/jpeg",
             }[Path(name).suffix]
             self._send((WEB_ROOT / name).read_bytes(), content_type)
             return
@@ -637,6 +638,7 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "app.0.1.3.js",
             "app.0.2.0.css",
             "app.0.3.0.css",
+            "app.0.4.0.css",
             "app.0.2.0.js",
             "app.0.3.0.js",
             "workflow.0.2.0.js",
@@ -645,6 +647,7 @@ def run_acceptance(binary: Path) -> dict[str, object]:
             "workflow-studio.0.1.0.js",
             "workflow-studio.0.2.0.css",
             "workflow-studio.0.2.0.js",
+            "mark.0.2.0.jpg",
         ],
     }
 

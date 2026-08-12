@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori 프로젝트 Banner" width="520">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="220">
 </p>
 
 Sasori는 Tool을 사용하는 Agent를 위한 Python-first 프레임워크입니다. 가장 작은
@@ -26,6 +26,12 @@ Sasori는 Tool을 사용하는 Agent를 위한 Python-first 프레임워크입�
 기능이 필요할 때 같은 런타임에 Provider, SQLite, Plugin, Workflow, Memory, Artifact,
 HTTP/SSE와 반응형 Workbench를 추가할 수 있습니다. UI 뒤에 별도의 실행 엔진을 두지
 않습니다.
+
+Sasori라는 이름에는 의도적인 설계 비유도 담겨 있습니다. 사소리가 여러 꼭두각시를
+자유롭고 정밀하게 다루듯, 개발자는 Model, Tool, Skill, Memory, Workflow를 유연하게
+조합할 수 있어야 합니다. 목표는 캐릭터풍 UI가 아니라 각 Agent를 공학적 예술품처럼
+다듬는 것입니다. 모듈화되어 있고 표현력이 있으며 신뢰할 수 있고 오래가는 시스템을
+만듭니다.
 
 > **현재 경계:** `0.1.0.dev1`은 검증된 single-machine, single-owner prerelease
 > candidate입니다. 공개 multi-tenant control plane, 분산 executor, untrusted-code
@@ -247,13 +253,13 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 
 Sasori라는 이름은 *나루토*의 꼭두각시 술사 사소리에서 영감을 얻었습니다. 정밀한
 기술, 조합 가능한 구조, 오래 남는 작품에 대한 지향이 핵심입니다. 이 연관은 project
-name, 이 짧은 설명, 위의 project owner 제공 brand image에만 한정되며 Workbench의
+name, 이 짧은 설명, 위의 project owner 제공 Logo에만 한정되며 Workbench의
 visual theme가 아닙니다.
 
 Sasori는 독립적인 open-source project입니다. *나루토*, 키시모토 마사시, 슈에이샤,
 TV 도쿄, Studio Pierrot 또는 기타 권리자와 제휴, 허가, 후원, 보증 관계가 없습니다.
-위 이미지는 project owner가 branding 용도로 제공했습니다. 이 repository는 해당
-이미지를 공식 자료로 표시하거나 그 안의 제3자 권리를 Sasori가 소유한다고 주장하지
+위 Logo는 project owner가 branding 용도로 제공했습니다. 이 repository는 해당
+Logo를 공식 자료로 표시하거나 그 안의 제3자 권리를 Sasori가 소유한다고 주장하지
 않습니다.
 
 ## License와 contribution

@@ -14,14 +14,14 @@
     "platform": "Windows",
     "console_entries_after_journey": 0
   },
-  "brand_banner": {
-    "path": "docs/assets/sasori-banner.png",
+  "brand_logo": {
+    "path": "docs/assets/sasori-logo.jpg",
     "source": "project-owner-supplied",
-    "placement": "README brand section only",
-    "actual_pixels": {"width": 1024, "height": 1536},
-    "media_type": "image/png",
-    "bytes": 2544823,
-    "sha256": "9b35d3b6049b2372137a9f28ffe216f885d674935a39bd81f9b42000e15e3bc3"
+    "placement": "README and Workbench brand marks",
+    "actual_pixels": {"width": 1242, "height": 1242},
+    "media_type": "image/jpeg",
+    "bytes": 207237,
+    "sha256": "41b85afd02ea71548ccfd24514b5221fdf0446188ea96b2298319ecd78bbf625"
   },
   "run": {
     "representative_run_id": "run-04dba9a1-c325-4f30-a6d5-9437b7e75be8",

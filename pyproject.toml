@@ -40,4 +40,4 @@ where = ["src"]
 exclude = ["sasori_core", "sasori_core.*"]
 
 [tool.setuptools.package-data]
-sasori_web = ["*.html", "*.css", "*.js", "*.svg"]
+sasori_web = ["*.html", "*.css", "*.js", "*.jpg"]

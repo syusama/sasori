@@ -18,13 +18,18 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori 项目 Banner" width="520">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="220">
 </p>
 
 Sasori 是一个 Python-first 的工具型 Agent Framework。它最小可以只是一个
 零依赖、从头到尾都能读懂的 Loop/Harness；当产品需要更多能力时，再沿着同一条
 运行路径装配 Provider、SQLite、插件、Workflow、Memory、Artifact、HTTP/SSE
 和响应式 Workbench。界面背后不会藏着第二套执行引擎。
+
+Sasori 这个名字也代表一种设计隐喻：像蝎自由而精确地操控不同傀儡一样，开发者
+可以灵活组合模型、Tool、Skill、Memory 与 Workflow。这里借用的不是动漫化界面，
+而是对精密控制、模块化组合和长久作品的追求——把每一个 Agent 都当作工程艺术品
+来打造，既有表现力，也可靠、可拆装、经得起验证。
 
 > **当前边界：** `0.1.0.dev1` 是已经过验证的单机、单 owner 预发布候选，
 > 还不是公共多租户控制面、分布式执行器、不可信代码沙箱或公共插件市场。
@@ -234,10 +239,10 @@ AGPL 源码或资产。
 
 Sasori 的名字灵感来自《火影忍者》中的傀儡师“蝎”：精密的技艺、可组合的机制，
 以及对作品持久性的追求。这层关联仅用于项目名、这段简短说明和上方由项目所有者
-提供的品牌图片，不是 Workbench 的视觉主题。
+提供的 Logo，不是 Workbench 的视觉主题。
 
 Sasori 是独立开源项目，与《火影忍者》、岸本齐史、集英社、东京电视台、Studio
-Pierrot 及其权利方没有隶属、授权、赞助或背书关系。上方图片由项目所有者提供，
+Pierrot 及其权利方没有隶属、授权、赞助或背书关系。上方 Logo 由项目所有者提供，
 仅用于品牌展示；本仓库不会把它表述为官方素材，也不主张其中的第三方权利归 Sasori 所有。
 
 ## 许可证与贡献

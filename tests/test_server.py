@@ -130,6 +130,8 @@ class ServerTests(unittest.TestCase):
         connection.close()
         if response_headers.get("Content-Type", "").startswith("application/json"):
             return status, json.loads(payload), response_headers
+        if response_headers.get("Content-Type", "").startswith("image/"):
+            return status, payload, response_headers
         return status, payload.decode("utf-8"), response_headers
 
     def durable_snapshot(self, server):
@@ -1562,6 +1564,14 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("unsafe-inline", headers["Content-Security-Policy"])
         self.assertEqual(headers["Referrer-Policy"], "no-referrer")
         self.assertIn('id="settings-button" type="button" aria-label=', page)
+        self.assertIn(
+            '<link rel="icon" href="/assets/mark.0.2.0.jpg" type="image/jpeg">',
+            page,
+        )
+        self.assertIn(
+            '<img src="/assets/mark.0.2.0.jpg" alt="" width="42" height="42">',
+            page,
+        )
         self.assertIn('id="connection-signal" data-state="idle" role="status"', page)
         self.assertIn('id="surface-tab" role="tab"', page)
         self.assertIn('id="artifacts-tab" role="tab"', page)
@@ -1579,6 +1589,7 @@ class ServerTests(unittest.TestCase):
         for path, content_type in (
             ("/assets/app.0.2.0.css", "text/css"),
             ("/assets/app.0.3.0.css", "text/css"),
+            ("/assets/app.0.4.0.css", "text/css"),
             ("/assets/artifacts.0.1.0.css", "text/css"),
             ("/assets/event-reducer.0.1.0.js", "text/javascript"),
             ("/assets/app.0.1.2.js", "text/javascript"),
@@ -1592,7 +1603,7 @@ class ServerTests(unittest.TestCase):
             ("/assets/workflow-studio.0.1.0.js", "text/javascript"),
             ("/assets/workflow-studio.0.2.0.css", "text/css"),
             ("/assets/workflow-studio.0.2.0.js", "text/javascript"),
-            ("/assets/mark.0.1.0.svg", "image/svg+xml"),
+            ("/assets/mark.0.2.0.jpg", "image/jpeg"),
         ):
             status, body, asset_headers = self.request(server, "GET", path)
             self.assertEqual(status, 200)
@@ -1665,6 +1676,9 @@ class ServerTests(unittest.TestCase):
         self.assertIn("Red Sand Atelier shell", shell_styles)
         product_styles = assets["/assets/app.0.3.0.css"]
         self.assertIn("quiet, professional product surface", product_styles)
+        brand_styles = assets["/assets/app.0.4.0.css"]
+        self.assertIn("Owner-supplied Sasori brand mark", brand_styles)
+        self.assertIn("object-fit: cover", brand_styles)
         product_script = assets["/assets/app.0.3.0.js"]
         self.assertIn("renderMessagesWithStructuredResults", product_script)
         self.assertIn("structuredWorkflowResult", product_script)

@@ -196,7 +196,7 @@ class ReleaseVerificationTests(unittest.TestCase):
             for peer in readmes:
                 if peer != name:
                     self.assertIn(peer, text)
-            self.assertIn("docs/assets/sasori-banner.png", text)
+            self.assertIn("docs/assets/sasori-logo.jpg", text)
             screenshot_references[name] = set(
                 re.findall(r"docs/assets/screenshots/([^\"') ]+\.jpg)", text)
             )
@@ -218,9 +218,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         self.assertTrue(
             {f"include {name}" for name in readmes} <= manifest_lines
         )
-        self.assertIn(
-            "recursive-include docs *.md *.jpg *.json *.png", manifest_lines
-        )
+        self.assertIn("recursive-include docs *.md *.jpg *.json", manifest_lines)
         for relative, expected_count in (
             ("Dockerfile", 1),
             (".github/workflows/ci.yml", 2),
@@ -242,20 +240,24 @@ class ReleaseVerificationTests(unittest.TestCase):
         self.assertTrue(manifest["real_server_journey"])
         self.assertEqual(manifest["browser"]["console_entries_after_journey"], 0)
 
-        banner = manifest["brand_banner"]
-        banner_path = ROOT / banner["path"]
-        banner_payload = banner_path.read_bytes()
-        self.assertEqual(banner["path"], "docs/assets/sasori-banner.png")
-        self.assertEqual(banner["placement"], "README brand section only")
-        self.assertEqual(banner["media_type"], "image/png")
-        self.assertEqual(banner["bytes"], len(banner_payload))
+        logo = manifest["brand_logo"]
+        logo_path = ROOT / logo["path"]
+        logo_payload = logo_path.read_bytes()
+        self.assertEqual(logo["path"], "docs/assets/sasori-logo.jpg")
+        self.assertEqual(logo["placement"], "README and Workbench brand marks")
+        self.assertEqual(logo["media_type"], "image/jpeg")
+        self.assertEqual(logo["bytes"], len(logo_payload))
         self.assertEqual(
-            banner["sha256"], hashlib.sha256(banner_payload).hexdigest()
+            logo["sha256"], hashlib.sha256(logo_payload).hexdigest()
         )
         self.assertEqual(
-            banner["actual_pixels"],
-            dict(zip(("width", "height"), png_dimensions(banner_payload))),
+            logo["actual_pixels"],
+            dict(zip(("width", "height"), jpeg_dimensions(logo_payload))),
         )
+        workbench_logo = ROOT / "src" / "sasori_web" / "mark.0.2.0.jpg"
+        workbench_payload = workbench_logo.read_bytes()
+        self.assertEqual(jpeg_dimensions(workbench_payload), (96, 96))
+        self.assertLess(len(workbench_payload), 8 * 1024)
 
         commit = manifest["runtime_source_commit"]
         self.assertRegex(commit, r"\A[0-9a-f]{40}\Z")
@@ -278,7 +280,7 @@ class ReleaseVerificationTests(unittest.TestCase):
                 "README_zh.md",
                 "README_ja.md",
                 "README_ko.md",
-                "docs/assets/sasori-banner.png",
+                "docs/assets/sasori-logo.jpg",
                 "docs/assets/screenshots-manifest.json",
                 *expected_paths,
             },

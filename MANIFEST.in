@@ -3,5 +3,5 @@ include README.md
 include README_zh.md
 include README_ja.md
 include README_ko.md
-recursive-include docs *.md *.jpg *.json *.png
+recursive-include docs *.md *.jpg *.json
 prune tests

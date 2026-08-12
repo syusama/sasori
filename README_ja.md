@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori プロジェクト Banner" width="520">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="220">
 </p>
 
 Sasori は、Tool を利用する Agent のための Python-first フレームワークです。
@@ -26,6 +26,12 @@ Sasori は、Tool を利用する Agent のための Python-first フレーム�
 必要になったときだけ、同じランタイムに Provider、SQLite、Plugin、Workflow、
 Memory、Artifact、HTTP/SSE、レスポンシブな Workbench を追加できます。UI の
 背後に別の実行エンジンは存在しません。
+
+Sasori という名前には、意図的な設計上の比喩もあります。サソリが多様な傀儡を
+自在かつ精密に操るように、開発者は Model、Tool、Skill、Memory、Workflow を
+柔軟に組み合わせられるべきです。目指すのはキャラクター風の UI ではなく、各
+Agent を工学的な芸術作品として磨くことです。モジュール化され、表現力があり、
+信頼でき、長く使える仕組みを作ります。
 
 > **現在の境界:** `0.1.0.dev1` は、検証済みの single-machine / single-owner
 > prerelease candidate です。公開 multi-tenant control plane、分散 executor、
@@ -247,12 +253,12 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 
 Sasori という名前は、『NARUTO -ナルト-』の傀儡師サソリから着想を得ています。
 精密な技、組み替え可能な仕組み、長く残る作品への志向。その関連は project name、
-この短い説明、上の project owner 提供 brand image に限られ、Workbench の visual
+この短い説明、上の project owner 提供 Logo に限られ、Workbench の visual
 theme ではありません。
 
 Sasori は独立した open-source project です。『NARUTO -ナルト-』、岸本斉史、集英社、
 テレビ東京、Studio Pierrot、その他の権利者との提携、許諾、スポンサー関係、推奨関係は
-ありません。上の画像は project owner から提供された branding 用素材です。本 repository
+ありません。上の Logo は project owner から提供された branding 用素材です。本 repository
 は公式素材であるとは表明せず、そこに含まれる第三者の権利を Sasori が所有するとも
 主張しません。
 

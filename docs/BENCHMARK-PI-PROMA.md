@@ -96,10 +96,11 @@ as product UI evidence.
 ## Brand and license boundary
 
 The Sasori name origin may appear in a short project introduction or Logo, but
-anime lore, character imagery, puppet-thread decoration, and theatrical copy
-are not product-interface themes. The owner-supplied README banner is confined
-to the repository brand section and is not used as a Workbench background,
-login screen, screenshot, icon, or application asset.
+anime lore, puppet-thread decoration, and theatrical copy are not
+product-interface themes. The owner-supplied image is used only as the
+repository Logo and the small Workbench brand mark/favicon. It is not used as a
+Workbench background, login screen, navigation theme, or decorative product
+illustration.
 
 Proma is AGPL-3.0-only at the locked snapshot. Sasori reuses no Proma source,
 CSS, wording, Logo, screenshots, or assets. Sasori is an independent open-source
