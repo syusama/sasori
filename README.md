@@ -18,7 +18,11 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori logo" width="220">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori logo" width="88">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori project hero artwork" width="520">
 </p>
 
 Sasori is a Python-first framework for tool-using agents. Its smallest useful

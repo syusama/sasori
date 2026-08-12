@@ -18,7 +18,11 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="220">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="88">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori 프로젝트 메인 비주얼" width="520">
 </p>
 
 Sasori는 Tool을 사용하는 Agent를 위한 Python-first 프레임워크입니다. 가장 작은

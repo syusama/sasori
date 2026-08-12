@@ -18,7 +18,11 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="220">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="88">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori 项目主视觉" width="520">
 </p>
 
 Sasori 是一个 Python-first 的工具型 Agent Framework。它最小可以只是一个

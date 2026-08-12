@@ -197,6 +197,7 @@ class ReleaseVerificationTests(unittest.TestCase):
                 if peer != name:
                     self.assertIn(peer, text)
             self.assertIn("docs/assets/sasori-logo.jpg", text)
+            self.assertIn("docs/assets/sasori-banner.png", text)
             screenshot_references[name] = set(
                 re.findall(r"docs/assets/screenshots/([^\"') ]+\.jpg)", text)
             )
@@ -219,6 +220,18 @@ class ReleaseVerificationTests(unittest.TestCase):
             {f"include {name}" for name in readmes} <= manifest_lines
         )
         self.assertIn("recursive-include docs *.md *.jpg *.json", manifest_lines)
+
+        banner_path = ROOT / "docs" / "assets" / "sasori-banner.png"
+        banner_payload = banner_path.read_bytes()
+        self.assertEqual(banner_payload[:16], b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+        self.assertEqual(
+            (int.from_bytes(banner_payload[16:20], "big"), int.from_bytes(banner_payload[20:24], "big")),
+            (1024, 1536),
+        )
+        self.assertEqual(
+            hashlib.sha256(banner_payload).hexdigest(),
+            "9b35d3b6049b2372137a9f28ffe216f885d674935a39bd81f9b42000e15e3bc3",
+        )
         for relative, expected_count in (
             ("Dockerfile", 1),
             (".github/workflows/ci.yml", 2),
@@ -274,6 +287,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         self.assertEqual(declared_paths, expected_paths)
         self.assertEqual(len(entries), len(declared_paths))
         release_assets = set(release_verify.RELEASE_ASSETS)
+        self.assertNotIn("docs/assets/sasori-banner.png", release_assets)
         self.assertEqual(
             release_assets,
             {
