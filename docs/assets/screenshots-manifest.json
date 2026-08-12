@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_source_commit": "e816cf756d5d4c361e17be6482cfdb310ed3cd7c",
+  "runtime_source_commit": "71993de377a837c85c6cba5bcbf83a36228a1dc2",
   "captured_on": "2026-08-12",
   "locale": "zh-CN",
   "theme": "professional-light",
@@ -9,7 +9,7 @@
   "browser": {
     "surface": "headless Chrome DevTools Protocol",
     "name": "Google Chrome",
-    "version": "151.0.7922.108",
+    "version": "151.0.7922.109",
     "engine": "Chromium",
     "platform": "Windows",
     "console_entries_after_journey": 0
@@ -46,44 +46,44 @@
   },
   "captures": [
     {
-      "path": "docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg",
+      "path": "docs/assets/screenshots/workbench-completed-1600x1000-71993de.jpg",
       "scenario": "completed typed Workflow with verified output, definition digest and capability inspector",
       "requested_viewport": {"width": 1600, "height": 1000},
       "actual_pixels": {"width": 1600, "height": 1000},
-      "reduced_motion": false,
+      "reduced_motion": true,
       "media_type": "image/jpeg",
-      "bytes": 245710,
-      "sha256": "8227966a7771422b7cb3123f22713f1b2d79fe9c898d358eedd346b4f94c3c11"
+      "bytes": 135044,
+      "sha256": "f21463617fc07b88209125201cc1a48ff93671f77e4323737c409c636648e3d5"
     },
     {
-      "path": "docs/assets/screenshots/workbench-workflow-studio-1600x1000-e816cf7.jpg",
+      "path": "docs/assets/screenshots/workbench-workflow-studio-1600x1000-71993de.jpg",
       "scenario": "durable Workflow Catalog revision and server-side strict-definition preflight without execution",
       "requested_viewport": {"width": 1600, "height": 1000},
       "actual_pixels": {"width": 1600, "height": 1000},
-      "reduced_motion": false,
+      "reduced_motion": true,
       "media_type": "image/jpeg",
-      "bytes": 264620,
-      "sha256": "a9ec6509f9ad7b8cc7e4c6fe47e9d9db2bd251d8e0d970188fb3037abff17940"
+      "bytes": 117077,
+      "sha256": "3357e1afea2ec8565dc5a800b75a4bdbf05db1617f968e63b44533e63d2603cc"
     },
     {
-      "path": "docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg",
+      "path": "docs/assets/screenshots/workbench-mobile-390x844-71993de.jpg",
       "scenario": "completed typed Workflow in the responsive task workspace",
       "requested_viewport": {"width": 390, "height": 844},
       "actual_pixels": {"width": 390, "height": 844},
       "reduced_motion": true,
       "media_type": "image/jpeg",
-      "bytes": 64275,
-      "sha256": "366fe94f049ba1079fe56b3ab34d497124a255a79a8780d1789db15a297a96de"
+      "bytes": 44703,
+      "sha256": "de91a693eadd17d4cb0c96129e249e0e58b4df28d00c8b1c889510aeb7eee045"
     },
     {
-      "path": "docs/assets/screenshots/workbench-mobile-inspector-390x844-e816cf7.jpg",
+      "path": "docs/assets/screenshots/workbench-mobile-inspector-390x844-71993de.jpg",
       "scenario": "responsive capability and effective-permission inspector for the completed Workflow",
       "requested_viewport": {"width": 390, "height": 844},
       "actual_pixels": {"width": 390, "height": 844},
       "reduced_motion": true,
       "media_type": "image/jpeg",
-      "bytes": 80509,
-      "sha256": "def0007040c676f1ddabf9039608c9e520b26da298011d8e2c654c64bff3f596"
+      "bytes": 44998,
+      "sha256": "5f5505b601328d91b21eae9911a81f7f59336a53e808d87c049b4d61f3d92f3e"
     }
   ]
 }

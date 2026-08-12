@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 至 3.13">
   <img src="https://img.shields.io/badge/sasori--core-运行时依赖%200-2F6F5E" alt="核心零运行时依赖">
-  <img src="https://img.shields.io/badge/测试-531%20项-B83A2D" alt="531 项确定性测试">
+  <img src="https://img.shields.io/badge/测试-532%20项-B83A2D" alt="532 项确定性测试">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -139,28 +139,28 @@ flowchart LR
 ## 这是真实 Workbench
 
 下列图片来自运行时提交
-[`e816cf7`](https://github.com/syusama/sasori/commit/e816cf756d5d4c361e17be6482cfdb310ed3cd7c)
+[`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2)
 的真实 Sasori Server。浏览器旅程完整经过 SQLite、审批、显式继续、两次已审计副作用、
 冷历史重建、Artifact、能力投影、严格 Workflow 预检和耐久 Catalog 保存。
 每张图的尺寸、字节数、SHA-256、浏览器版本和场景都记录在
 [截图清单](docs/assets/screenshots-manifest.json) 中。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg" alt="Sasori 已完成 Workflow 与能力检查器" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-71993de.jpg" alt="Sasori 已完成 Workflow 与能力检查器" width="100%">
 </p>
 
 <p align="center"><sub>已完成的类型化 Workflow：结果、定义身份和有效能力边界同时可见。</sub></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-e816cf7.jpg" alt="Sasori Workflow Studio" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-71993de.jpg" alt="Sasori Workflow Studio" width="100%">
 </p>
 
 <p align="center"><sub>Workflow Studio 使用 strong-ETag CAS 保存不可变版本；服务端权威预检不会调用模型，也不会分发工具。</sub></p>
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg" alt="Sasori 移动端任务区" width="390"></td>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-e816cf7.jpg" alt="Sasori 移动端能力检查器" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-71993de.jpg" alt="Sasori 移动端任务区" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-71993de.jpg" alt="Sasori 移动端能力检查器" width="390"></td>
   </tr>
   <tr>
     <td align="center"><sub>任务工作区 · 精确 390×844 CSS viewport</sub></td>
@@ -204,7 +204,7 @@ AGPL 源码或资产。
 
 当前运行时快照已经通过：
 
-- `531` 项确定性 `unittest`；Windows 缺少相应系统权限时跳过 `5` 个 symlink 用例；
+- `532` 项确定性 `unittest`；Windows 缺少相应系统权限时跳过 `5` 个 symlink 用例；
 - `31 / 31` 项真实 Chrome Workbench 验收，覆盖 1600×1000、390×844、
   360×800、reduced-motion 和窄屏结构化结果；
 - 真实 Server 浏览器旅程，覆盖审批、显式继续、严格两次审计副作用、冷历史、

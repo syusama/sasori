@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11부터 3.13">
   <img src="https://img.shields.io/badge/sasori--core-runtime%20dependencies%200-2F6F5E" alt="Core 런타임 의존성 0">
-  <img src="https://img.shields.io/badge/tests-531%20deterministic-B83A2D" alt="결정론적 테스트 531개">
+  <img src="https://img.shields.io/badge/tests-532%20deterministic-B83A2D" alt="결정론적 테스트 532개">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -144,7 +144,7 @@ flowchart LR
 ## Workbench는 실제 제품입니다
 
 아래 이미지는 runtime commit
-[`e816cf7`](https://github.com/syusama/sasori/commit/e816cf756d5d4c361e17be6482cfdb310ed3cd7c)
+[`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2)
 의 실제 Sasori Server에서 캡처했습니다. Browser journey는 SQLite, approval,
 explicit resume, 두 번의 감사된 부작용, cold-history reconstruction, Artifact,
 capability projection, strict Workflow preflight와 durable Catalog save를 거칩니다.
@@ -152,21 +152,21 @@ capability projection, strict Workflow preflight와 durable Catalog save를 거�
 [screenshot manifest](docs/assets/screenshots-manifest.json)에 기록되어 있습니다.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg" alt="완료된 Sasori Workflow와 capability inspector" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-71993de.jpg" alt="완료된 Sasori Workflow와 capability inspector" width="100%">
 </p>
 
 <p align="center"><sub>완료된 typed Workflow에서 검증된 출력, definition identity와 effective capability boundary를 함께 확인합니다.</sub></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-e816cf7.jpg" alt="Sasori Workflow Studio" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-71993de.jpg" alt="Sasori Workflow Studio" width="100%">
 </p>
 
 <p align="center"><sub>Workflow Studio는 strong-ETag CAS로 immutable revision을 저장하고 model call과 Tool dispatch 없이 server-authoritative preflight를 수행합니다.</sub></p>
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg" alt="Sasori mobile task workspace" width="390"></td>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-e816cf7.jpg" alt="Sasori mobile capability inspector" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-71993de.jpg" alt="Sasori mobile task workspace" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-71993de.jpg" alt="Sasori mobile capability inspector" width="390"></td>
   </tr>
   <tr>
     <td align="center"><sub>Task workspace · 정확한 390×844 CSS viewport</sub></td>
@@ -214,7 +214,7 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 
 현재 runtime snapshot은 다음을 통과했습니다.
 
-- `531`개의 deterministic `unittest`. Windows에서 필요한 권한이 없으면 `5`개의
+- `532`개의 deterministic `unittest`. Windows에서 필요한 권한이 없으면 `5`개의
   symlink case를 skip합니다.
 - 1600×1000, 390×844, 360×800, reduced-motion, narrow structured result를 포함한
   `31 / 31`개의 real Chrome Workbench acceptance.

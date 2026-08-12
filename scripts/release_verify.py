@@ -83,10 +83,10 @@ RELEASE_ASSETS = (
     "README_ko.md",
     "docs/assets/sasori-logo.jpg",
     "docs/assets/screenshots-manifest.json",
-    "docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg",
-    "docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg",
-    "docs/assets/screenshots/workbench-mobile-inspector-390x844-e816cf7.jpg",
-    "docs/assets/screenshots/workbench-workflow-studio-1600x1000-e816cf7.jpg",
+    "docs/assets/screenshots/workbench-completed-1600x1000-71993de.jpg",
+    "docs/assets/screenshots/workbench-mobile-390x844-71993de.jpg",
+    "docs/assets/screenshots/workbench-mobile-inspector-390x844-71993de.jpg",
+    "docs/assets/screenshots/workbench-workflow-studio-1600x1000-71993de.jpg",
 )
 TOP_LEVEL_PACKAGES = (
     "sasori",

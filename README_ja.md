@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 から 3.13">
   <img src="https://img.shields.io/badge/sasori--core-runtime%20dependencies%200-2F6F5E" alt="Core の実行時依存ゼロ">
-  <img src="https://img.shields.io/badge/tests-531%20deterministic-B83A2D" alt="531 deterministic tests">
+  <img src="https://img.shields.io/badge/tests-532%20deterministic-B83A2D" alt="532 deterministic tests">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -144,7 +144,7 @@ flowchart LR
 ## Workbench は実物です
 
 以下は runtime commit
-[`e816cf7`](https://github.com/syusama/sasori/commit/e816cf756d5d4c361e17be6482cfdb310ed3cd7c)
+[`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2)
 の実 Sasori Server から取得した画像です。Browser journey は SQLite、approval、
 explicit resume、二つの監査済み副作用、cold-history reconstruction、Artifact、
 capability projection、strict Workflow preflight、durable Catalog save を通過します。
@@ -152,21 +152,21 @@ capability projection、strict Workflow preflight、durable Catalog save を通�
 [screenshot manifest](docs/assets/screenshots-manifest.json) に記録しています。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg" alt="完了した Sasori Workflow と capability inspector" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-71993de.jpg" alt="完了した Sasori Workflow と capability inspector" width="100%">
 </p>
 
 <p align="center"><sub>完了した typed Workflow。検証済み出力、definition identity、effective capability boundary を同時に確認できます。</sub></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-e816cf7.jpg" alt="Sasori Workflow Studio" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-71993de.jpg" alt="Sasori Workflow Studio" width="100%">
 </p>
 
 <p align="center"><sub>Workflow Studio は strong-ETag CAS で immutable revision を保存し、model call も Tool dispatch も行わず server-authoritative preflight を実行します。</sub></p>
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg" alt="Sasori mobile task workspace" width="390"></td>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-e816cf7.jpg" alt="Sasori mobile capability inspector" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-71993de.jpg" alt="Sasori mobile task workspace" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-71993de.jpg" alt="Sasori mobile capability inspector" width="390"></td>
   </tr>
   <tr>
     <td align="center"><sub>Task workspace · 正確な 390×844 CSS viewport</sub></td>
@@ -214,7 +214,7 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 
 現在の runtime snapshot は次を通過しています。
 
-- `531` deterministic `unittest`。Windows で必要な権限がない場合は `5` 件の
+- `532` deterministic `unittest`。Windows で必要な権限がない場合は `5` 件の
   symlink test を skip。
 - 1600×1000、390×844、360×800、reduced-motion、narrow structured result を
   含む `31 / 31` 件の real Chrome Workbench acceptance。

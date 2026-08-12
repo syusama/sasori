@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 to 3.13">
   <img src="https://img.shields.io/badge/sasori--core-runtime%20dependencies%200-2F6F5E" alt="Zero core runtime dependencies">
-  <img src="https://img.shields.io/badge/tests-531%20deterministic-B83A2D" alt="531 deterministic tests">
+  <img src="https://img.shields.io/badge/tests-532%20deterministic-B83A2D" alt="532 deterministic tests">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -147,7 +147,7 @@ outside core.
 ## The Workbench is real
 
 These images were captured from the real Sasori server at runtime commit
-[`e816cf7`](https://github.com/syusama/sasori/commit/e816cf756d5d4c361e17be6482cfdb310ed3cd7c).
+[`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2).
 The browser journeys use SQLite, approval, explicit resume, two audited effects,
 cold-history reconstruction, artifacts, capability projection, strict Workflow
 preflight, and durable Catalog save. Exact dimensions, byte counts, SHA-256
@@ -155,21 +155,21 @@ digests, browser version, and capture scenarios are recorded in the
 [screenshot manifest](docs/assets/screenshots-manifest.json).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-e816cf7.jpg" alt="Sasori completed Workflow and capability inspector" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-completed-1600x1000-71993de.jpg" alt="Sasori completed Workflow and capability inspector" width="100%">
 </p>
 
 <p align="center"><sub>A completed typed Workflow with verified output, definition identity, and effective capability disclosure.</sub></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-e816cf7.jpg" alt="Sasori Workflow Studio" width="100%">
+  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-workflow-studio-1600x1000-71993de.jpg" alt="Sasori Workflow Studio" width="100%">
 </p>
 
 <p align="center"><sub>Workflow Studio saves immutable definitions with strong-ETag CAS and performs server-authoritative preflight with zero model calls and zero tool dispatches.</sub></p>
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-e816cf7.jpg" alt="Sasori mobile task workspace" width="390"></td>
-    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-e816cf7.jpg" alt="Sasori mobile capability inspector" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-390x844-71993de.jpg" alt="Sasori mobile task workspace" width="390"></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/screenshots/workbench-mobile-inspector-390x844-71993de.jpg" alt="Sasori mobile capability inspector" width="390"></td>
   </tr>
   <tr>
     <td align="center"><sub>Task workspace · exact 390×844 CSS viewport</sub></td>
@@ -217,7 +217,7 @@ Deep contracts live in [Foundation](docs/FOUNDATION.md),
 
 The current runtime snapshot has passed:
 
-- `531` deterministic `unittest` checks; `5` Windows symlink cases skip when
+- `532` deterministic `unittest` checks; `5` Windows symlink cases skip when
   the required OS privilege is unavailable;
 - `31 / 31` real Chrome Workbench cases at 1600×1000, 390×844, and 360×800,
   including reduced-motion and narrow structured-result checks;
