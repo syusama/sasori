@@ -54,10 +54,12 @@ class StreamingEcho:
 ```
 
 The grammar is `start -> deltas* -> exactly one done/error/aborted -> end`.
-Partial tool-call deltas are transient and can never execute. Stream observer
-failures cannot rewrite durable facts. `await harness.wait_for_idle()` waits
-until admitted drives have unwound; it does not claim that a remote provider or
-synchronous tool was forcibly stopped.
+Partial tool-call deltas are transient and can never execute. Stream observers
+receive detached, deeply immutable terminal snapshots and cannot rewrite Tool
+inputs or durable facts. Provider mutation after yielding `done` is isolated by
+the same model boundary. `await harness.wait_for_idle()` waits until admitted
+drives have unwound; it does not claim that a remote provider or synchronous
+tool was forcibly stopped.
 
 For SQLite durability, providers, CLI, HTTP, first-party tools, Workflow,
 Memory, applications and the Workbench, install the `sasori` bundle after its

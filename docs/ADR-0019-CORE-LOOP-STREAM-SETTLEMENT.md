@@ -72,7 +72,14 @@ Rules:
   cooperative cancellation path;
 - one total model timeout covers the complete iterator, including its required
   end after a terminal event;
-- stream observers are best effort and cannot change durable run facts;
+- when `done` arrives, the runtime captures its authoritative bounded reply
+  before invoking an observer; the observer receives a detached, deeply
+  immutable terminal snapshot;
+- stream observers are best effort, and neither observer mutation nor provider
+  generator mutation after `done` can change Tool input, history, approval,
+  fingerprint, recovery, or another durable run fact;
+- malformed terminal input remains malformed after snapshotting and can never
+  become an executable Tool call;
 - deltas are transient UI/provider progress, not durable public events and not
   a serialization of mutable provider state.
 
@@ -118,7 +125,8 @@ must never be added as `NotImplemented` scaffolds.
 - malformed, interrupted, duplicate-terminal, timeout, error, and aborted
   streams pass deterministic offline tests;
 - a truncated streamed tool call never reaches a handler;
-- stream-observer exceptions cannot change the run result;
+- stream-observer mutation and exceptions cannot change the run result, Tool
+  input, fingerprint, history, or stored call arguments;
 - a second same-run drive fails before another model/tool call;
 - `wait_for_idle()` blocks during a drive and returns after success, pause,
   failure, or cancellation settlement;

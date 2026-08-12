@@ -19,9 +19,9 @@ Both upstream branches can move. These immutable commits, not a floating
 | Capability | Pi evidence | Sasori current baseline | Sasori acceptance rule |
 |---|---|---|---|
 | Canonical Loop | `packages/agent/src/agent-loop.ts` is the low-level path | One exported `run_agent_loop()` under an executable Harness; storage is injected | Retain one path across Python, CLI, HTTP, Workflow, and Workbench |
-| Model stream | Unified provider stream with deltas and terminal outcomes | Bounded `start -> deltas* -> done/error/aborted -> end`; bundle providers may aggregate upstream SSE | Partial calls never execute; every stream reaches exactly one terminal outcome |
+| Model stream | Unified provider stream with deltas and terminal outcomes | Bounded `start -> deltas* -> done/error/aborted -> end`; terminal replies are captured before observers; bundle providers may aggregate upstream SSE | Partial calls never execute; every stream reaches exactly one terminal outcome; observer/provider mutation cannot rewrite the accepted reply |
 | Incomplete calls | Length-truncated calls fail and do not execute | Fail-closed parser and Tool dispatch | Keep malformed, truncated, oversized, duplicate, interrupted, and cancelled conformance cases |
-| Tool order | Lookup, prepare, validate, hooks, execute, result | Lookup, validation, effect, approval, and recovery are explicit | Replacement arguments must be revalidated and immutable to observers |
+| Tool order | Lookup, prepare, validate, hooks, execute, result | Lookup, validation, effect, approval, and recovery are explicit; observers receive detached deeply immutable arguments | Replacement arguments must be revalidated and immutable to observers |
 | Tool failure | Most Tool failures become error results | Explicit Tool-result errors | Cancellation remains a separate `BaseException` boundary |
 | Parallel Tool calls | Completion may finish out of order while results preserve source order | Serial and deterministic | Remain serial until mixed effect/approval/cancellation semantics have an ADR and acceptance suite |
 | Steering/follow-up | Separate queues and insertion points | Not shipped | Add only after persistence scope and race behavior are specified |

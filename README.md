@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 to 3.13">
   <img src="https://img.shields.io/badge/sasori--core-runtime%20dependencies%200-2F6F5E" alt="Zero core runtime dependencies">
-  <img src="https://img.shields.io/badge/tests-532%20deterministic-B83A2D" alt="532 deterministic tests">
+  <img src="https://img.shields.io/badge/tests-536%20deterministic-B83A2D" alt="536 deterministic tests">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -217,7 +217,7 @@ Deep contracts live in [Foundation](docs/FOUNDATION.md),
 
 The current runtime snapshot has passed:
 
-- `532` deterministic `unittest` checks; `5` Windows symlink cases skip when
+- `536` deterministic `unittest` checks; `5` Windows symlink cases skip when
   the required OS privilege is unavailable;
 - `31 / 31` real Chrome Workbench cases at 1600×1000, 390×844, and 360×800,
   including reduced-motion and narrow structured-result checks;

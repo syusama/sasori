@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 
-from .contracts import Event
+from .contracts import Event, validate_run_id
 from .runtime import SasoriError
 from .store import RunViewSource, StoredEvent
 
 
-_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 _EXTERNAL_STATES = {
     "awaiting_approval": "paused",
     "paused_recovery": "paused",
@@ -31,12 +29,6 @@ class ProjectionIntegrityError(SasoriError):
 
     def __init__(self) -> None:
         super().__init__("public projection extension failed integrity validation")
-
-
-def validate_run_id(run_id: object) -> str:
-    if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None:
-        raise ValueError("run_id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
-    return run_id
 
 
 def _plain(value: object) -> object:

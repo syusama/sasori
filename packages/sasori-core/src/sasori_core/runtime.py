@@ -7,7 +7,7 @@ import json
 import math
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from .contracts import (
     ApprovalRequest,
@@ -20,7 +20,10 @@ from .contracts import (
     SkillSpec,
     Tool,
     ToolCall,
+    _freeze_event_value,
+    is_valid_app_id,
     is_valid_tool_call_id,
+    validate_run_id,
 )
 from .store import (
     ApprovalConflict,
@@ -87,6 +90,16 @@ class RunBusy(SasoriError):
 
 class _DeadlineExceeded(Exception):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _InvalidToolArguments:
+    type_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class _InvalidToolCall:
+    type_name: str
 
 
 _IDEMPOTENCY_KEY_ARGUMENT = "idempotency_key"
@@ -157,11 +170,9 @@ def _valid_utf8_text(
     )
 
 
-def _bounded_json_mapping(value: object) -> bool:
-    """Validate a provider argument tree without recursive Python calls."""
+def _bounded_json_value(value: object) -> bool:
+    """Validate one provider JSON tree without recursive Python calls."""
 
-    if not isinstance(value, Mapping):
-        return False
     pending: list[tuple[object, int]] = [(value, 0)]
     seen = 0
     while pending:
@@ -184,11 +195,20 @@ def _bounded_json_mapping(value: object) -> bool:
     return True
 
 
+def _bounded_json_mapping(value: object) -> bool:
+    return isinstance(value, Mapping) and _bounded_json_value(value)
+
+
 def _json_arguments(arguments: object) -> tuple[object, bool, str]:
+    if isinstance(arguments, _InvalidToolArguments):
+        marker = {"__invalid_arguments__": arguments.type_name}
+        encoded = json.dumps(marker, sort_keys=True, separators=(",", ":"))
+        return marker, False, encoded
     try:
         if not _bounded_json_mapping(arguments):
             raise ValueError("tool arguments are not bounded JSON")
-        plain = dict(arguments)
+        plain = _json_copy(arguments)
+        assert isinstance(plain, dict)
         encoded = json.dumps(
             plain,
             ensure_ascii=False,
@@ -215,6 +235,55 @@ def _json_copy(value: object) -> object:
     if value is None or type(value) in (bool, int, float, str):
         return value
     raise TypeError(f"value is not canonical JSON: {type(value).__name__}")
+
+
+def _snapshot_invalid_tool_arguments(arguments: object) -> object:
+    """Detach a safe JSON non-mapping while preserving its invalid root shape."""
+
+    try:
+        if isinstance(arguments, Mapping) or not _bounded_json_value(arguments):
+            raise ValueError("arguments need an invalid JSON root shape")
+        encoded = json.dumps(
+            arguments,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        if len(encoded.encode("utf-8", "strict")) > _MAX_TOOL_ARGUMENT_BYTES:
+            raise ValueError("tool arguments exceed the byte limit")
+        return _freeze_event_value(json.loads(encoded))
+    except (TypeError, ValueError, UnicodeError, RecursionError):
+        return _InvalidToolArguments(type(arguments).__name__)
+
+
+def _snapshot_tool_call(raw: object) -> object:
+    """Detach one provider call without turning malformed input into valid input."""
+
+    if isinstance(raw, _InvalidToolCall):
+        return raw
+    if not isinstance(raw, ToolCall):
+        return _InvalidToolCall(type(raw).__name__)
+    if isinstance(raw.arguments, _InvalidToolArguments):
+        arguments: object = raw.arguments
+    else:
+        detached, valid, _ = _json_arguments(raw.arguments)
+        arguments = (
+            _freeze_event_value(detached)
+            if valid
+            else _snapshot_invalid_tool_arguments(raw.arguments)
+        )
+    return ToolCall(raw.id, raw.name, arguments, raw.complete)
+
+
+def _snapshot_model_reply(reply: ModelReply) -> ModelReply:
+    """Create the authoritative reply snapshot used after the model boundary."""
+
+    return ModelReply(
+        content=reply.content,
+        tool_calls=tuple(_snapshot_tool_call(call) for call in reply.tool_calls),
+        provider_state=reply.provider_state,
+    )
 
 
 async def _collect_model_stream(
@@ -264,8 +333,14 @@ async def _collect_model_stream(
             observe(event)
             continue
         if event.type == "done":
-            terminal = event
-            observe(event)
+            assert event.reply is not None
+            authoritative = _snapshot_model_reply(event.reply)
+            terminal = ModelStreamEvent("done", reply=authoritative)
+            observe(
+                ModelStreamEvent(
+                    "done", reply=_snapshot_model_reply(authoritative)
+                )
+            )
             continue
         if event.type == "error":
             terminal = event
@@ -475,7 +550,11 @@ class Harness:
         run_id: str | None = None,
         app_id: str | None = None,
     ) -> RunResult:
-        run_id = run_id or uuid.uuid4().hex
+        run_id = (
+            uuid.uuid4().hex if run_id is None else validate_run_id(run_id)
+        )
+        if app_id is not None and not is_valid_app_id(app_id):
+            raise ValueError("app_id must match [a-z0-9][a-z0-9._-]{0,63}")
         self._enter_drive(run_id)
         try:
             initial = Snapshot(
@@ -495,6 +574,7 @@ class Harness:
             self._leave_drive(run_id)
 
     async def resume(self, run_id: str) -> RunResult:
+        run_id = validate_run_id(run_id)
         self._enter_drive(run_id)
         try:
             state = self.store.load(run_id)
@@ -512,11 +592,12 @@ class Harness:
         self, run_id: str, after_seq: int = 0
     ) -> tuple[StoredEvent, ...]:
         """Read durable events by cursor; event_sink delivery is best-effort."""
-        return self.store.stored_events(run_id, after_seq)
+        return self.store.stored_events(validate_run_id(run_id), after_seq)
 
     def resolve_approval(
         self, run_id: str, fingerprint: str, approved: bool
     ) -> None:
+        run_id = validate_run_id(run_id)
         state = self.store.load(run_id)
         event = self._event(
             state,
@@ -538,6 +619,7 @@ class Harness:
         reason: str,
         result: object | None = None,
     ) -> None:
+        run_id = validate_run_id(run_id)
         if action not in ("record_result", "fail", "retry"):
             raise ValueError("action must be record_result, fail, or retry")
         if not reason.strip():
@@ -681,6 +763,7 @@ class Harness:
             )
             self._fail_model(state, step, error)
             raise error
+        reply = _snapshot_model_reply(reply)
         if not _valid_utf8_text(reply.content) or (
             reply.provider_state is not None
             and not _valid_utf8_text(reply.provider_state)
@@ -780,7 +863,12 @@ class Harness:
             else:
                 call_id = None
                 name = None
-                arguments = {"__invalid_call__": type(raw).__name__}
+                raw_type = (
+                    raw.type_name
+                    if isinstance(raw, _InvalidToolCall)
+                    else type(raw).__name__
+                )
+                arguments = {"__invalid_call__": raw_type}
                 arguments_valid = False
                 encoded = json.dumps(arguments, sort_keys=True)
                 complete = False

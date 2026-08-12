@@ -96,6 +96,145 @@ class CoreLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.final_message.content, "8")
         model.assert_consumed()
 
+    async def test_stream_done_observer_cannot_mutate_nested_tool_arguments(self):
+        handler_seen: list[tuple[int, list[int], list[int]]] = []
+        mutation_errors: list[type[BaseException]] = []
+        observed_tool_terminals = 0
+
+        def inspect(payload, items, rows):
+            handler_seen.append(
+                (
+                    payload["amount"],
+                    list(items),
+                    [row["value"] for row in rows],
+                )
+            )
+            return "safe"
+
+        def observe(event: ModelStreamEvent) -> None:
+            nonlocal observed_tool_terminals
+            if event.type != "done" or not event.reply.tool_calls:
+                return
+            observed_tool_terminals += 1
+            arguments = event.reply.tool_calls[0].arguments
+            for mutate in (
+                lambda: arguments["payload"].__setitem__("amount", 99),
+                lambda: arguments["items"].__setitem__(0, 99),
+                lambda: arguments["rows"][0].__setitem__("value", 99),
+            ):
+                try:
+                    mutate()
+                except (AttributeError, TypeError) as error:
+                    mutation_errors.append(type(error))
+            raise RuntimeError("observer offline after attempted mutation")
+
+        model = ScriptedStreamingModel(
+            _stream(
+                ModelReply(
+                    tool_calls=(
+                        ToolCall(
+                            "inspect-1",
+                            "inspect",
+                            {
+                                "payload": {"amount": 1},
+                                "items": [2, 3],
+                                "rows": [{"value": 4}],
+                            },
+                        ),
+                    )
+                )
+            ),
+            _stream(ModelReply(content="finished")),
+        )
+        harness = Harness(
+            model,
+            (Tool("inspect", inspect, effect="read_only"),),
+            model_stream_sink=observe,
+        )
+        self.addCleanup(harness.close)
+
+        result = await harness.run(
+            (Message("user", "inspect"),), run_id="stream-observer-snapshot"
+        )
+
+        self.assertEqual(result.final_message.content, "finished")
+        self.assertEqual(handler_seen, [(1, [2, 3], [4])])
+        self.assertEqual(len(mutation_errors), 3)
+        self.assertEqual(observed_tool_terminals, 1)
+        stored = harness.store.calls("stream-observer-snapshot", 1)[0]
+        self.assertEqual(dict(stored.arguments["payload"]), {"amount": 1})
+        self.assertEqual(list(stored.arguments["items"]), [2, 3])
+        self.assertEqual(dict(stored.arguments["rows"][0]), {"value": 4})
+        assistant = next(
+            message
+            for message in result.messages
+            if message.role == "assistant" and message.tool_calls
+        )
+        self.assertEqual(
+            dict(assistant.tool_calls[0].arguments["payload"]), {"amount": 1}
+        )
+        model.assert_consumed()
+
+    async def test_stream_terminal_snapshot_survives_generator_mutation_after_done(self):
+        source = {
+            "payload": {"amount": 1},
+            "items": [2, 3],
+            "rows": [{"value": 4}],
+        }
+        handler_seen: list[tuple[int, list[int], list[int]]] = []
+
+        class MutatingTerminalModel:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def complete(self, messages, tools):
+                raise AssertionError("runtime must prefer complete_stream")
+
+            async def complete_stream(self, messages, tools):
+                self.calls += 1
+                yield ModelStreamEvent("start")
+                if self.calls == 1:
+                    yield ModelStreamEvent(
+                        "done",
+                        reply=ModelReply(
+                            tool_calls=(ToolCall("inspect-1", "inspect", source),)
+                        ),
+                    )
+                    source["payload"]["amount"] = 99
+                    source["items"][0] = 99
+                    source["rows"][0]["value"] = 99
+                else:
+                    yield ModelStreamEvent("done", reply=ModelReply(content="finished"))
+
+        def inspect(payload, items, rows):
+            handler_seen.append(
+                (
+                    payload["amount"],
+                    list(items),
+                    [row["value"] for row in rows],
+                )
+            )
+            return "safe"
+
+        model = MutatingTerminalModel()
+        harness = Harness(
+            model,
+            (Tool("inspect", inspect, effect="read_only"),),
+        )
+        self.addCleanup(harness.close)
+
+        result = await harness.run(
+            (Message("user", "inspect"),), run_id="stream-generator-snapshot"
+        )
+
+        self.assertEqual(result.final_message.content, "finished")
+        self.assertEqual(model.calls, 2)
+        self.assertEqual(handler_seen, [(1, [2, 3], [4])])
+        stored = harness.store.calls("stream-generator-snapshot", 1)[0]
+        self.assertEqual(dict(stored.arguments["payload"]), {"amount": 1})
+        self.assertEqual(list(stored.arguments["items"]), [2, 3])
+        self.assertEqual(dict(stored.arguments["rows"][0]), {"value": 4})
+
     async def test_stream_protocol_failures_are_terminal_and_never_execute_deltas(self):
         terminal = ModelStreamEvent("done", reply=ModelReply(content="done"))
         cases = {
@@ -489,6 +628,53 @@ class CoreLifecycleTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(idle, 1)
         self.assertTrue(harness.is_idle)
         self.assertEqual(harness.store.load("busy").status, "cancelled")
+
+    async def test_invalid_runtime_identity_fails_before_drive_or_store_mutation(self):
+        class CountingModel:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def complete(self, messages, tools):
+                self.calls += 1
+                return ModelReply(content="ok")
+
+        model = CountingModel()
+        harness = Harness(model)
+        self.addCleanup(harness.close)
+        invalid_run_ids = ("", "-bad", "bad/id", "空", "a" * 65, 7)
+        for index, run_id in enumerate(invalid_run_ids):
+            with self.subTest(kind="run_id", value=run_id):
+                with self.assertRaisesRegex(ValueError, "^run_id must match"):
+                    await harness.run(
+                        (Message("user", f"bad run {index}"),),
+                        run_id=run_id,  # type: ignore[arg-type]
+                    )
+
+        invalid_app_ids = ("", "Bad App", "UPPER", "-bad", "空", "a" * 65, 7)
+        for index, app_id in enumerate(invalid_app_ids):
+            with self.subTest(kind="app_id", value=app_id):
+                with self.assertRaisesRegex(ValueError, "^app_id must match"):
+                    await harness.run(
+                        (Message("user", f"bad app {index}"),),
+                        run_id=f"invalid-app-{index}",
+                        app_id=app_id,  # type: ignore[arg-type]
+                    )
+
+        self.assertEqual(model.calls, 0)
+        self.assertEqual(harness.store.list_runs(limit=100), ())
+        self.assertTrue(harness.is_idle)
+
+        explicit = await harness.run(
+            (Message("user", "valid"),),
+            run_id="Run_1.ok",
+            app_id="app.one",
+        )
+        automatic = await harness.run((Message("user", "automatic"),))
+        self.assertEqual(model.calls, 2)
+        self.assertEqual(explicit.run_id, "Run_1.ok")
+        self.assertRegex(automatic.run_id, r"^[a-f0-9]{32}$")
+        self.assertEqual(harness.store.load("Run_1.ok").app_id, "app.one")
+        self.assertTrue(harness.is_idle)
 
     def test_stream_event_shapes_are_strict(self):
         invalid = (

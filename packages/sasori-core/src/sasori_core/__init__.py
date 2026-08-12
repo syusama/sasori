@@ -4,6 +4,7 @@ from .contracts import (
     ApprovalRequest,
     Event,
     MAX_APP_ID_BYTES,
+    MAX_RUN_ID_BYTES,
     MAX_TOOL_CALL_ID_BYTES,
     Message,
     Model,
@@ -17,7 +18,9 @@ from .contracts import (
     ToolCall,
     ToolEffect,
     is_valid_app_id,
+    is_valid_run_id,
     is_valid_tool_call_id,
+    validate_run_id,
 )
 from .runtime import (
     ApprovalConflict,
@@ -40,7 +43,6 @@ from .projection import (
     event_projection,
     run_list_projection,
     run_projection,
-    validate_run_id,
 )
 from .store import (
     CallRecord,
@@ -67,6 +69,7 @@ __all__ = [
     "Harness",
     "InjectedFault",
     "MAX_APP_ID_BYTES",
+    "MAX_RUN_ID_BYTES",
     "MAX_TOOL_CALL_ID_BYTES",
     "MaxStepsExceeded",
     "Message",
@@ -97,6 +100,7 @@ __all__ = [
     "ToolEffect",
     "event_projection",
     "is_valid_app_id",
+    "is_valid_run_id",
     "is_valid_tool_call_id",
     "run_list_projection",
     "run_agent_loop",

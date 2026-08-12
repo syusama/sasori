@@ -21,6 +21,7 @@ from sasori_core import (  # noqa: E402
     InjectedFault,
     Message,
     ModelReply,
+    ModelStreamEvent,
     RunPaused,
     StoreError,
     Tool,
@@ -28,7 +29,7 @@ from sasori_core import (  # noqa: E402
     run_projection,
 )
 from sasori_core.store import DuplicateCallIdError  # noqa: E402
-from sasori_core.testing import ScriptedModel  # noqa: E402
+from sasori_core.testing import ScriptedModel, ScriptedStreamingModel  # noqa: E402
 
 
 class CoreStoreConformanceTests(unittest.IsolatedAsyncioTestCase):
@@ -81,6 +82,93 @@ class CoreStoreConformanceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(projection["state"], "completed")
             self.assertEqual(projection["final_message"], {"role": "assistant", "content": "8"})
         self.assertEqual(traces[0], traces[1])
+
+    async def test_stream_observer_isolation_matches_ephemeral_and_sqlite(self):
+        outcomes = []
+        for store in self._stores():
+            self.addCleanup(store.close)
+            handler_seen: list[tuple[int, list[int]]] = []
+            mutation_failures: list[type[BaseException]] = []
+
+            def observe(event):
+                if event.type != "done" or not event.reply.tool_calls:
+                    return
+                arguments = event.reply.tool_calls[0].arguments
+                try:
+                    arguments["payload"].__setitem__("amount", 99)
+                except (AttributeError, TypeError) as error:
+                    mutation_failures.append(type(error))
+                try:
+                    arguments["items"].__setitem__(0, 99)
+                except (AttributeError, TypeError) as error:
+                    mutation_failures.append(type(error))
+                raise RuntimeError("observer offline after attempted mutation")
+
+            def inspect(payload, items):
+                handler_seen.append((payload["amount"], list(items)))
+                return "safe"
+
+            model = ScriptedStreamingModel(
+                (
+                    ModelStreamEvent("start"),
+                    ModelStreamEvent(
+                        "done",
+                        reply=ModelReply(
+                            tool_calls=(
+                                ToolCall(
+                                    "inspect-1",
+                                    "inspect",
+                                    {"payload": {"amount": 1}, "items": [2, 3]},
+                                ),
+                            )
+                        ),
+                    ),
+                ),
+                (
+                    ModelStreamEvent("start"),
+                    ModelStreamEvent("done", reply=ModelReply(content="finished")),
+                ),
+            )
+            harness = Harness(
+                model,
+                (Tool("inspect", inspect, effect="read_only"),),
+                store=store,
+                model_stream_sink=observe,
+            )
+            result = await harness.run(
+                (Message("user", "inspect"),), run_id="stream-observer-store"
+            )
+            call = store.calls("stream-observer-store", 1)[0]
+            trace = tuple(
+                (
+                    item.event.type,
+                    item.event.version,
+                    item.event.step,
+                    item.event.tool_name,
+                    item.event.call_id,
+                    dict(item.event.data),
+                )
+                for item in store.stored_events("stream-observer-store")
+            )
+            outcomes.append(
+                (
+                    handler_seen,
+                    mutation_failures,
+                    call.fingerprint,
+                    dict(call.arguments["payload"]),
+                    list(call.arguments["items"]),
+                    trace,
+                    result.final_message.content,
+                )
+            )
+            model.assert_consumed()
+
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(outcomes[0][0], [(1, [2, 3])])
+        self.assertEqual(len(outcomes[0][1]), 2)
+        self.assertEqual(outcomes[0][3], {"amount": 1})
+        self.assertEqual(outcomes[0][4], [2, 3])
+        self.assertEqual(outcomes[0][6], "finished")
 
     async def test_approval_and_resume_match_across_store_adapters(self):
         projections = []

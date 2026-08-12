@@ -17,6 +17,7 @@ from .contracts import (
     ApprovalRequest,
     Event,
     MAX_APP_ID_BYTES,
+    MAX_RUN_ID_BYTES,
     MAX_TOOL_CALL_ID_BYTES,
     Message,
     Model,
@@ -32,6 +33,7 @@ from .contracts import (
     ToolEffect,
     WorkerSpec,
     is_valid_app_id,
+    is_valid_run_id,
     is_valid_tool_call_id,
 )
 from .plugins import (
@@ -107,6 +109,7 @@ __all__ = [
     "FULL_HOST_PROCESS_PRIVILEGES",
     "InjectedFault",
     "MAX_APP_ID_BYTES",
+    "MAX_RUN_ID_BYTES",
     "MAX_TOOL_CALL_ID_BYTES",
     "MaxStepsExceeded",
     "Message",
@@ -162,6 +165,7 @@ __all__ = [
     "compose_run_projection",
     "event_projection",
     "is_valid_app_id",
+    "is_valid_run_id",
     "is_valid_tool_call_id",
     "disclose_permissions",
     "discover_plugins",

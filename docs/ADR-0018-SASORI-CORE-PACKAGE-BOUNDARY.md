@@ -109,6 +109,11 @@ belong to `sasori_flow`. Extension composition must preserve the bounded,
 JSON-safe, fail-closed public contract. Moving a validator must not alter the
 existing HTTP representation; a semantic golden comparison is required.
 
+Public runtime identity follows that same representability boundary. The
+Harness validates `run_id` and optional `app_id` before drive admission, model
+invocation, observer delivery, or store mutation. A runtime adapter therefore
+cannot create durable state that the versioned public projection cannot name.
+
 ### Recovery and effects
 
 Package movement does not strengthen the documented recovery guarantee:
@@ -169,6 +174,7 @@ No tag or TestPyPI upload may claim that old artifact contains the new boundary.
 - `sasori_core` has no third-party runtime dependency.
 - one deterministic tool loop runs with `EphemeralRunStore`.
 - the shared store conformance suite passes for ephemeral and SQLite adapters.
+- invalid public run/application identities fail before drive or store mutation.
 - all legacy `sasori` imports and CLI/HTTP/browser contracts continue to pass.
 - `python -m unittest discover -s tests -v` passes.
 - public projection/golden changes require a separate ADR.

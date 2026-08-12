@@ -17,6 +17,7 @@ from .contracts import (  # noqa: E402
     ApprovalRequest,
     Event,
     MAX_APP_ID_BYTES,
+    MAX_RUN_ID_BYTES,
     MAX_TOOL_CALL_ID_BYTES,
     Message,
     Model,
@@ -30,7 +31,9 @@ from .contracts import (  # noqa: E402
     ToolCall,
     ToolEffect,
     is_valid_app_id,
+    is_valid_run_id,
     is_valid_tool_call_id,
+    validate_run_id,
 )
 from .runtime import (  # noqa: E402
     ApprovalConflict,
@@ -53,7 +56,6 @@ from .projection import (  # noqa: E402
     event_projection,
     run_list_projection,
     run_projection,
-    validate_run_id,
 )
 from .store import (  # noqa: E402
     CallRecord,
@@ -71,13 +73,13 @@ from .store import (  # noqa: E402
 __all__ = [
     "ApprovalConflict", "ApprovalMismatch", "ApprovalRequest", "CallRecord",
     "ConcurrentRunError", "DuplicateToolCallError", "EphemeralRunStore", "Event",
-    "Harness", "InjectedFault", "MAX_APP_ID_BYTES", "MAX_TOOL_CALL_ID_BYTES",
+    "Harness", "InjectedFault", "MAX_APP_ID_BYTES", "MAX_RUN_ID_BYTES", "MAX_TOOL_CALL_ID_BYTES",
     "MaxStepsExceeded", "Message", "Model", "ModelCallError", "ModelReply",
     "ModelStreamEvent", "ModelStreamEventType", "ModelStreamProtocolError",
     "ModelTimeoutError", "ProjectionIntegrityError", "RunAlreadyExists", "RunBusy",
     "RunCancelled", "RunNotFound", "RunPaused", "RunResult", "RunStore",
     "RunViewSource", "SasoriError", "SkillSpec", "StreamingModel", "Snapshot", "StoredEvent",
     "StoreError", "Tool", "ToolCall", "ToolEffect", "event_projection",
-    "is_valid_app_id", "is_valid_tool_call_id", "run_list_projection",
+    "is_valid_app_id", "is_valid_run_id", "is_valid_tool_call_id", "run_list_projection",
     "run_agent_loop", "run_projection", "validate_run_id",
 ]

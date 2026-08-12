@@ -18,6 +18,7 @@ ModelStreamEventType = Literal[
 ]
 MAX_TOOL_CALL_ID_BYTES = 256
 MAX_APP_ID_BYTES = 64
+MAX_RUN_ID_BYTES = 64
 
 
 def is_valid_app_id(value: object) -> bool:
@@ -38,6 +39,41 @@ def is_valid_app_id(value: object) -> bool:
         or character in "._-"
         for character in value[1:]
     )
+
+
+def is_valid_run_id(value: object) -> bool:
+    """Return whether a run ID can be represented by every public adapter."""
+
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        encoded = value.encode("ascii", "strict")
+    except UnicodeEncodeError:
+        return False
+    return (
+        len(encoded) <= MAX_RUN_ID_BYTES
+        and (
+            "a" <= value[0] <= "z"
+            or "A" <= value[0] <= "Z"
+            or "0" <= value[0] <= "9"
+        )
+        and all(
+            "a" <= character <= "z"
+            or "A" <= character <= "Z"
+            or "0" <= character <= "9"
+            or character in "._-"
+            for character in value[1:]
+        )
+    )
+
+
+def validate_run_id(value: object) -> str:
+    """Return one valid public run ID or fail before runtime/store mutation."""
+
+    if not is_valid_run_id(value):
+        raise ValueError("run_id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+    assert isinstance(value, str)
+    return value
 
 
 def is_valid_tool_call_id(value: object) -> bool:
@@ -267,6 +303,7 @@ __all__ = [
     "ApprovalRequest",
     "Event",
     "MAX_APP_ID_BYTES",
+    "MAX_RUN_ID_BYTES",
     "MAX_TOOL_CALL_ID_BYTES",
     "Message",
     "Model",
@@ -280,5 +317,7 @@ __all__ = [
     "ToolCall",
     "ToolEffect",
     "is_valid_app_id",
+    "is_valid_run_id",
     "is_valid_tool_call_id",
+    "validate_run_id",
 ]

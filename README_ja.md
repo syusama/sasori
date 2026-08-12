@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 から 3.13">
   <img src="https://img.shields.io/badge/sasori--core-runtime%20dependencies%200-2F6F5E" alt="Core の実行時依存ゼロ">
-  <img src="https://img.shields.io/badge/tests-532%20deterministic-B83A2D" alt="532 deterministic tests">
+  <img src="https://img.shields.io/badge/tests-536%20deterministic-B83A2D" alt="536 deterministic tests">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -214,7 +214,7 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 
 現在の runtime snapshot は次を通過しています。
 
-- `532` deterministic `unittest`。Windows で必要な権限がない場合は `5` 件の
+- `536` deterministic `unittest`。Windows で必要な権限がない場合は `5` 件の
   symlink test を skip。
 - 1600×1000、390×844、360×800、reduced-motion、narrow structured result を
   含む `31 / 31` 件の real Chrome Workbench acceptance。
