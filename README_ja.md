@@ -18,10 +18,6 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-logo.jpg" alt="Sasori Logo" width="88">
-</p>
-
-<p align="center">
   <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori プロジェクトのメインビジュアル" width="520">
 </p>
 
