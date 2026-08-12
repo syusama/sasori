@@ -97,8 +97,9 @@ as product UI evidence.
 
 The Sasori name origin may appear in a short project introduction or Logo, but
 anime lore, puppet-thread decoration, and theatrical copy are not
-product-interface themes. The owner-supplied image is used only as the
-repository Logo and the small Workbench brand mark/favicon. It is not used as a
+product-interface themes. The owner-supplied square image is retained as a
+repository brand asset and used as the small Workbench brand mark/favicon; the
+separate owner-supplied poster is the README hero. Neither asset is used as a
 Workbench background, login screen, navigation theme, or decorative product
 illustration.
 

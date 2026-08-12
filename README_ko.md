@@ -253,12 +253,12 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 
 Sasori라는 이름은 *나루토*의 꼭두각시 술사 사소리에서 영감을 얻었습니다. 정밀한
 기술, 조합 가능한 구조, 오래 남는 작품에 대한 지향이 핵심입니다. 이 연관은 project
-name, 이 짧은 설명, 위의 project owner 제공 Logo에만 한정되며 Workbench의
+name, 이 짧은 설명, project owner가 제공한 brand asset에만 한정되며 Workbench의
 visual theme가 아닙니다.
 
 Sasori는 독립적인 open-source project입니다. *나루토*, 키시모토 마사시, 슈에이샤,
 TV 도쿄, Studio Pierrot 또는 기타 권리자와 제휴, 허가, 후원, 보증 관계가 없습니다.
-위 Logo는 project owner가 branding 용도로 제공했습니다. 이 repository는 해당
+Project Logo는 project owner가 branding 용도로 제공했습니다. 이 repository는 해당
 Logo를 공식 자료로 표시하거나 그 안의 제3자 권리를 Sasori가 소유한다고 주장하지
 않습니다.
 

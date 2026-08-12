@@ -253,12 +253,12 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 
 Sasori という名前は、『NARUTO -ナルト-』の傀儡師サソリから着想を得ています。
 精密な技、組み替え可能な仕組み、長く残る作品への志向。その関連は project name、
-この短い説明、上の project owner 提供 Logo に限られ、Workbench の visual
+この短い説明、project owner 提供の brand asset に限られ、Workbench の visual
 theme ではありません。
 
 Sasori は独立した open-source project です。『NARUTO -ナルト-』、岸本斉史、集英社、
 テレビ東京、Studio Pierrot、その他の権利者との提携、許諾、スポンサー関係、推奨関係は
-ありません。上の Logo は project owner から提供された branding 用素材です。本 repository
+ありません。Project Logo は project owner から提供された branding 用素材です。本 repository
 は公式素材であるとは表明せず、そこに含まれる第三者の権利を Sasori が所有するとも
 主張しません。
 

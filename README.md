@@ -260,7 +260,7 @@ boundaries.
 The name is inspired by Sasori, the puppet master from *Naruto*: precise
 craftsmanship, modular mechanisms, and a preference for work that endures. That
 reference is limited to the project name, this short origin note, and the
-owner-supplied logo above; it is not the Workbench's visual theme.
+owner-supplied project brand asset; it is not the Workbench's visual theme.
 
 Sasori is an independent open-source project and is not affiliated with,
 authorized by, sponsored by, or endorsed by *Naruto*, Masashi Kishimoto,

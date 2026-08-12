@@ -196,8 +196,8 @@ class ReleaseVerificationTests(unittest.TestCase):
             for peer in readmes:
                 if peer != name:
                     self.assertIn(peer, text)
-            self.assertIn("docs/assets/sasori-logo.jpg", text)
             self.assertIn("docs/assets/sasori-banner.png", text)
+            self.assertNotIn("docs/assets/sasori-logo.jpg", text)
             screenshot_references[name] = set(
                 re.findall(r"docs/assets/screenshots/([^\"') ]+\.jpg)", text)
             )
@@ -257,7 +257,7 @@ class ReleaseVerificationTests(unittest.TestCase):
         logo_path = ROOT / logo["path"]
         logo_payload = logo_path.read_bytes()
         self.assertEqual(logo["path"], "docs/assets/sasori-logo.jpg")
-        self.assertEqual(logo["placement"], "README and Workbench brand marks")
+        self.assertEqual(logo["placement"], "Workbench brand mark and repository asset")
         self.assertEqual(logo["media_type"], "image/jpeg")
         self.assertEqual(logo["bytes"], len(logo_payload))
         self.assertEqual(

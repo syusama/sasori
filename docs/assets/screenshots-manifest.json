@@ -17,7 +17,7 @@
   "brand_logo": {
     "path": "docs/assets/sasori-logo.jpg",
     "source": "project-owner-supplied",
-    "placement": "README and Workbench brand marks",
+    "placement": "Workbench brand mark and repository asset",
     "actual_pixels": {"width": 1242, "height": 1242},
     "media_type": "image/jpeg",
     "bytes": 207237,
