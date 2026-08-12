@@ -19,6 +19,9 @@ ModelStreamEventType = Literal[
 MAX_TOOL_CALL_ID_BYTES = 256
 MAX_APP_ID_BYTES = 64
 MAX_RUN_ID_BYTES = 64
+MAX_TOOL_PROGRESS_EVENTS = 256
+MAX_TOOL_PROGRESS_EVENT_BYTES = 64 * 1024
+MAX_TOOL_PROGRESS_TOTAL_BYTES = 1024 * 1024
 
 
 def is_valid_app_id(value: object) -> bool:
@@ -203,6 +206,42 @@ class ModelStreamEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolProgressEvent:
+    """One immutable, non-durable update from a live Tool execution."""
+
+    run_id: str
+    step: int
+    ordinal: int
+    call_id: str
+    tool_name: str
+    sequence: int
+    data: Mapping[str, object] = field(default_factory=dict)
+    version: int = 1
+
+    def __post_init__(self) -> None:
+        frozen = _freeze_event_value(self.data)
+        if not isinstance(frozen, Mapping):
+            raise TypeError("tool progress data must be a mapping")
+        object.__setattr__(self, "data", frozen)
+
+
+class ToolExecutionContext:
+    """Narrow live-execution capability injected into an opted-in Tool."""
+
+    __slots__ = ("__reporter",)
+
+    def __init__(self, reporter: Callable[[Mapping[str, object]], bool]) -> None:
+        if not callable(reporter):
+            raise TypeError("tool progress reporter must be callable")
+        self.__reporter = reporter
+
+    def report_progress(self, data: Mapping[str, object]) -> bool:
+        """Submit one bounded transient update; return whether it was accepted."""
+
+        return self.__reporter(data)
+
+
+@dataclass(frozen=True, slots=True)
 class Tool:
     name: str
     handler: Callable[..., object]
@@ -305,6 +344,9 @@ __all__ = [
     "MAX_APP_ID_BYTES",
     "MAX_RUN_ID_BYTES",
     "MAX_TOOL_CALL_ID_BYTES",
+    "MAX_TOOL_PROGRESS_EVENTS",
+    "MAX_TOOL_PROGRESS_EVENT_BYTES",
+    "MAX_TOOL_PROGRESS_TOTAL_BYTES",
     "Message",
     "Model",
     "ModelReply",
@@ -316,6 +358,8 @@ __all__ = [
     "Tool",
     "ToolCall",
     "ToolEffect",
+    "ToolExecutionContext",
+    "ToolProgressEvent",
     "is_valid_app_id",
     "is_valid_run_id",
     "is_valid_tool_call_id",

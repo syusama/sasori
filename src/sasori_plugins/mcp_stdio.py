@@ -140,7 +140,7 @@ def _input_schema(value: object) -> tuple[dict[str, object], tuple[tuple[str, ob
             not isinstance(name, str)
             or not name.isidentifier()
             or keyword.iskeyword(name)
-            or name == "idempotency_key"
+            or name in {"idempotency_key", "tool_context"}
             for name in names
         )
     ):

@@ -17,9 +17,13 @@ from sasori_core import (  # noqa: E402
     ModelStreamEvent,
     ModelStreamProtocolError,
     ModelTimeoutError,
+    MAX_TOOL_PROGRESS_EVENT_BYTES,
+    MAX_TOOL_PROGRESS_EVENTS,
     RunBusy,
     Tool,
     ToolCall,
+    ToolExecutionContext,
+    ToolProgressEvent,
 )
 from sasori_core.testing import (  # noqa: E402
     ScriptedModel,
@@ -36,6 +40,375 @@ def _stream(reply: ModelReply, *deltas: ModelStreamEvent):
 
 
 class CoreLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_tool_progress_is_ordered_immutable_and_transient(self):
+        observed: list[ToolProgressEvent] = []
+        mutation_errors: list[type[BaseException]] = []
+
+        def observe(event: ToolProgressEvent) -> None:
+            try:
+                if event.sequence == 1:
+                    event.data["nested"]["value"] = 99
+                else:
+                    event.data["items"].__setitem__(0, 99)
+            except (AttributeError, TypeError) as error:
+                mutation_errors.append(type(error))
+            observed.append(event)
+            if event.sequence == 1:
+                raise asyncio.CancelledError()
+
+        async def work(
+            value: int, *, tool_context: ToolExecutionContext
+        ) -> dict[str, int]:
+            self.assertTrue(
+                tool_context.report_progress(
+                    {"phase": "prepare", "nested": {"value": value}}
+                )
+            )
+            self.assertTrue(
+                tool_context.report_progress({"phase": "finish", "items": [value]})
+            )
+            return {"value": value}
+
+        model = ScriptedModel(
+            ModelReply(tool_calls=(ToolCall("progress-1", "work", {"value": 7}),)),
+            ModelReply(content="done"),
+        )
+        harness = Harness(
+            model,
+            (Tool("work", work, effect="read_only"),),
+            tool_progress_sink=observe,
+        )
+        self.addCleanup(harness.close)
+
+        result = await harness.run(
+            (Message("user", "work"),), run_id="async-tool-progress"
+        )
+
+        self.assertEqual(result.final_message.content, "done")
+        self.assertEqual([event.sequence for event in observed], [1, 2])
+        self.assertEqual(
+            [event.data["phase"] for event in observed], ["prepare", "finish"]
+        )
+        self.assertEqual(len(mutation_errors), 2)
+        self.assertTrue(
+            all(
+                event.run_id == "async-tool-progress"
+                and event.step == 1
+                and event.ordinal == 0
+                and event.call_id == "progress-1"
+                and event.tool_name == "work"
+                for event in observed
+            )
+        )
+        self.assertNotIn(
+            "tool.progress", [event.type for event in result.events]
+        )
+        self.assertFalse(
+            any(
+                message.role == "tool" and "prepare" in message.content
+                for message in result.messages
+            )
+        )
+        model.assert_consumed()
+
+    async def test_sync_tool_progress_is_fenced_after_return(self):
+        observed: list[int] = []
+        worker_finished = asyncio.Event()
+        late_results: list[bool] = []
+        loop = asyncio.get_running_loop()
+
+        def work(*, tool_context: ToolExecutionContext) -> str:
+            self.assertTrue(tool_context.report_progress({"value": 1}))
+
+            def late() -> None:
+                import time
+
+                time.sleep(0.05)
+                late_results.append(tool_context.report_progress({"value": 2}))
+                loop.call_soon_threadsafe(worker_finished.set)
+
+            import threading
+
+            threading.Thread(target=late, daemon=True).start()
+            return "ok"
+
+        model = ScriptedModel(
+            ModelReply(tool_calls=(ToolCall("sync-progress", "work", {}),)),
+            ModelReply(content="done"),
+        )
+        harness = Harness(
+            model,
+            (Tool("work", work, effect="read_only"),),
+            tool_progress_sink=lambda event: observed.append(event.data["value"]),
+        )
+        self.addCleanup(harness.close)
+
+        result = await harness.run(
+            (Message("user", "work"),), run_id="sync-progress-fence"
+        )
+        await asyncio.wait_for(worker_finished.wait(), 1)
+        await asyncio.sleep(0)
+
+        self.assertEqual(result.final_message.content, "done")
+        self.assertEqual(observed, [1])
+        self.assertEqual(late_results, [False])
+        self.assertTrue(harness.is_idle)
+
+    async def test_tool_progress_is_bounded_and_invalid_updates_do_not_fail_tool(self):
+        observed: list[ToolProgressEvent] = []
+        accepted: list[bool] = []
+
+        async def work(*, tool_context: ToolExecutionContext) -> str:
+            accepted.extend(
+                (
+                    tool_context.report_progress([]),  # type: ignore[arg-type]
+                    tool_context.report_progress({"bad": float("nan")}),
+                    tool_context.report_progress(
+                        {"oversized": "x" * MAX_TOOL_PROGRESS_EVENT_BYTES}
+                    ),
+                )
+            )
+            for index in range(MAX_TOOL_PROGRESS_EVENTS + 2):
+                accepted.append(tool_context.report_progress({"index": index}))
+            return "bounded"
+
+        model = ScriptedModel(
+            ModelReply(tool_calls=(ToolCall("bounded-progress", "work", {}),)),
+            ModelReply(content="done"),
+        )
+        harness = Harness(
+            model,
+            (Tool("work", work, effect="read_only"),),
+            tool_progress_sink=observed.append,
+        )
+        self.addCleanup(harness.close)
+        result = await harness.run(
+            (Message("user", "work"),), run_id="bounded-tool-progress"
+        )
+
+        self.assertEqual(result.final_message.content, "done")
+        self.assertEqual(accepted[:3], [False, False, False])
+        self.assertEqual(accepted[3:].count(True), MAX_TOOL_PROGRESS_EVENTS)
+        self.assertEqual(accepted[-2:], [False, False])
+        self.assertEqual(len(observed), MAX_TOOL_PROGRESS_EVENTS)
+        self.assertEqual(observed[-1].sequence, MAX_TOOL_PROGRESS_EVENTS)
+
+        cumulative_observed: list[ToolProgressEvent] = []
+        cumulative_results: list[bool] = []
+
+        async def cumulative(*, tool_context: ToolExecutionContext) -> str:
+            for index in range(20):
+                cumulative_results.append(
+                    tool_context.report_progress(
+                        {"index": index, "chunk": "x" * 60_000}
+                    )
+                )
+            return "bounded"
+
+        cumulative_model = ScriptedModel(
+            ModelReply(
+                tool_calls=(ToolCall("cumulative-progress", "cumulative", {}),)
+            ),
+            ModelReply(content="done"),
+        )
+        cumulative_harness = Harness(
+            cumulative_model,
+            (Tool("cumulative", cumulative, effect="read_only"),),
+            tool_progress_sink=cumulative_observed.append,
+        )
+        self.addCleanup(cumulative_harness.close)
+        cumulative_result = await cumulative_harness.run(
+            (Message("user", "work"),), run_id="cumulative-tool-progress"
+        )
+        self.assertEqual(cumulative_result.final_message.content, "done")
+        self.assertGreater(cumulative_results.count(True), 0)
+        self.assertLess(cumulative_results.count(True), len(cumulative_results))
+        self.assertEqual(
+            cumulative_results,
+            [True] * len(cumulative_observed)
+            + [False] * (20 - len(cumulative_observed)),
+        )
+
+    async def test_tool_timeout_fences_late_sync_progress(self):
+        observed: list[str] = []
+        late_results: list[bool] = []
+        worker_finished = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def slow(*, tool_context: ToolExecutionContext) -> str:
+            import time
+
+            self.assertTrue(tool_context.report_progress({"phase": "started"}))
+            time.sleep(0.08)
+            late_results.append(
+                tool_context.report_progress({"phase": "after-timeout"})
+            )
+            loop.call_soon_threadsafe(worker_finished.set)
+            return "too late"
+
+        model = ScriptedModel(
+            ModelReply(tool_calls=(ToolCall("timeout-progress", "slow", {}),)),
+            ModelReply(content="recovered"),
+        )
+        harness = Harness(
+            model,
+            (Tool("slow", slow, effect="read_only"),),
+            tool_timeout=0.02,
+            tool_progress_sink=lambda event: observed.append(event.data["phase"]),
+        )
+        self.addCleanup(harness.close)
+        result = await harness.run(
+            (Message("user", "slow"),), run_id="timeout-progress-fence"
+        )
+        await asyncio.wait_for(worker_finished.wait(), 1)
+        await asyncio.sleep(0)
+
+        self.assertEqual(result.final_message.content, "recovered")
+        self.assertEqual(observed, ["started"])
+        self.assertEqual(late_results, [False])
+        timeout_result = next(
+            message for message in result.messages if message.error_code
+        )
+        self.assertEqual(timeout_result.error_code, "tool_timeout")
+
+    async def test_tool_exception_fences_late_sync_progress(self):
+        observed: list[str] = []
+        late_results: list[bool] = []
+        worker_finished = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def fail(*, tool_context: ToolExecutionContext) -> str:
+            self.assertTrue(tool_context.report_progress({"phase": "started"}))
+
+            def late() -> None:
+                import time
+
+                time.sleep(0.05)
+                late_results.append(
+                    tool_context.report_progress({"phase": "after-exception"})
+                )
+                loop.call_soon_threadsafe(worker_finished.set)
+
+            import threading
+
+            threading.Thread(target=late, daemon=True).start()
+            raise RuntimeError("boom")
+
+        model = ScriptedModel(
+            ModelReply(tool_calls=(ToolCall("exception-progress", "fail", {}),)),
+            ModelReply(content="recovered"),
+        )
+        harness = Harness(
+            model,
+            (Tool("fail", fail, effect="read_only"),),
+            tool_progress_sink=lambda event: observed.append(event.data["phase"]),
+        )
+        self.addCleanup(harness.close)
+        result = await harness.run(
+            (Message("user", "fail"),), run_id="exception-progress-fence"
+        )
+        await asyncio.wait_for(worker_finished.wait(), 1)
+        await asyncio.sleep(0)
+
+        self.assertEqual(result.final_message.content, "recovered")
+        self.assertEqual(observed, ["started"])
+        self.assertEqual(late_results, [False])
+        exception_result = next(
+            message for message in result.messages if message.error_code
+        )
+        self.assertEqual(exception_result.error_code, "tool_exception")
+
+    async def test_tool_cancellation_fences_late_sync_progress(self):
+        observed: list[str] = []
+        late_results: list[bool] = []
+        tool_started = asyncio.Event()
+        worker_finished = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def slow(*, tool_context: ToolExecutionContext) -> str:
+            import time
+
+            self.assertTrue(tool_context.report_progress({"phase": "started"}))
+            loop.call_soon_threadsafe(tool_started.set)
+            time.sleep(0.05)
+            late_results.append(
+                tool_context.report_progress({"phase": "after-cancel"})
+            )
+            loop.call_soon_threadsafe(worker_finished.set)
+            return "too late"
+
+        model = ScriptedModel(
+            ModelReply(tool_calls=(ToolCall("cancel-progress", "slow", {}),))
+        )
+        harness = Harness(
+            model,
+            (Tool("slow", slow, effect="read_only"),),
+            tool_progress_sink=lambda event: observed.append(event.data["phase"]),
+        )
+        self.addCleanup(harness.close)
+        drive = asyncio.create_task(
+            harness.run(
+                (Message("user", "slow"),), run_id="cancel-progress-fence"
+            )
+        )
+        await asyncio.wait_for(tool_started.wait(), 1)
+        await asyncio.sleep(0)
+        drive.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await drive
+        await asyncio.wait_for(worker_finished.wait(), 1)
+        await asyncio.sleep(0)
+
+        self.assertEqual(observed, ["started"])
+        self.assertEqual(late_results, [False])
+        self.assertEqual(
+            harness.store.load("cancel-progress-fence").status, "cancelled"
+        )
+        self.assertTrue(harness.is_idle)
+
+    async def test_tool_progress_context_is_reserved_and_keyword_only(self):
+        effects: list[str] = []
+
+        def work(*, tool_context: ToolExecutionContext) -> str:
+            effects.append("executed")
+            return "unsafe"
+
+        harness = Harness(
+            ScriptedModel(
+                ModelReply(
+                    tool_calls=(
+                        ToolCall(
+                            "reserved-progress",
+                            "work",
+                            {"tool_context": "attacker"},
+                        ),
+                    )
+                ),
+                ModelReply(content="refused"),
+            ),
+            (Tool("work", work, effect="read_only"),),
+        )
+        self.addCleanup(harness.close)
+        result = await harness.run(
+            (Message("user", "work"),), run_id="reserved-progress-context"
+        )
+        self.assertEqual(result.final_message.content, "refused")
+        self.assertEqual(effects, [])
+        error = next(message for message in result.messages if message.error_code)
+        self.assertEqual(error.error_code, "reserved_argument")
+
+        with self.assertRaisesRegex(ValueError, "tool_context is reserved"):
+            Harness(
+                ScriptedModel(ModelReply(content="unused")),
+                (
+                    Tool(
+                        "invalid",
+                        lambda tool_context: None,
+                        effect="read_only",
+                    ),
+                ),
+            )
+
     async def test_stream_and_complete_models_share_the_committed_semantics(self):
         observed: list[ModelStreamEvent] = []
         stream = ScriptedStreamingModel(

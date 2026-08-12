@@ -414,6 +414,12 @@ def compile_tool_schema(tool: Tool) -> dict[str, object]:
     properties: dict[str, object] = {}
     assert signature is not None
     for parameter in signature.parameters.values():
+        if parameter.name == "tool_context":
+            if parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+                continue
+            raise _configuration(
+                "tool_context is reserved for keyword-only runtime injection"
+            )
         if parameter.name == "idempotency_key":
             if (
                 tool.effect == "idempotent"

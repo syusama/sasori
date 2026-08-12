@@ -618,6 +618,12 @@ def tool_schema_sha256(tool: Tool) -> str:
         raise RegistrationError("tool signature cannot be inspected") from None
     parameters = []
     for parameter in signature.parameters.values():
+        if parameter.name == "tool_context":
+            if parameter.kind is not inspect.Parameter.KEYWORD_ONLY:
+                raise RegistrationError(
+                    "tool_context is reserved for keyword-only runtime injection"
+                )
+            continue
         if parameter.name == "idempotency_key" and tool.effect == "idempotent":
             continue
         parameters.append(

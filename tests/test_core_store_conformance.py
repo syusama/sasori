@@ -26,6 +26,7 @@ from sasori_core import (  # noqa: E402
     StoreError,
     Tool,
     ToolCall,
+    ToolExecutionContext,
     run_projection,
 )
 from sasori_core.store import DuplicateCallIdError  # noqa: E402
@@ -169,6 +170,59 @@ class CoreStoreConformanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outcomes[0][3], {"amount": 1})
         self.assertEqual(outcomes[0][4], [2, 3])
         self.assertEqual(outcomes[0][6], "finished")
+
+    async def test_tool_progress_is_transient_across_store_adapters(self):
+        outcomes = []
+        for index, store in enumerate(self._stores()):
+            self.addCleanup(store.close)
+            observed = []
+
+            async def inspect(
+                value: int, *, tool_context: ToolExecutionContext
+            ) -> int:
+                self.assertTrue(tool_context.report_progress({"phase": "one"}))
+                self.assertTrue(tool_context.report_progress({"phase": "two"}))
+                return value * 2
+
+            model = ScriptedModel(
+                ModelReply(
+                    tool_calls=(ToolCall("progress-1", "inspect", {"value": 4}),)
+                ),
+                ModelReply(content="8"),
+            )
+            harness = Harness(
+                model,
+                (Tool("inspect", inspect, effect="read_only"),),
+                store=store,
+                tool_progress_sink=observed.append,
+            )
+            run_id = f"progress-store-{index}"
+            result = await harness.run(
+                (Message("user", "inspect"),), run_id=run_id
+            )
+            outcomes.append(
+                (
+                    [
+                        (event.sequence, dict(event.data))
+                        for event in observed
+                    ],
+                    [item.event.type for item in store.stored_events(run_id)],
+                    result.final_message.content,
+                )
+            )
+            self.assertFalse(
+                any(
+                    item.event.type == "tool.progress"
+                    for item in store.stored_events(run_id)
+                )
+            )
+            model.assert_consumed()
+
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(
+            outcomes[0][0],
+            [(1, {"phase": "one"}), (2, {"phase": "two"})],
+        )
 
     async def test_approval_and_resume_match_across_store_adapters(self):
         projections = []

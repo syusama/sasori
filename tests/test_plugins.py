@@ -22,6 +22,7 @@ from sasori import (  # noqa: E402
     SkillSpec,
     Tool,
     ToolCall,
+    ToolExecutionContext,
     WorkerSpec,
 )
 from sasori.plugins import (  # noqa: E402
@@ -338,6 +339,22 @@ class RegistrationTests(unittest.TestCase):
                     validate_registration(
                         self.manifest, replace(self.registration, tools=changed)
                     )
+
+    def test_tool_context_is_runtime_only_in_plugin_schema_hashes(self):
+        def plain(value: str) -> str:
+            return value
+
+        def progress(
+            value: str, *, tool_context: ToolExecutionContext
+        ) -> str:
+            return value
+
+        from sasori import tool_schema_sha256
+
+        self.assertEqual(
+            tool_schema_sha256(Tool("plain", plain, effect="read_only")),
+            tool_schema_sha256(Tool("progress", progress, effect="read_only")),
+        )
 
     def test_skills_and_workers_validate_content_and_references(self):
         manifest, registration, skill, worker = self.contribution_fixture()

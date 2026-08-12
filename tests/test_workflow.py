@@ -20,6 +20,7 @@ from sasori import (
     SQLiteStore,
     Tool,
     ToolCall,
+    ToolExecutionContext,
 )
 from sasori_flow import (
     InputRef,
@@ -574,6 +575,53 @@ class WorkflowSpecTests(unittest.TestCase):
 
 
 class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_compiled_workflow_forwards_core_tool_progress(self):
+        observed = []
+
+        def inspect(
+            summary: str, *, tool_context: ToolExecutionContext
+        ) -> str:
+            self.assertTrue(
+                tool_context.report_progress(
+                    {"phase": "inspect", "summary": summary}
+                )
+            )
+            return f"diagnostic:{summary}"
+
+        tool = Tool("progress_inspect", inspect, effect="read_only")
+        spec = WorkflowSpec(
+            "progress-flow",
+            "1",
+            (InputSlot("incident", "string"),),
+            (
+                ToolStep.from_tool(
+                    "inspect",
+                    tool,
+                    {"summary": InputRef("incident")},
+                    result_type="string",
+                ),
+            ),
+            "inspect",
+        )
+        base = Harness(
+            UnusedModel(),
+            (tool,),
+            store=self.store,
+            tool_progress_sink=observed.append,
+        )
+        workflow = compile_workflow(spec, base)
+        result = await workflow.run(
+            {"incident": "latency"}, run_id="WorkflowProgress"
+        )
+
+        self.assertEqual(
+            [(event.sequence, dict(event.data)) for event in observed],
+            [(1, {"phase": "inspect", "summary": "latency"})],
+        )
+        self.assertNotIn(
+            "tool.progress", [event.type for event in result.events]
+        )
+
     async def asyncSetUp(self) -> None:
         self.store = SQLiteStore()
         self.addCleanup(self.store.close)

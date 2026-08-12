@@ -61,6 +61,24 @@ the same model boundary. `await harness.wait_for_idle()` waits until admitted
 drives have unwound; it does not claim that a remote provider or synchronous
 tool was forcibly stopped.
 
+Long-running Tools can opt into bounded live progress without expanding the
+durable event contract:
+
+```python
+from sasori_core import ToolExecutionContext
+
+
+def download(url: str, *, tool_context: ToolExecutionContext) -> str:
+    tool_context.report_progress({"phase": "downloading", "percent": 50})
+    return "artifact.zip"
+```
+
+Pass `tool_progress_sink=` to the Harness to observe deeply immutable
+`ToolProgressEvent` values. Progress is transient, bounded, omitted from model
+schemas and Store history, and fenced after Tool return, exception, timeout, or
+cancellation. It never changes approval, fingerprints, idempotency, recovery,
+or the Tool result.
+
 For SQLite durability, providers, CLI, HTTP, first-party tools, Workflow,
 Memory, applications and the Workbench, install the `sasori` bundle after its
 next split-package prerelease is published.
@@ -73,5 +91,6 @@ See the repository
 [boundary decision](https://github.com/syusama/sasori/blob/main/docs/ADR-0018-SASORI-CORE-PACKAGE-BOUNDARY.md)
 ,
 [Loop/stream/settlement decision](https://github.com/syusama/sasori/blob/main/docs/ADR-0019-CORE-LOOP-STREAM-SETTLEMENT.md),
+[bounded Tool progress decision](https://github.com/syusama/sasori/blob/main/docs/ADR-0020-BOUNDED-TRANSIENT-TOOL-PROGRESS.md),
 and
 [Pi/Proma benchmark](https://github.com/syusama/sasori/blob/main/docs/BENCHMARK-PI-PROMA.md).

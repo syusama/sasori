@@ -26,6 +26,7 @@ from sasori import (  # noqa: E402
     ModelCallError,
     Tool,
     ToolCall,
+    ToolExecutionContext,
     event_projection,
 )
 from sasori._provider_common import (  # noqa: E402
@@ -424,6 +425,23 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                     },
                 },
                 "required": ["term", "limit", "tags", "mode", "weights"],
+                "additionalProperties": False,
+            },
+        )
+
+        def progress_query(
+            term: str, *, tool_context: ToolExecutionContext
+        ) -> str:
+            return term
+
+        self.assertEqual(
+            compile_tool_schema(
+                Tool("progress-query", progress_query, effect="read_only")
+            ),
+            {
+                "type": "object",
+                "properties": {"term": {"type": "string"}},
+                "required": ["term"],
                 "additionalProperties": False,
             },
         )

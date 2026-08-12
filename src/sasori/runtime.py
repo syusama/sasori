@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from sasori_core.contracts import Event, Model, ModelStreamEvent, SkillSpec, Tool
+from sasori_core.contracts import (
+    Event,
+    Model,
+    ModelStreamEvent,
+    SkillSpec,
+    Tool,
+    ToolProgressEvent,
+)
 from sasori_core.runtime import (
     ApprovalConflict,
     ApprovalMismatch,
@@ -38,6 +45,7 @@ class Harness(CoreHarness):
         tool_timeout: float = 30.0,
         event_sink: Callable[[Event], None] | None = None,
         model_stream_sink: Callable[[ModelStreamEvent], None] | None = None,
+        tool_progress_sink: Callable[[ToolProgressEvent], None] | None = None,
         store: SQLiteStore | None = None,
         fault_injector: Callable[[str], None] | None = None,
         skills: Sequence[SkillSpec] = (),
@@ -50,6 +58,7 @@ class Harness(CoreHarness):
             tool_timeout=tool_timeout,
             event_sink=event_sink,
             model_stream_sink=model_stream_sink,
+            tool_progress_sink=tool_progress_sink,
             store=store,
             fault_injector=fault_injector,
             skills=skills,

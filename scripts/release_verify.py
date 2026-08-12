@@ -23,8 +23,8 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 
-VERIFIER_VERSION = "15"
-SOURCE_TREE_ALGORITHM = "sasori-source-tree-v12"
+VERIFIER_VERSION = "16"
+SOURCE_TREE_ALGORITHM = "sasori-source-tree-v13"
 MAX_WHEEL_BYTES = 250 * 1024
 MAX_MEMBER_BYTES = 8 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -66,6 +66,7 @@ RELEASE_DOCS = (
     "docs/ADR-0017-DURABLE-SAVED-WORKFLOW-CATALOG.md",
     "docs/ADR-0018-SASORI-CORE-PACKAGE-BOUNDARY.md",
     "docs/ADR-0019-CORE-LOOP-STREAM-SETTLEMENT.md",
+    "docs/ADR-0020-BOUNDED-TRANSIENT-TOOL-PROGRESS.md",
     "docs/ARTIFACTS.md",
     "docs/BENCHMARK-LEAGENT-TOFU.md",
     "docs/BENCHMARK-PI-PROMA.md",

@@ -15,6 +15,7 @@ from sasori import (
     RunResult,
     Tool,
     ToolCall,
+    ToolExecutionContext,
     is_valid_app_id,
     run_projection,
     tool_schema_sha256,
@@ -163,6 +164,12 @@ def _validate_base_tools(spec: WorkflowSpec, tools: Sequence[Tool]) -> None:
             ) from None
         parameters: set[str] = set()
         for parameter in signature.parameters.values():
+            if parameter.name == "tool_context":
+                if parameter.kind is not inspect.Parameter.KEYWORD_ONLY:
+                    raise WorkflowCompileError(
+                        f"workflow step {step.step_id} tool_context is reserved"
+                    )
+                continue
             if parameter.name == "idempotency_key":
                 if (
                     tool.effect != "idempotent"
@@ -187,6 +194,8 @@ def _validate_base_tools(spec: WorkflowSpec, tools: Sequence[Tool]) -> None:
         probe = {name: object() for name in step.arguments}
         if tool.effect == "idempotent":
             probe["idempotency_key"] = "workflow-compile-probe"
+        if "tool_context" in signature.parameters:
+            probe["tool_context"] = object()
         try:
             signature.bind(**probe)
         except TypeError:
@@ -195,10 +204,17 @@ def _validate_base_tools(spec: WorkflowSpec, tools: Sequence[Tool]) -> None:
             ) from None
 
 
-async def _invoke_underlying(tool: Tool, payload: Mapping[str, object], key: str | None):
+async def _invoke_underlying(
+    tool: Tool,
+    payload: Mapping[str, object],
+    key: str | None,
+    context: ToolExecutionContext | None = None,
+):
     arguments = dict(payload)
     if tool.effect == "idempotent":
         arguments["idempotency_key"] = key
+    if "tool_context" in inspect.signature(tool.handler).parameters:
+        arguments["tool_context"] = context
     bound = inspect.signature(tool.handler).bind(**arguments)
     if inspect.iscoroutinefunction(tool.handler):
         return await tool.handler(*bound.args, **bound.kwargs)
@@ -329,6 +345,8 @@ def _make_wrapper(spec: WorkflowSpec, step: ToolStep, tool: Tool) -> Tool:
         definition_sha256: str,
         step_id: str,
         payload_json: str,
+        *,
+        tool_context: ToolExecutionContext,
     ) -> object:
         payload = _parse_payload(
             spec,
@@ -337,7 +355,7 @@ def _make_wrapper(spec: WorkflowSpec, step: ToolStep, tool: Tool) -> Tool:
             step_id=step_id,
             payload_json=payload_json,
         )
-        value = await _invoke_underlying(tool, payload, None)
+        value = await _invoke_underlying(tool, payload, None, tool_context)
         return _result_envelope(spec, step, value)
 
     async def invoke_idempotent(
@@ -346,6 +364,7 @@ def _make_wrapper(spec: WorkflowSpec, step: ToolStep, tool: Tool) -> Tool:
         payload_json: str,
         *,
         idempotency_key: str,
+        tool_context: ToolExecutionContext,
     ) -> object:
         payload = _parse_payload(
             spec,
@@ -359,7 +378,7 @@ def _make_wrapper(spec: WorkflowSpec, step: ToolStep, tool: Tool) -> Tool:
             raise WorkflowIntegrityError(
                 f"workflow step {step.step_id} persisted idempotency key changed"
             )
-        value = await _invoke_underlying(tool, payload, base_key)
+        value = await _invoke_underlying(tool, payload, base_key, tool_context)
         return _result_envelope(spec, step, value)
 
     def idempotency(arguments: Mapping[str, object]) -> str:
@@ -642,6 +661,8 @@ class WorkflowHarness(Harness):
             model_timeout=base.model_timeout,
             tool_timeout=base.tool_timeout,
             event_sink=base.event_sink,
+            model_stream_sink=base.model_stream_sink,
+            tool_progress_sink=base.tool_progress_sink,
             store=base.store,
             fault_injector=base.fault_injector,
             skills=(),

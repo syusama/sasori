@@ -122,9 +122,9 @@ def png_dimensions(payload: bytes) -> tuple[int, int]:
 
 class ReleaseVerificationTests(unittest.TestCase):
     def test_release_contract_version_tracks_every_decision_record(self):
-        self.assertEqual(release_verify.VERIFIER_VERSION, "15")
+        self.assertEqual(release_verify.VERIFIER_VERSION, "16")
         self.assertEqual(
-            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v12"
+            release_verify.SOURCE_TREE_ALGORITHM, "sasori-source-tree-v13"
         )
         expected = {
             path.relative_to(ROOT).as_posix()

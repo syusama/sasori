@@ -5,7 +5,14 @@ import importlib.metadata
 import sys
 from pathlib import Path
 
-from sasori_core import Harness, Message, ModelReply, Tool, ToolCall
+from sasori_core import (
+    Harness,
+    Message,
+    ModelReply,
+    Tool,
+    ToolCall,
+    ToolExecutionContext,
+)
 
 
 class _Model:
@@ -22,12 +29,30 @@ class _Model:
 
 
 async def _run() -> None:
+    progress = []
+
+    def double(
+        value: int, *, tool_context: ToolExecutionContext
+    ) -> int:
+        if not tool_context.report_progress({"phase": "double", "value": value}):
+            raise RuntimeError("installed core progress was not accepted")
+        return value * 2
+
     with Harness(
-        _Model(), (Tool("double", lambda value: value * 2, effect="read_only"),)
+        _Model(),
+        (Tool("double", double, effect="read_only"),),
+        tool_progress_sink=progress.append,
     ) as harness:
         result = await harness.run((Message("user", "double six"),), run_id="core-smoke")
     if result.final_message.content != "core-ok":
         raise RuntimeError("installed core final result is invalid")
+    if (
+        len(progress) != 1
+        or progress[0].sequence != 1
+        or dict(progress[0].data) != {"phase": "double", "value": 6}
+        or any(event.type == "tool.progress" for event in result.events)
+    ):
+        raise RuntimeError("installed core progress contract is invalid")
 
 
 def main() -> int:

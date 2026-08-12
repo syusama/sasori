@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import json
 import math
+import threading
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -12,6 +13,9 @@ from dataclasses import dataclass, replace
 from .contracts import (
     ApprovalRequest,
     Event,
+    MAX_TOOL_PROGRESS_EVENT_BYTES,
+    MAX_TOOL_PROGRESS_EVENTS,
+    MAX_TOOL_PROGRESS_TOTAL_BYTES,
     Message,
     Model,
     ModelReply,
@@ -20,6 +24,8 @@ from .contracts import (
     SkillSpec,
     Tool,
     ToolCall,
+    ToolExecutionContext,
+    ToolProgressEvent,
     _freeze_event_value,
     is_valid_app_id,
     is_valid_tool_call_id,
@@ -103,6 +109,7 @@ class _InvalidToolCall:
 
 
 _IDEMPOTENCY_KEY_ARGUMENT = "idempotency_key"
+_TOOL_CONTEXT_ARGUMENT = "tool_context"
 _MAX_MODEL_STREAM_EVENTS = 4096
 _MAX_MODEL_STREAM_BYTES = 4 * 1024 * 1024
 _MAX_TOOL_ARGUMENT_BYTES = 1024 * 1024
@@ -115,6 +122,152 @@ def _discard_outcome(task: asyncio.Future[object]) -> None:
         task.result()
     except BaseException:
         pass
+
+
+async def _observe_tool_progress(
+    previous: asyncio.Task[None] | None,
+    sink: Callable[[ToolProgressEvent], None],
+    event: ToolProgressEvent,
+) -> None:
+    if previous is not None:
+        try:
+            await previous
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+        except Exception:
+            pass
+    try:
+        await asyncio.to_thread(sink, event)
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            raise
+        pass
+    except Exception:
+        pass
+
+
+class _ToolProgressReporter:
+    """Thread-safe, bounded bridge from one live Tool to its event-loop observer."""
+
+    __slots__ = (
+        "_accepted_bytes",
+        "_accepting",
+        "_call_id",
+        "_loop",
+        "_ordinal",
+        "_pending",
+        "_run_id",
+        "_sequence",
+        "_sink",
+        "_step",
+        "_tail",
+        "_tool_name",
+        "_lock",
+    )
+
+    def __init__(
+        self,
+        *,
+        loop: asyncio.AbstractEventLoop,
+        sink: Callable[[ToolProgressEvent], None] | None,
+        run_id: str,
+        step: int,
+        ordinal: int,
+        call_id: str,
+        tool_name: str,
+    ) -> None:
+        self._loop = loop
+        self._sink = sink
+        self._run_id = run_id
+        self._step = step
+        self._ordinal = ordinal
+        self._call_id = call_id
+        self._tool_name = tool_name
+        self._sequence = 0
+        self._accepted_bytes = 0
+        self._accepting = sink is not None
+        self._pending: set[asyncio.Task[None]] = set()
+        self._tail: asyncio.Task[None] | None = None
+        self._lock = threading.Lock()
+
+    def report(self, data: Mapping[str, object]) -> bool:
+        try:
+            if not _bounded_json_mapping(data):
+                return False
+            plain = _json_copy(data)
+            assert isinstance(plain, dict)
+            encoded = json.dumps(
+                plain,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8", "strict")
+            size = len(encoded)
+        except (TypeError, ValueError, UnicodeError, RecursionError):
+            return False
+        if size > MAX_TOOL_PROGRESS_EVENT_BYTES:
+            return False
+
+        with self._lock:
+            if (
+                not self._accepting
+                or self._sequence >= MAX_TOOL_PROGRESS_EVENTS
+                or self._accepted_bytes + size > MAX_TOOL_PROGRESS_TOTAL_BYTES
+            ):
+                return False
+            self._sequence += 1
+            self._accepted_bytes += size
+            event = ToolProgressEvent(
+                self._run_id,
+                self._step,
+                self._ordinal,
+                self._call_id,
+                self._tool_name,
+                self._sequence,
+                plain,
+            )
+            try:
+                self._loop.call_soon_threadsafe(self._schedule, event)
+            except RuntimeError:
+                self._accepting = False
+                return False
+        return True
+
+    def _schedule(self, event: ToolProgressEvent) -> None:
+        with self._lock:
+            if self._sink is None:
+                return
+            task = self._loop.create_task(
+                _observe_tool_progress(self._tail, self._sink, event)
+            )
+            self._tail = task
+            self._pending.add(task)
+            task.add_done_callback(self._pending.discard)
+
+    def close(self) -> None:
+        with self._lock:
+            self._accepting = False
+
+    def abandon(self) -> None:
+        with self._lock:
+            self._accepting = False
+            self._sink = None
+            pending = tuple(self._pending)
+        for task in pending:
+            task.cancel()
+
+    async def drain(self) -> None:
+        await asyncio.sleep(0)
+        while True:
+            with self._lock:
+                pending = tuple(self._pending)
+            if not pending:
+                return
+            await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def _within(awaitable: Awaitable[object], timeout: float) -> object:
@@ -378,6 +531,7 @@ class Harness:
         tool_timeout: float = 30.0,
         event_sink: Callable[[Event], None] | None = None,
         model_stream_sink: Callable[[ModelStreamEvent], None] | None = None,
+        tool_progress_sink: Callable[[ToolProgressEvent], None] | None = None,
         store: RunStore | None = None,
         fault_injector: Callable[[str], None] | None = None,
         skills: Sequence[SkillSpec] = (),
@@ -398,6 +552,7 @@ class Harness:
         self.tool_timeout = tool_timeout
         self.event_sink = event_sink
         self.model_stream_sink = model_stream_sink
+        self.tool_progress_sink = tool_progress_sink
         self.fault_injector = fault_injector
         self._active_runs: set[str] = set()
         self._idle_waiters: set[asyncio.Future[None]] = set()
@@ -423,14 +578,34 @@ class Harness:
                 )
             if tool.name in self._tools:
                 raise ValueError(f"duplicate tool name: {tool.name}")
+            try:
+                handler_signature = inspect.signature(tool.handler)
+            except (TypeError, ValueError):
+                handler_signature = None
             if tool.effect == "idempotent":
-                parameter = inspect.signature(tool.handler).parameters.get(
-                    _IDEMPOTENCY_KEY_ARGUMENT
+                parameter = (
+                    None
+                    if handler_signature is None
+                    else handler_signature.parameters.get(
+                        _IDEMPOTENCY_KEY_ARGUMENT
+                    )
                 )
                 if parameter is None or parameter.kind is not inspect.Parameter.KEYWORD_ONLY:
                     raise ValueError(
                         "idempotent tool handlers require keyword-only idempotency_key"
                     )
+            context_parameter = (
+                None
+                if handler_signature is None
+                else handler_signature.parameters.get(_TOOL_CONTEXT_ARGUMENT)
+            )
+            if (
+                context_parameter is not None
+                and context_parameter.kind is not inspect.Parameter.KEYWORD_ONLY
+            ):
+                raise ValueError(
+                    "tool_context is reserved for keyword-only runtime injection"
+                )
             self._tools[tool.name] = tool
         skill_ids: set[str] = set()
         for skill in self.skills:
@@ -980,9 +1155,24 @@ class Harness:
         assert isinstance(invoke_arguments, dict)
         if tool.effect == "idempotent":
             invoke_arguments[_IDEMPOTENCY_KEY_ARGUMENT] = call.idempotency_key
+        progress = _ToolProgressReporter(
+            loop=asyncio.get_running_loop(),
+            sink=self.tool_progress_sink,
+            run_id=state.run_id,
+            step=state.step,
+            ordinal=call.ordinal,
+            call_id=call.call_id or "",
+            tool_name=call.name or "",
+        )
         try:
-            bound = inspect.signature(tool.handler).bind(**invoke_arguments)
+            signature = inspect.signature(tool.handler)
+            if _TOOL_CONTEXT_ARGUMENT in signature.parameters:
+                invoke_arguments[_TOOL_CONTEXT_ARGUMENT] = ToolExecutionContext(
+                    progress.report
+                )
+            bound = signature.bind(**invoke_arguments)
         except (TypeError, ValueError) as error:
+            progress.close()
             return self._record_tool_error(
                 state, call, "invalid_arguments", f"invalid tool arguments: {error}"
             )
@@ -1060,6 +1250,8 @@ class Harness:
                 _invoke(tool.handler, bound.args, bound.kwargs), self.tool_timeout
             )
         except _DeadlineExceeded:
+            progress.close()
+            await progress.drain()
             if tool.effect == "read_only":
                 return self._record_tool_error(
                     state,
@@ -1074,6 +1266,7 @@ class Harness:
                 f"tool outcome is unknown after {self.tool_timeout:g} seconds",
             )
         except asyncio.CancelledError:
+            progress.abandon()
             if tool.effect != "read_only":
                 failed = self._event(
                     state,
@@ -1099,6 +1292,8 @@ class Harness:
                 )
             raise
         except Exception as error:
+            progress.close()
+            await progress.drain()
             if tool.effect == "read_only":
                 return self._record_tool_error(
                     state,
@@ -1113,6 +1308,8 @@ class Harness:
                 f"tool outcome is unknown: {type(error).__name__}: {error}",
             )
 
+        progress.close()
+        await progress.drain()
         self._fault("after_tool_return")
         content = _render(output)
         result = Message(
@@ -1157,6 +1354,11 @@ class Harness:
             return (
                 "reserved_argument",
                 "model may not supply the reserved idempotency_key argument",
+            )
+        if _TOOL_CONTEXT_ARGUMENT in call.arguments:
+            return (
+                "reserved_argument",
+                "model may not supply the reserved tool_context argument",
             )
         if call.name not in self._tools:
             return "unknown_tool", f"unknown tool: {call.name}"
