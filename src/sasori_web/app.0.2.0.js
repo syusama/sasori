@@ -281,6 +281,12 @@ renderSurface = function renderSurfaceWithCapabilityCenter(app) {
   applyCapabilityFilter();
 };
 
+// A fast local catalog response can finish the base render before this
+// enhancement layer is installed. Re-project the already selected app so the
+// visible Capability Center never depends on response timing.
+const initiallySelectedApplication = selectedApplication();
+if (initiallySelectedApplication) renderSurface(initiallySelectedApplication);
+
 const capabilityObserver = new MutationObserver(() => applyCapabilityFilter());
 capabilityObserver.observe($("#surface-content"), { childList: true });
 

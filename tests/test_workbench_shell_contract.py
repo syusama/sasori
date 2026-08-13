@@ -96,6 +96,11 @@ class WorkbenchShellContractTests(unittest.TestCase):
         self.assertNotIn("/mcp/i", self.shell_script)
         self.assertIn("没有投影独立 MCP transport", self.shell_script)
         self.assertIn("不会把普通插件冒充为 MCP", self.shell_script)
+        self.assertIn(
+            "if (initiallySelectedApplication) "
+            "renderSurface(initiallySelectedApplication)",
+            self.shell_script,
+        )
         self.assertNotIn("fetch(", self.shell_script)
         self.assertNotIn("api(", self.shell_script)
         self.assertNotIn("innerHTML", self.shell_script)
