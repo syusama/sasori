@@ -29,6 +29,7 @@ from sasori_core.testing import (  # noqa: E402
     ScriptedModel,
     ScriptedStreamingModel,
 )
+from sasori_core.runtime import _ToolProgressReporter  # noqa: E402
 
 
 def _stream(reply: ModelReply, *deltas: ModelStreamEvent):
@@ -40,6 +41,24 @@ def _stream(reply: ModelReply, *deltas: ModelStreamEvent):
 
 
 class CoreLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tool_progress_drain_prunes_completed_tasks_itself(self):
+        reporter = _ToolProgressReporter(
+            loop=asyncio.get_running_loop(),
+            sink=None,
+            run_id="completed-progress-drain",
+            step=1,
+            ordinal=0,
+            call_id="progress-1",
+            tool_name="work",
+        )
+        completed = asyncio.get_running_loop().create_future()
+        completed.set_result(None)
+        reporter._pending.add(completed)  # type: ignore[arg-type]
+
+        await asyncio.wait_for(reporter.drain(), 0.1)
+
+        self.assertEqual(reporter._pending, set())
+
     async def test_async_tool_progress_is_ordered_immutable_and_transient(self):
         observed: list[ToolProgressEvent] = []
         mutation_errors: list[type[BaseException]] = []

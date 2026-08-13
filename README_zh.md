@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11 至 3.13">
   <img src="https://img.shields.io/badge/sasori--core-运行时依赖%200-2F6F5E" alt="核心零运行时依赖">
-  <img src="https://img.shields.io/badge/测试-546%20项-B83A2D" alt="546 项确定性测试">
+  <img src="https://img.shields.io/badge/测试-547%20项-B83A2D" alt="547 项确定性测试">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -214,7 +214,7 @@ AGPL 源码或资产。
 
 当前运行时快照已经通过：
 
-- `546` 项确定性 `unittest`；Windows 缺少相应系统权限时跳过 `5` 个 symlink 用例；
+- `547` 项确定性 `unittest`；Windows 缺少相应系统权限时跳过 `5` 个 symlink 用例；
 - `31 / 31` 项真实 Chrome Workbench 验收，覆盖 1600×1000、390×844、
   360×800、reduced-motion 和窄屏结构化结果；
 - 真实 Server 浏览器旅程，覆盖审批、显式继续、严格两次审计副作用、冷历史、

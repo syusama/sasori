@@ -13,7 +13,7 @@
   <a href="https://github.com/syusama/sasori/actions/workflows/ci.yml"><img src="https://github.com/syusama/sasori/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.11부터 3.13">
   <img src="https://img.shields.io/badge/sasori--core-runtime%20dependencies%200-2F6F5E" alt="Core 런타임 의존성 0">
-  <img src="https://img.shields.io/badge/tests-546%20deterministic-B83A2D" alt="결정론적 테스트 546개">
+  <img src="https://img.shields.io/badge/tests-547%20deterministic-B83A2D" alt="결정론적 테스트 547개">
   <a href="https://github.com/syusama/sasori/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-242424" alt="MIT License"></a>
 </p>
 
@@ -226,7 +226,7 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 
 현재 runtime snapshot은 다음을 통과했습니다.
 
-- `546`개의 deterministic `unittest`. Windows에서 필요한 권한이 없으면 `5`개의
+- `547`개의 deterministic `unittest`. Windows에서 필요한 권한이 없으면 `5`개의
   symlink case를 skip합니다.
 - 1600×1000, 390×844, 360×800, reduced-motion, narrow structured result를 포함한
   `31 / 31`개의 real Chrome Workbench acceptance.

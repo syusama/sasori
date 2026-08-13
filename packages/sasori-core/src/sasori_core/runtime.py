@@ -268,6 +268,13 @@ class _ToolProgressReporter:
             if not pending:
                 return
             await asyncio.gather(*pending, return_exceptions=True)
+            # Do not rely only on each Task's done callback to prune the set.
+            # Awaiting an already-complete gather may return immediately and
+            # starve that callback on some event-loop/Python combinations.
+            with self._lock:
+                self._pending.difference_update(
+                    task for task in pending if task.done()
+                )
 
 
 async def _within(awaitable: Awaitable[object], timeout: float) -> object:
