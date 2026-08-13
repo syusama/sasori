@@ -41,21 +41,33 @@ engineered work of art—modular, expressive, dependable, and built to endure.
 
 ## Why Sasori
 
-Agent frameworks often begin with an elegant loop and become difficult to
-reason about once providers, tools, recovery, APIs, and product surfaces are
-added. Sasori keeps those responsibilities explicit:
+> **The short answer: a small core, one runtime path, and execution you can trust.**
 
-- **Small by default.** `sasori-core` has zero runtime dependencies and owns
-  only contracts, one agent loop, one Harness, public event projection, and
-  deterministic test helpers.
-- **One runtime path.** Python, CLI, HTTP/SSE, Workflow, and Workbench adapters
-  use the same Harness and durable event contract.
-- **Effects are reviewable.** Tool calls declare their effect class. Approval,
-  execution, explicit resume, and manual recovery remain separate facts.
-- **Recovery is honest.** Checkpoints recover at step boundaries; they do not
-  pretend arbitrary external side effects are exactly-once.
-- **Product quality is testable.** The Workbench is the real runtime client,
-  not a concept mockup or a second set of business rules.
+Sasori treats models, Tools, Skills, Memory, and Workflows as replaceable
+capabilities around one readable runtime. Use only `sasori-core` for a small
+Python agent, or assemble the full framework without replacing the engine that
+was already tested.
+
+| What matters | The pressure frameworks often face | Sasori's default |
+|---|---|---|
+| **Size** | Every integration expands the central Agent object | A zero-dependency core with a deliberately narrow ownership boundary; product capabilities stay detachable |
+| **Consistency** | Python, server, Workflow, and UI paths slowly acquire different rules | One Harness and one Loop serve every adapter; a fix at the shared boundary benefits every surface |
+| **Tool safety** | Partial or malformed model output reaches real code | Only complete, structurally valid Tool calls can execute; reserved runtime arguments fail closed |
+| **Real-world effects** | A timeout or retry is mistaken for proof that an external operation stopped or failed | Tools declare `read_only`, `idempotent`, or `side_effecting`; approval, explicit resume, and `effect_unknown` recovery remain separate facts |
+| **Live experience** | Streaming progress is persisted or replayed as if it were execution truth | Bounded model and Tool progress is transient; versioned public events and checkpoints remain the durable truth |
+| **Product growth** | A polished UI becomes a second implementation of the Agent | CLI, HTTP/SSE, Workflow, and Workbench consume the same runtime and public projection |
+
+The distinction is simple: many frameworks optimize first for how many things
+an Agent can call; Sasori first establishes whether each call was valid,
+approved, committed, recoverable, and honestly represented. That makes it a
+strong fit for developer agents, operations automation, long-running Tool work,
+and business workflows where files, Git, databases, browsers, or external APIs
+have real consequences.
+
+Sasori does not yet claim the largest integration ecosystem, mature public
+multi-agent orchestration, or a community plugin market. Its current advantage
+is more fundamental: **start light, add only what you need, and keep one
+auditable execution contract as the application grows.**
 
 ## Two distributions, one runtime
 

@@ -189,10 +189,34 @@ class ReleaseVerificationTests(unittest.TestCase):
                 "필요할 때 완전한 프레임워크로 확장합니다."
             ),
         }
+        positioning_markers = {
+            "README.md": (
+                "a small core, one runtime path, and execution you can trust",
+                "Bounded model and Tool progress is transient",
+                "effect_unknown",
+            ),
+            "README_zh.md": (
+                "核心轻巧，运行统一，执行可信",
+                "有边界的模型流和 Tool 进度只负责实时观察",
+                "effect_unknown",
+            ),
+            "README_ja.md": (
+                "小さな Core、一本の実行経路、信頼できる実行",
+                "境界付き Model/Tool progress は transient",
+                "effect_unknown",
+            ),
+            "README_ko.md": (
+                "작은 Core, 하나의 실행 경로, 신뢰할 수 있는 실행",
+                "경계가 있는 Model/Tool progress는 transient",
+                "effect_unknown",
+            ),
+        }
         screenshot_references = {}
         for name, marker in readmes.items():
             text = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn(marker, text)
+            for positioning_marker in positioning_markers[name]:
+                self.assertIn(positioning_marker, text)
             for peer in readmes:
                 if peer != name:
                     self.assertIn(peer, text)

@@ -40,20 +40,32 @@ Agent を工学的な芸術作品として磨くことです。モジュール�
 
 ## なぜ Sasori なのか
 
-Agent framework は、最初はきれいな Loop でも、Provider、Tool、Recovery、API、
-製品 UI を追加すると実行経路が見えにくくなりがちです。Sasori は責務を明示的に
-保ちます。
+> **一言でいえば、小さな Core、一本の実行経路、信頼できる実行です。**
 
-- **既定で小さい。** `sasori-core` は実行時依存ゼロで、contract、単一 Agent
-  Loop、Harness、公開 event projection、決定論的テスト helper だけを所有します。
-- **実行経路は一つ。** Python、CLI、HTTP/SSE、Workflow、Workbench は同じ
-  Harness と durable event contract を使います。
-- **副作用を監査できる。** Tool は effect class を宣言し、approval、execution、
-  explicit resume、manual recovery は別々の事実として記録されます。
-- **Recovery を誇張しない。** Checkpoint は step boundary で復旧しますが、
-  任意の外部副作用を exactly-once とは主張しません。
-- **製品品質をテストできる。** Workbench は実ランタイムの client であり、
-  concept mockup や第二の business logic ではありません。
+Sasori は Model、Tool、Skill、Memory、Workflow を、一つの読みやすい Runtime の
+周りで交換・組み合わせできる能力として扱います。小さな Python Agent なら
+`sasori-core` だけを使い、必要になった時点で、すでにテストされた実行 Engine を
+置き換えることなく完全な Framework へ拡張できます。
+
+| 本当に重要なこと | Agent Framework が直面しやすい課題 | Sasori の既定値 |
+|---|---|---|
+| **サイズ** | Integration を増やすたびに中央の Agent object が肥大化する | 実行時依存ゼロの小さな Core は所有範囲を限定し、製品機能は着脱・交換可能なまま Core 外に置く |
+| **一貫性** | Python、Server、Workflow、UI が少しずつ別の規則を持つ | すべての Adapter が一つの Harness と一つの Loop を共有し、共通境界の修正が全 Surface に反映される |
+| **Tool の安全性** | 途中までの出力や構造不正な Model 出力が実コードに届く | 完全かつ構造的に正しい Tool call だけを実行し、Runtime 予約引数の偽装も fail closed で拒否する |
+| **現実の副作用** | Timeout や Retry を、外部操作が停止・失敗した証拠と誤認する | Tool は `read_only`、`idempotent`、`side_effecting` を宣言し、Approval、明示的 Resume、`effect_unknown` Recovery を別々の事実として扱う |
+| **リアルタイム体験** | Streaming progress を実行事実のように永続化・Replay する | 境界付き Model/Tool progress は transient、versioned public event と Checkpoint だけが durable truth になる |
+| **製品への成長** | 洗練された UI の裏に第二の Agent 実装が生まれる | CLI、HTTP/SSE、Workflow、Workbench は同じ Runtime と public projection を消費する |
+
+違いは単純です。多くの Framework が、Agent が「いくつの機能を呼べるか」を
+先に最適化するのに対し、Sasori は各呼び出しが完全で、正当で、承認済みで、
+Commit され、復旧可能であり、事実どおりに表現されているかを先に確立します。
+そのため、Developer Agent、運用 Automation、長時間 Tool、そして File、Git、
+Database、Browser、外部 API を実際に操作する業務 Workflow に適しています。
+
+Sasori は現時点で、最大の Integration ecosystem、成熟した公開 Multi-Agent
+orchestration、Community plugin market を持つとは主張しません。現在の強みは
+より根本的です。**軽く始め、必要な機能だけを追加し、Application が成長しても
+一つの監査可能な実行 Contract を守り続けます。**
 
 ## 二つの配布物、一つのランタイム
 
