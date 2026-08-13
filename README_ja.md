@@ -1,6 +1,6 @@
 <h1 align="center">Sasori</h1>
 
-<p align="center"><strong>小さな Python Agent ランタイムから始め、必要なときだけ完全なフレームワークへ。</strong></p>
+<p align="center"><strong>精密な実行、自由な構成、持続的な進化のための Python Agent Framework。</strong></p>
 
 <p align="center">
   <a href="https://github.com/syusama/sasori/blob/main/README.md">English</a> ·
@@ -21,22 +21,17 @@
   <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori プロジェクトのメインビジュアル" width="520">
 </p>
 
-Sasori は、Tool を利用する Agent のための Python-first フレームワークです。
-最小構成は、先頭から末尾まで読める依存ゼロの Loop/Harness です。製品に機能が
-必要になったときだけ、同じランタイムに Provider、SQLite、Plugin、Workflow、
-Memory、Artifact、HTTP/SSE、レスポンシブな Workbench を追加できます。UI の
-背後に別の実行エンジンは存在しません。
+Sasori は、成長しても明快さ、制御性、信頼性を失わない Tool 利用型 Agent のための
+Python-first Framework です。中心にある `sasori-core` は、先頭から末尾まで読める
+実行時依存ゼロの Loop/Harness。その周囲に Provider、SQLite、Plugin、Workflow、
+Memory、Artifact、HTTP/SSE、レスポンシブな Workbench がそろい、すべてが同じ
+実行 Contract で動きます。
 
-Sasori という名前には、意図的な設計上の比喩もあります。サソリが多様な傀儡を
-自在かつ精密に操るように、開発者は Model、Tool、Skill、Memory、Workflow を
-柔軟に組み合わせられるべきです。目指すのはキャラクター風の UI ではなく、各
-Agent を工学的な芸術作品として磨くことです。モジュール化され、表現力があり、
-信頼でき、長く使える仕組みを作ります。
-
-> **現在の境界:** `0.1.0.dev1` は、検証済みの single-machine / single-owner
-> prerelease candidate です。公開 multi-tenant control plane、分散 executor、
-> untrusted-code sandbox、公開 plugin market ではありません。パッケージ公開は
-> 一時停止中のため、現時点では checkout からインストールしてください。
+Sasori という名前には、明確な設計思想があります。サソリが多様な傀儡を自在かつ
+精密に操るように、開発者は Model、Tool、Skill、Memory、Workflow を自由に
+組み合わせられます。各機能は着脱可能で、それらを統率する知性は常に正確です。
+Sasori が目指すのはキャラクター風の UI ではなく、一つひとつの Agent を工学的な
+芸術作品として磨き上げること。明快で、表現力があり、監査でき、長く使える設計です。
 
 ## なぜ Sasori なのか
 
@@ -47,25 +42,22 @@ Sasori は Model、Tool、Skill、Memory、Workflow を、一つの読みやす�
 `sasori-core` だけを使い、必要になった時点で、すでにテストされた実行 Engine を
 置き換えることなく完全な Framework へ拡張できます。
 
-| 本当に重要なこと | Agent Framework が直面しやすい課題 | Sasori の既定値 |
+| 設計軸 | Sasori Standard | 開発者が得られるもの |
 |---|---|---|
-| **サイズ** | Integration を増やすたびに中央の Agent object が肥大化する | 実行時依存ゼロの小さな Core は所有範囲を限定し、製品機能は着脱・交換可能なまま Core 外に置く |
-| **一貫性** | Python、Server、Workflow、UI が少しずつ別の規則を持つ | すべての Adapter が一つの Harness と一つの Loop を共有し、共通境界の修正が全 Surface に反映される |
-| **Tool の安全性** | 途中までの出力や構造不正な Model 出力が実コードに届く | 完全かつ構造的に正しい Tool call だけを実行し、Runtime 予約引数の偽装も fail closed で拒否する |
-| **現実の副作用** | Timeout や Retry を、外部操作が停止・失敗した証拠と誤認する | Tool は `read_only`、`idempotent`、`side_effecting` を宣言し、Approval、明示的 Resume、`effect_unknown` Recovery を別々の事実として扱う |
-| **リアルタイム体験** | Streaming progress を実行事実のように永続化・Replay する | 境界付き Model/Tool progress は transient、versioned public event と Checkpoint だけが durable truth になる |
-| **製品への成長** | 洗練された UI の裏に第二の Agent 実装が生まれる | CLI、HTTP/SSE、Workflow、Workbench は同じ Runtime と public projection を消費する |
+| **生まれつき軽量** | 実行時依存ゼロの Core が責務を厳密に限定 | 数秒で始め、全体を理解し、製品に必要な機能だけを装着できる |
+| **一本の実行経路** | Python、CLI、HTTP/SSE、Workflow、Workbench が一つの Harness と Loop を共有 | すべての入口で Event、Approval、Recovery の意味が一致する |
+| **Tool Safety** | 完全かつ構造的に正しい Tool Call だけを実行し、予約引数の偽装は fail closed | 壊れた Model 出力が現実の操作に化けることがない |
+| **Effect Integrity** | Tool は `read_only`、`idempotent`、`side_effecting` を宣言し、Approval、Resume、`effect_unknown` を明示 | Timeout、Retry、Cancellation、Recovery を越えても外部操作を追跡できる |
+| **速さと正確さ** | Model/Tool progress は transient、versioned event と Checkpoint が durable truth | 滑らかな Streaming UX と正確な Audit/Replay を同時に実現 |
+| **製品級の成長** | すべての Adapter が同じ public projection を利用 | 小さな Script から完成度の高い製品まで Engine を移行せずに進化できる |
 
-違いは単純です。多くの Framework が、Agent が「いくつの機能を呼べるか」を
-先に最適化するのに対し、Sasori は各呼び出しが完全で、正当で、承認済みで、
-Commit され、復旧可能であり、事実どおりに表現されているかを先に確立します。
-そのため、Developer Agent、運用 Automation、長時間 Tool、そして File、Git、
-Database、Browser、外部 API を実際に操作する業務 Workflow に適しています。
+Sasori では、機能の豊富さが実行の明快さを損なうことはありません。すべての呼び出しを
+検証し、すべての副作用を分類し、Approval を明示し、永続化された遷移を追跡できます。
+軽快な Developer Tool、長時間動く運用 Agent、File、Git、Database、Browser、外部
+API を扱う本格的な業務 Workflow まで、一つの Runtime で支えます。
 
-Sasori は現時点で、最大の Integration ecosystem、成熟した公開 Multi-Agent
-orchestration、Community plugin market を持つとは主張しません。現在の強みは
-より根本的です。**軽く始め、必要な機能だけを追加し、Application が成長しても
-一つの監査可能な実行 Contract を守り続けます。**
+**一振りのメスから始め、完全な Studio へ。最初の Tool Call から製品完成まで、
+同じ信頼できる Runtime を使い続けます。**
 
 ## 二つの配布物、一つのランタイム
 
@@ -73,7 +65,7 @@ orchestration、Community plugin market を持つとは主張しません。現�
 |---|---|---|
 | Import | `sasori_core` | `sasori` と optional top-level modules |
 | 用途 | canonical single-agent runtime の埋め込み | batteries-included Agent application の構築 |
-| 所有範囲 | Contract、Loop/Harness、versioned projection、`RunStore`、ephemeral store、test helper | 同一バージョンの Core に SQLite、Provider、CLI、HTTP/SSE、Plugin、Workflow、Memory、Artifact、App、Workbench、market scaffolding を追加 |
+| 所有範囲 | Contract、Loop/Harness、versioned projection、`RunStore`、ephemeral store、test helper | 同一バージョンの Core に SQLite、Provider、CLI、HTTP/SSE、Plugin、Workflow、Memory、Artifact、App、Workbench を追加 |
 | 実行時依存 | **0** | `sasori-core==0.1.0.dev1` に厳密依存。first-party 機能は標準ライブラリを優先 |
 | Core の外に置くもの | Provider SDK、永続化、HTTP、RAG、multi-agent、UI、marketplace | 重複 Loop も shadow Harness も持たない |
 
@@ -84,7 +76,7 @@ PyPI distribution: sasori-core       Python import: sasori_core
 PyPI distribution: sasori            Python import: sasori
 ```
 
-現在の candidate は repository からインストールします。
+Repository から直接インストールできます。
 
 ```bash
 # 最小ランタイム
@@ -153,7 +145,7 @@ flowchart LR
 
 実線が `sasori-core` です。点線はすべて交換可能で、Core の外に留まります。
 
-## Workbench は実物です
+## 目に見える精密さ
 
 以下は runtime commit
 [`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2)
@@ -186,14 +178,14 @@ capability projection、strict Workflow preflight、durable Catalog save を通�
   </tr>
 </table>
 
-Proma は information architecture、workspace density、three-pane interaction
-の benchmark です。Sasori の no-build frontend、CSS、copy、logo、screenshot、
-asset は Sasori 自身の contract に対して独立実装されており、Proma の AGPL source
-や asset は再利用していません。
+Workbench は同じ Sasori Runtime の操作面であり、別実装の上に載せた Visual Demo
+ではありません。Live execution、durable history、Approval/Recovery、Workflow
+authoring、Artifact、Capability inspection が、静かで高密度な一つの Workspace に
+統合されています。
 
-## 現在含まれているもの
+## Sasori の完全な Stack
 
-| Surface | この candidate で提供済み |
+| Surface | Built in |
 |---|---|
 | Core | 依存ゼロの contract、Loop/Harness、strict streaming settlement、approval/recovery、`RunStore`、ephemeral storage、stable public projection、deterministic fake |
 | Durability | SQLite revision、event、checkpoint、restart recovery、CAS、single-owner admission |
@@ -201,12 +193,12 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 | Context & Memory | bounded context と、独立した fixed-scope / immutable-revision SQLite Memory extension |
 | Tools & Plugins | Workspace、allowlisted HTTPS、SQLite/FTS5 RAG、local Git、frozen MCP stdio、trusted entry-point discovery、permission disclosure |
 | Workflow | strict static serial definition、zero-execution preflight、immutable saved revision、CAS conflict reconciliation、単一 Harness execution path |
-| Product | Python API、CLI、HTTP/SSE、Incident/Research/Developer app、Artifact、responsive Workbench、market scaffolding |
+| Product | Python API、CLI、HTTP/SSE、Incident/Research/Developer app、Artifact、responsive Workbench |
 
 詳細は [Foundation](docs/FOUNDATION.md)、[HTTP API](docs/HTTP_API.md)、
 [Providers](docs/PROVIDERS.md)、[Workflow](docs/WORKFLOWS.md)、
 [Memory](docs/MEMORY.md)、[Artifacts](docs/ARTIFACTS.md)、
-[Pi/Proma benchmark](docs/BENCHMARK-PI-PROMA.md) を参照してください。
+[Security](SECURITY.md) を参照してください。
 
 ## ランタイム保証
 
@@ -222,9 +214,9 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 - Mutable input は durable argument、approval、retry、他の Store adapter の view
   を書き換えられません。
 
-## 形容詞より先に証拠
+## Core から Container まで検証済み
 
-現在の runtime snapshot は次を通過しています。
+Sasori は Delivery path 全体で継続的に検証されています。
 
 - `547` deterministic `unittest`。Windows で必要な権限がない場合は `5` 件の
   symlink test を skip。
@@ -235,31 +227,21 @@ asset は Sasori 自身の contract に対して独立実装されており、Pr
 - original wheel、rebuilt sdist、exact bundle/core、installed distribution verification。
 - 中国本土 mirror を利用した Docker build と real non-root container workflow。
 
-生成された plan、self-test、きれいな screenshot、upstream README は release authority
-ではありません。実行可能な acceptance evidence が gate です。
+すべての Layer を、開発者が実際に実行、検査、Package、Deploy できる Software として
+確かめています。構想や Promise、演出された Mockup ではありません。
 
-## 比較して学ぶ。コピーはしない
+## 一つの System として設計
 
-- **Pi** — 読みやすい Loop と規律ある Tool/Event ordering。Sasori は依存ゼロの
-  Python Core、実行可能 Harness、strict terminal settlement、明示的 recovery
-  boundary を維持します。
-- **Proma** — product density と workspace discoverability。architecture と interaction
-  だけを学び、AGPL source や asset はコピーしません。
-- **LeAgent / ToFu** — 有用な product breadth と runtime idea。Sasori は effect
-  ambiguity、projection ownership、package boundary、evidence gate をより厳密にします。
+- 数行で Core を Embed し、同じ設計のまま responsive Workspace まで運用できます。
+- Live progress を配信しながら、versioned で durable な source of truth を守ります。
+- Provider、Tool、Skill、Memory、Workflow、Plugin を自由に追加しても Core は軽量です。
+- Approval、Effect classification、Recovery、Audit の意味が Python から HTTP/SSE、
+  Workbench まで一本につながります。
+- Lock された package graph、reproducible source archive、中国本土 mirror 対応の
+  non-root container workflow で出荷できます。
 
-固定 commit、evidence、license boundary は [Pi / Proma](docs/BENCHMARK-PI-PROMA.md)、
-[LeAgent / ToFu](docs/BENCHMARK-LEAGENT-TOFU.md)、
-[third-party notices](THIRD_PARTY_NOTICES.md) に記載しています。
-
-## Roadmap — 未提供
-
-- 署名付き plugin provenance、compatibility policy、governed public market。
-- tenant identity、authorization、quota、durable queue、distributed worker。
-- CPU、memory、filesystem、egress policy を明示した untrusted Tool isolation。
-- effect、cancellation、approval、replay semantics の実証後に DAG/parallel Workflow
-  と multi-agent orchestration。
-- 同じ canonical runtime 上の team workspace と digital employee。
+これが Sasori の強みです。**Micro-framework の優雅さ、完全な Agent Platform の
+奥行き、そしてすべてを貫く一つの精密な Runtime。**
 
 ## 名前の由来と独立性
 
@@ -282,4 +264,4 @@ license を保持し、trusted host code として実行されます。Security 
 golden trace、plugin permission を変更する場合は、decision record と実行可能な
 regression evidence を添付してください。
 
-**小さく始める。製品が必要とする機能だけを加える。重要な動作を常に検証可能にする。**
+**軽く構築し、精密に操り、信頼に値する Agent を届ける。**

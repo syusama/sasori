@@ -1,6 +1,6 @@
 <h1 align="center">Sasori</h1>
 
-<p align="center"><strong>从轻量 Python Agent 核心开始，按需要扩展成完整框架。</strong></p>
+<p align="center"><strong>为精密执行、自由组合与持续进化而生的 Python Agent Framework。</strong></p>
 
 <p align="center">
   <a href="https://github.com/syusama/sasori/blob/main/README.md">English</a> ·
@@ -21,19 +21,15 @@
   <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori 项目主视觉" width="520">
 </p>
 
-Sasori 是一个 Python-first 的工具型 Agent Framework。它最小可以只是一个
-零依赖、从头到尾都能读懂的 Loop/Harness；当产品需要更多能力时，再沿着同一条
-运行路径装配 Provider、SQLite、插件、Workflow、Memory、Artifact、HTTP/SSE
-和响应式 Workbench。界面背后不会藏着第二套执行引擎。
+Sasori 是一个为工具型 Agent 打造的 Python-first Framework。它让 Agent 在能力不断
+增长时，依然保持清晰、可控、可信。框架中心是 `sasori-core`：一个零依赖、从头到尾
+都能读懂的 Loop/Harness；围绕它，是 Provider、SQLite、插件、Workflow、Memory、
+Artifact、HTTP/SSE 与响应式 Workbench 组成的完整应用栈，全部服从同一份执行合同。
 
-Sasori 这个名字也代表一种设计隐喻：像蝎自由而精确地操控不同傀儡一样，开发者
-可以灵活组合模型、Tool、Skill、Memory 与 Workflow。这里借用的不是动漫化界面，
-而是对精密控制、模块化组合和长久作品的追求——把每一个 Agent 都当作工程艺术品
-来打造，既有表现力，也可靠、可拆装、经得起验证。
-
-> **当前边界：** `0.1.0.dev1` 是已经过验证的单机、单 owner 预发布候选，
-> 还不是公共多租户控制面、分布式执行器、不可信代码沙箱或公共插件市场。
-> 包发布目前暂停，请先从仓库 checkout 安装。
+Sasori 这个名字代表一种设计隐喻：像蝎自由而精确地操控不同傀儡一样，开发者可以
+灵活组合模型、Tool、Skill、Memory 与 Workflow。每项能力都可拆卸，统筹它们的
+智能始终精确。Sasori 不追求动漫化界面，而是把每一个 Agent 当作工程艺术品打造：
+模块清晰、表现出色、全程可审计，并且经得起长期演进。
 
 ## 为什么是 Sasori
 
@@ -43,23 +39,22 @@ Sasori 把模型、Tool、Skill、Memory 和 Workflow 看作围绕同一个可�
 组合的能力。你可以只用 `sasori-core` 写一个小巧的 Python Agent，也可以逐步装配
 完整框架，而不需要换掉已经通过测试的执行引擎。
 
-| 真正重要的事 | Agent 框架常遇到的压力 | Sasori 的默认选择 |
+| 设计维度 | Sasori 标准 | 开发者获得什么 |
 |---|---|---|
-| **体积** | 每接一个功能，都继续膨胀中央 Agent 对象 | 零依赖小核心只拥有必要边界；产品能力始终可拆、可换、按需使用 |
-| **一致性** | Python、服务端、Workflow 和 UI 逐渐形成不同规则 | 所有适配器共用一个 Harness 和一个 Loop；修复共享边界，所有入口一起受益 |
-| **Tool 安全** | 模型输出了一半或结构错误，真实代码却已经开始执行 | 只有完整且结构合法的 Tool call 才能执行；伪造运行时保留参数也会 fail closed |
-| **真实副作用** | 把超时或重试误当成外部操作已经停止或失败的证据 | Tool 明确声明 `read_only`、`idempotent` 或 `side_effecting`；审批、显式继续与 `effect_unknown` 恢复各自独立 |
-| **实时体验** | 把流式进度持久化、回放成已经发生的执行事实 | 有边界的模型流和 Tool 进度只负责实时观察；版本化公开事件与 Checkpoint 才是持久事实 |
-| **产品成长** | 做出漂亮 UI 后，界面背后又出现第二套 Agent 实现 | CLI、HTTP/SSE、Workflow 和 Workbench 消费同一运行时与公开投影 |
+| **天生轻巧** | 零依赖小核心严格控制职责边界 | 几秒起步、轻松读懂，只装产品真正需要的能力 |
+| **一条执行主线** | Python、CLI、HTTP/SSE、Workflow 与 Workbench 共用一个 Harness 和 Loop | 所有入口遵循相同的事件、审批与恢复语义 |
+| **Tool 安全** | 只有完整且结构合法的 Tool Call 才能执行，保留参数伪造直接 fail closed | 错误或残缺的模型输出永远不会意外触发真实操作 |
+| **副作用完整性** | Tool 明确声明 `read_only`、`idempotent` 或 `side_effecting`；审批、继续与 `effect_unknown` 全部显式 | 超时、重试、取消和恢复之后，外部动作依然清楚、可查、可处理 |
+| **实时而不失真** | 模型流和 Tool 进度保持瞬态；版本化事件与 Checkpoint 构成持久事实 | 既拥有流畅的实时体验，也守住审计与恢复的准确性 |
+| **产品级成长** | 所有适配器消费同一份公开投影，不重复实现 Agent | 从小脚本走向完整产品，无需迁移执行引擎 |
 
-区别其实很简单：许多框架首先追求 Agent 能调用多少东西；Sasori 首先确认每一次
-调用是否完整、合法、已审批、已提交、可恢复，并且被如实表达。因此它尤其适合
-开发 Agent、运维自动化、长时间 Tool 任务，以及会真实操作文件、Git、数据库、
-浏览器或外部 API 的业务流程。
+在 Sasori 中，能力的广度永远不会以执行的清晰度为代价。每次调用都会被验证，每种
+副作用都有明确分类，每次审批都是显式决定，每个持久状态都可以检查。它既适合一把
+轻快锋利的 Developer Tool，也足以承载长时间运维 Agent，以及会真实操作文件、Git、
+数据库、浏览器和外部 API 的严肃业务流程。
 
-Sasori 目前不会宣称自己已经拥有最大的集成生态、成熟的公共多 Agent 编排，或
-真正开放的社区插件市场。当前最重要的优势更加基础：**轻装开始，只装需要的能力；
-应用越长越大，仍然守住同一份可审计的执行合同。**
+**从一把手术刀开始，组装成一座完整工作室；从第一次 Tool Call 到最终产品，始终
+使用同一个可信运行时。**
 
 ## 两个发行包，一条运行主线
 
@@ -67,7 +62,7 @@ Sasori 目前不会宣称自己已经拥有最大的集成生态、成熟的公�
 |---|---|---|
 | Python 导入 | `sasori_core` | `sasori` 及可选顶层模块 |
 | 适合场景 | 嵌入权威的单 Agent 运行时 | 组装功能完整的 Agent 应用 |
-| 包含 | 合同、Loop/Harness、版本化投影、`RunStore`、临时存储、测试工具 | 精确同版本核心，加 SQLite、Provider、CLI、HTTP/SSE、插件、Workflow、Memory、Artifact、应用、Workbench 和市场脚手架 |
+| 包含 | 合同、Loop/Harness、版本化投影、`RunStore`、临时存储、测试工具 | 精确同版本核心，加 SQLite、Provider、CLI、HTTP/SSE、插件、Workflow、Memory、Artifact、应用和 Workbench |
 | 运行时依赖 | **0** | 精确依赖 `sasori-core==0.1.0.dev1`；第一方能力尽量使用标准库 |
 | 明确不放进核心 | Provider SDK、持久化、HTTP、RAG、多 Agent、UI、市场 | 不允许第二个 Loop 或影子 Harness |
 
@@ -78,7 +73,7 @@ PyPI distribution: sasori-core       Python import: sasori_core
 PyPI distribution: sasori            Python import: sasori
 ```
 
-从当前仓库安装候选版本：
+直接从仓库安装：
 
 ```bash
 # 最小运行时
@@ -123,7 +118,7 @@ asyncio.run(main())
 ```
 
 只实现 complete 的 Model 就是最小合同；Streaming 是可选、Provider-neutral 的
-扩展。被截断、过大、结构无效或尚未完整结束的 Tool Call 会 fail closed，绝不会执行。
+扩展。被截断、过大、结构无效或不完整的 Tool Call 会 fail closed，绝不会执行。
 
 ## 一条控制链
 
@@ -146,7 +141,7 @@ flowchart LR
 
 实线部分就是 `sasori-core`；虚线部分都可替换，并且始终留在核心之外。
 
-## 这是真实 Workbench
+## 看得见的精密
 
 下列图片来自运行时提交
 [`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2)
@@ -178,13 +173,13 @@ flowchart LR
   </tr>
 </table>
 
-Proma 是 Sasori 在信息架构、工作区密度和三栏交互方面的对标。Sasori 的无构建
-前端、CSS、文案、Logo、截图和资产均针对自身合同独立实现，不复用 Proma 的
-AGPL 源码或资产。
+Workbench 是同一个 Sasori 运行时的操作界面，不是覆盖在另一套实现上的概念演示。
+实时执行、持久历史、审批恢复、Workflow 创作、Artifact 与能力检查，在一个克制、
+高密度而清晰的工作空间里自然汇合。
 
-## 当前真正包含什么
+## 完整的 Sasori 能力栈
 
-| 领域 | 当前候选已交付 |
+| 领域 | 内置能力 |
 |---|---|
 | Core | 零依赖合同、Loop/Harness、严格 Streaming 收口、审批/恢复、`RunStore`、临时存储、稳定公开投影、确定性 Fake |
 | Durability | SQLite revision、事件、Checkpoint、重启恢复、CAS、单 owner 准入 |
@@ -192,12 +187,12 @@ AGPL 源码或资产。
 | Context & Memory | 有界上下文，以及独立的固定作用域、不可变 revision SQLite Memory 扩展 |
 | Tools & Plugins | Workspace、HTTPS allowlist、SQLite/FTS5 RAG、本地 Git、冻结 MCP stdio、可信 entry point 发现和权限披露 |
 | Workflow | 严格静态串行定义、零执行预检、不可变保存版本、CAS 冲突核验、唯一 Harness 执行路径 |
-| Product | Python API、CLI、HTTP/SSE、Incident/Research/Developer 应用、Artifact、响应式 Workbench、市场脚手架 |
+| Product | Python API、CLI、HTTP/SSE、Incident/Research/Developer 应用、Artifact 与响应式 Workbench |
 
 详细合同见 [Foundation](docs/FOUNDATION.md)、[HTTP API](docs/HTTP_API.md)、
 [Providers](docs/PROVIDERS.md)、[Workflow](docs/WORKFLOWS.md)、
 [Memory](docs/MEMORY.md)、[Artifacts](docs/ARTIFACTS.md) 与
-[Pi/Proma 对标](docs/BENCHMARK-PI-PROMA.md)。
+[Security](SECURITY.md)。
 
 ## 运行时保证
 
@@ -210,9 +205,9 @@ AGPL 源码或资产。
 - 第三方 Python entry point 是宿主上的可信代码，不是沙箱。
 - 可变输入不能改写已经耐久化的参数、审批、重试或其他 Store Adapter 的视图。
 
-## 先有证据，再有形容词
+## 从 Core 到容器，全部验证
 
-当前运行时快照已经通过：
+Sasori 在完整交付链路上持续接受验证：
 
 - `547` 项确定性 `unittest`；Windows 缺少相应系统权限时跳过 `5` 个 symlink 用例；
 - `31 / 31` 项真实 Chrome Workbench 验收，覆盖 1600×1000、390×844、
@@ -222,28 +217,19 @@ AGPL 源码或资产。
 - original wheel、重建 sdist、精确 bundle/core 与已安装分发包验证；
 - 国内源 Docker build 和真实 non-root 容器工作流。
 
-生成的计划、自测、漂亮截图或上游 README 都不是发布权威；可运行验收证据才是门槛。
+每一层都以开发者能够真实运行、检查、打包和部署的软件形态接受检验，而不是停留在
+方案、承诺或摆拍式 Demo 中。
 
-## 对标，但不复制
+## 一套系统，完整贯通
 
-- **Pi**：学习可读 Loop 与严格的 Tool/Event 顺序；Sasori 保持零依赖 Python Core、
-  可执行 Harness、严格终止收口和显式恢复边界。
-- **Proma**：学习产品密度和工作区可发现性；只吸收架构与交互经验，不复制其
-  AGPL 源码或资产。
-- **LeAgent / ToFu**：学习有价值的产品广度和运行时思路，同时收紧副作用歧义、
-  投影所有权、包边界和证据门。
+- 几行代码嵌入 Core，也可以通过响应式工作空间驾驭完整 Framework；
+- 提供实时流式反馈，同时维护干净、版本化、可持久恢复的事实来源；
+- 自由装配 Provider、Tool、Skill、Memory、Workflow 与插件，Core 始终保持轻巧；
+- 审批、副作用分类、恢复和审计语义，从本地 Python 一路贯通 HTTP/SSE 与 Workbench；
+- 使用锁定依赖、可复现源码包，以及国内源支持的 non-root 容器工作流交付。
 
-固定 commit、证据与许可证边界见 [Pi / Proma](docs/BENCHMARK-PI-PROMA.md)、
-[LeAgent / ToFu](docs/BENCHMARK-LEAGENT-TOFU.md) 和
-[第三方声明](THIRD_PARTY_NOTICES.md)。
-
-## Roadmap —— 尚未交付
-
-- 插件签名来源、兼容策略和受治理的公共市场；
-- 租户身份、授权、配额、耐久队列和分布式 Worker；
-- 对 CPU、内存、文件系统和网络出口有明确策略的不可信 Tool 隔离执行；
-- 在副作用、取消、审批和回放语义稳定后，再扩展 DAG/并行 Workflow 与多 Agent；
-- 在同一权威运行时之上提供团队工作区和数字员工。
+这就是 Sasori 的优势：**微框架般的优雅，完整 Agent 平台的纵深，以及一条精确的
+运行主线把所有能力稳稳串联。**
 
 ## 名称来源与独立声明
 
@@ -261,4 +247,4 @@ Sasori 代码使用 [MIT License](LICENSE)。第三方插件保留各自许可�
 宿主代码运行。安全边界见 [SECURITY.md](SECURITY.md)。修改公开事件、恢复语义、
 Golden Trace 或插件权限时，应同时提交决策记录和可运行回归证据。
 
-**从小处开始，只装配产品真正需要的能力，让每个重要动作都可检查。**
+**轻装构建，精密编排，交付值得信赖的 Agent。**

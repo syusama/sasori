@@ -177,37 +177,35 @@ class ReleaseVerificationTests(unittest.TestCase):
     def test_multilingual_readmes_and_real_screenshot_inventory_are_bound(self):
         readmes = {
             "README.md": (
-                "A small Python agent runtime. A complete framework when you need one."
+                "The Python agent framework engineered for precision, control, and scale."
             ),
-            "README_zh.md": "从轻量 Python Agent 核心开始，按需要扩展成完整框架。",
+            "README_zh.md": "为精密执行、自由组合与持续进化而生的 Python Agent Framework。",
             "README_ja.md": (
-                "小さな Python Agent ランタイムから始め、"
-                "必要なときだけ完全なフレームワークへ。"
+                "精密な実行、自由な構成、持続的な進化のための Python Agent Framework。"
             ),
             "README_ko.md": (
-                "작은 Python Agent 런타임으로 시작해, "
-                "필요할 때 완전한 프레임워크로 확장합니다."
+                "정밀한 실행, 자유로운 조합, 지속적인 진화를 위한 Python Agent Framework."
             ),
         }
         positioning_markers = {
             "README.md": (
                 "a small core, one runtime path, and execution you can trust",
-                "Bounded model and Tool progress is transient",
+                "Bounded model and Tool progress stays transient",
                 "effect_unknown",
             ),
             "README_zh.md": (
                 "核心轻巧，运行统一，执行可信",
-                "有边界的模型流和 Tool 进度只负责实时观察",
+                "模型流和 Tool 进度保持瞬态",
                 "effect_unknown",
             ),
             "README_ja.md": (
                 "小さな Core、一本の実行経路、信頼できる実行",
-                "境界付き Model/Tool progress は transient",
+                "Model/Tool progress は transient",
                 "effect_unknown",
             ),
             "README_ko.md": (
                 "작은 Core, 하나의 실행 경로, 신뢰할 수 있는 실행",
-                "경계가 있는 Model/Tool progress는 transient",
+                "Model/Tool progress는 transient",
                 "effect_unknown",
             ),
         }
@@ -222,6 +220,16 @@ class ReleaseVerificationTests(unittest.TestCase):
                     self.assertIn(peer, text)
             self.assertIn("docs/assets/sasori-banner.png", text)
             self.assertNotIn("docs/assets/sasori-logo.jpg", text)
+            for excluded in (
+                "LeAgent",
+                "ToFu",
+                "Roadmap",
+                "prerelease candidate",
+                "尚未交付",
+                "未提供",
+                "아직 제공되지 않음",
+            ):
+                self.assertNotIn(excluded, text)
             screenshot_references[name] = set(
                 re.findall(r"docs/assets/screenshots/([^\"') ]+\.jpg)", text)
             )

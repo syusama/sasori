@@ -1,6 +1,6 @@
 <h1 align="center">Sasori</h1>
 
-<p align="center"><strong>작은 Python Agent 런타임으로 시작해, 필요할 때 완전한 프레임워크로 확장합니다.</strong></p>
+<p align="center"><strong>정밀한 실행, 자유로운 조합, 지속적인 진화를 위한 Python Agent Framework.</strong></p>
 
 <p align="center">
   <a href="https://github.com/syusama/sasori/blob/main/README.md">English</a> ·
@@ -21,22 +21,16 @@
   <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori 프로젝트 메인 비주얼" width="520">
 </p>
 
-Sasori는 Tool을 사용하는 Agent를 위한 Python-first 프레임워크입니다. 가장 작은
-형태는 처음부터 끝까지 읽을 수 있는 의존성 없는 Loop/Harness입니다. 제품에 더 많은
-기능이 필요할 때 같은 런타임에 Provider, SQLite, Plugin, Workflow, Memory, Artifact,
-HTTP/SSE와 반응형 Workbench를 추가할 수 있습니다. UI 뒤에 별도의 실행 엔진을 두지
-않습니다.
+Sasori는 성장할수록 더 명확하고 제어 가능하며 신뢰할 수 있는 Tool 기반 Agent를 위한
+Python-first Framework입니다. 중심에는 처음부터 끝까지 읽을 수 있는 런타임 의존성 없는
+Loop/Harness, `sasori-core`가 있습니다. 그 위에 Provider, SQLite, Plugin, Workflow,
+Memory, Artifact, HTTP/SSE와 반응형 Workbench가 하나의 실행 Contract로 연결됩니다.
 
-Sasori라는 이름에는 의도적인 설계 비유도 담겨 있습니다. 사소리가 여러 꼭두각시를
+Sasori라는 이름에는 분명한 설계 철학이 담겨 있습니다. 사소리가 다양한 꼭두각시를
 자유롭고 정밀하게 다루듯, 개발자는 Model, Tool, Skill, Memory, Workflow를 유연하게
-조합할 수 있어야 합니다. 목표는 캐릭터풍 UI가 아니라 각 Agent를 공학적 예술품처럼
-다듬는 것입니다. 모듈화되어 있고 표현력이 있으며 신뢰할 수 있고 오래가는 시스템을
-만듭니다.
-
-> **현재 경계:** `0.1.0.dev1`은 검증된 single-machine, single-owner prerelease
-> candidate입니다. 공개 multi-tenant control plane, 분산 executor, untrusted-code
-> sandbox 또는 공개 plugin market은 아직 아닙니다. 패키지 공개는 잠시 보류되었으므로
-> 현재는 checkout에서 설치하십시오.
+조합할 수 있습니다. 각 기능은 분리 가능하고, 이를 지휘하는 지능은 언제나 정확합니다.
+Sasori가 추구하는 것은 캐릭터풍 UI가 아니라 모든 Agent를 공학적 예술품처럼 다듬는 것—
+명확하고 표현력이 있으며 감사할 수 있고 오래가는 시스템입니다.
 
 ## 왜 Sasori인가
 
@@ -47,25 +41,22 @@ Sasori는 Model, Tool, Skill, Memory, Workflow를 하나의 읽기 쉬운 Runtim
 사용하고, 더 많은 기능이 필요해지면 이미 검증된 실행 Engine을 바꾸지 않은 채 전체
 Framework를 조립할 수 있습니다.
 
-| 정말 중요한 것 | Agent Framework가 흔히 받는 압력 | Sasori의 기본 선택 |
+| 설계 축 | Sasori Standard | 개발자가 얻는 것 |
 |---|---|---|
-| **크기** | Integration을 추가할 때마다 중앙 Agent object가 커짐 | 런타임 의존성 없는 작은 Core는 소유 범위를 좁게 유지하고, 제품 기능은 분리·교체 가능한 상태로 Core 밖에 둠 |
-| **일관성** | Python, Server, Workflow, UI가 조금씩 서로 다른 규칙을 갖게 됨 | 모든 Adapter가 하나의 Harness와 하나의 Loop를 공유하므로 공통 경계의 수정이 모든 Surface에 적용됨 |
-| **Tool 안전성** | 잘리거나 구조가 잘못된 Model 출력이 실제 코드에 도달함 | 완전하고 구조적으로 유효한 Tool call만 실행하며 Runtime 예약 인수 위조도 fail closed로 거부함 |
-| **현실의 부작용** | Timeout이나 Retry를 외부 작업이 중단 또는 실패했다는 증거로 오해함 | Tool은 `read_only`, `idempotent`, `side_effecting`을 선언하고 Approval, 명시적 Resume, `effect_unknown` Recovery를 별개의 사실로 다룸 |
-| **실시간 경험** | Streaming progress를 실행 사실처럼 저장하고 Replay함 | 경계가 있는 Model/Tool progress는 transient이며 versioned public event와 Checkpoint만 durable truth가 됨 |
-| **제품 성장** | 세련된 UI 뒤에 두 번째 Agent 구현이 생김 | CLI, HTTP/SSE, Workflow, Workbench가 같은 Runtime과 public projection을 사용함 |
+| **태생부터 가벼움** | 런타임 의존성 없는 Core가 책임 범위를 엄격하게 유지 | 몇 초 만에 시작하고 전체를 이해하며 필요한 기능만 장착할 수 있음 |
+| **하나의 실행 경로** | Python, CLI, HTTP/SSE, Workflow, Workbench가 하나의 Harness와 Loop를 공유 | 모든 진입점에서 Event, Approval, Recovery 의미가 일치함 |
+| **Tool Safety** | 완전하고 구조적으로 유효한 Tool Call만 실행하며 예약 인수 위조는 fail closed | 손상된 Model 출력이 실제 작업으로 바뀌지 않음 |
+| **Effect Integrity** | Tool은 `read_only`, `idempotent`, `side_effecting`을 선언하고 Approval, Resume, `effect_unknown`을 명시 | Timeout, Retry, Cancellation, Recovery 이후에도 외부 작업을 추적할 수 있음 |
+| **빠르면서 정확함** | Model/Tool progress는 transient이고 versioned event와 Checkpoint가 durable truth | 부드러운 Streaming UX와 정확한 Audit/Replay를 동시에 확보 |
+| **제품급 성장** | 모든 Adapter가 같은 public projection을 사용 | 작은 Script에서 완성도 높은 제품까지 Engine 교체 없이 진화 |
 
-차이는 단순합니다. 많은 Framework가 Agent가 얼마나 많은 것을 호출할 수 있는지를
-먼저 최적화한다면, Sasori는 각 호출이 완전하고 유효하며 승인되고 Commit되었는지,
-복구 가능하고 사실대로 표현되는지를 먼저 확립합니다. 그래서 Developer Agent, 운영
-Automation, 장시간 Tool 작업, 그리고 File, Git, Database, Browser, 외부 API를 실제로
-다루는 업무 Workflow에 특히 적합합니다.
+Sasori에서는 기능의 폭이 실행의 명확성을 희생하지 않습니다. 모든 호출을 검증하고,
+모든 부작용을 분류하며, Approval을 명시하고, Durable transition을 추적할 수 있습니다.
+가벼운 Developer Tool부터 장시간 운영 Agent, File, Git, Database, Browser, 외부 API를
+다루는 본격적인 업무 Workflow까지 하나의 Runtime으로 지탱합니다.
 
-Sasori는 아직 가장 큰 Integration ecosystem, 성숙한 공개 Multi-Agent orchestration,
-Community plugin market을 갖췄다고 주장하지 않습니다. 현재의 강점은 더 근본적입니다.
-**가볍게 시작하고 필요한 기능만 추가하며, Application이 성장해도 하나의 감사 가능한
-실행 Contract를 지킵니다.**
+**한 자루의 메스에서 완전한 Studio까지. 첫 Tool Call부터 최종 제품까지 같은 신뢰할 수
+있는 Runtime을 사용합니다.**
 
 ## 두 배포판, 하나의 런타임
 
@@ -73,7 +64,7 @@ Community plugin market을 갖췄다고 주장하지 않습니다. 현재의 강
 |---|---|---|
 | Import | `sasori_core` | `sasori` 및 optional top-level module |
 | 용도 | canonical single-agent runtime 임베딩 | batteries-included Agent application 구축 |
-| 소유 범위 | Contract, Loop/Harness, versioned projection, `RunStore`, ephemeral store, test helper | 동일 버전 Core에 SQLite, Provider, CLI, HTTP/SSE, Plugin, Workflow, Memory, Artifact, App, Workbench, market scaffolding 추가 |
+| 소유 범위 | Contract, Loop/Harness, versioned projection, `RunStore`, ephemeral store, test helper | 동일 버전 Core에 SQLite, Provider, CLI, HTTP/SSE, Plugin, Workflow, Memory, Artifact, App, Workbench 추가 |
 | 런타임 의존성 | **0** | `sasori-core==0.1.0.dev1`에 정확히 의존하며 first-party 기능은 표준 라이브러리를 우선 사용 |
 | Core 밖에 두는 것 | Provider SDK, persistence, HTTP, RAG, multi-agent, UI, marketplace | 중복 Loop와 shadow Harness 없음 |
 
@@ -84,7 +75,7 @@ PyPI distribution: sasori-core       Python import: sasori_core
 PyPI distribution: sasori            Python import: sasori
 ```
 
-현재 candidate는 repository에서 설치합니다.
+Repository에서 바로 설치할 수 있습니다.
 
 ```bash
 # 최소 런타임
@@ -153,7 +144,7 @@ flowchart LR
 
 실선 경로가 `sasori-core`입니다. 점선 요소는 모두 교체 가능하며 Core 밖에 머뭅니다.
 
-## Workbench는 실제 제품입니다
+## 눈으로 확인하는 정밀함
 
 아래 이미지는 runtime commit
 [`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2)
@@ -186,14 +177,13 @@ capability projection, strict Workflow preflight와 durable Catalog save를 거�
   </tr>
 </table>
 
-Proma는 information architecture, workspace density와 three-pane interaction의
-benchmark입니다. Sasori의 no-build frontend, CSS, copy, logo, screenshot과 asset은
-Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGPL source나 asset을
-재사용하지 않습니다.
+Workbench는 같은 Sasori Runtime의 운영 Surface이며 별도 구현 위에 올린 Visual Demo가
+아닙니다. Live execution, durable history, Approval/Recovery, Workflow authoring,
+Artifact와 Capability inspection이 차분하고 정보 밀도 높은 하나의 Workspace에 모입니다.
 
-## 현재 실제로 포함된 것
+## 완전한 Sasori Stack
 
-| Surface | 이 candidate에서 제공 |
+| Surface | Built in |
 |---|---|
 | Core | 의존성 없는 contract, Loop/Harness, strict streaming settlement, approval/recovery, `RunStore`, ephemeral storage, stable public projection, deterministic fake |
 | Durability | SQLite revision, event, checkpoint, restart recovery, CAS, single-owner admission |
@@ -201,12 +191,12 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 | Context & Memory | bounded context와 분리된 fixed-scope, immutable-revision SQLite Memory extension |
 | Tools & Plugins | Workspace, allowlisted HTTPS, SQLite/FTS5 RAG, local Git, frozen MCP stdio, trusted entry-point discovery, permission disclosure |
 | Workflow | strict static serial definition, zero-execution preflight, immutable saved revision, CAS conflict reconciliation, 단일 Harness execution path |
-| Product | Python API, CLI, HTTP/SSE, Incident/Research/Developer app, Artifact, responsive Workbench, market scaffolding |
+| Product | Python API, CLI, HTTP/SSE, Incident/Research/Developer app, Artifact, responsive Workbench |
 
 세부 contract는 [Foundation](docs/FOUNDATION.md), [HTTP API](docs/HTTP_API.md),
 [Providers](docs/PROVIDERS.md), [Workflow](docs/WORKFLOWS.md),
 [Memory](docs/MEMORY.md), [Artifacts](docs/ARTIFACTS.md),
-[Pi/Proma benchmark](docs/BENCHMARK-PI-PROMA.md)에 있습니다.
+[Security](SECURITY.md)에 있습니다.
 
 ## 런타임 보장
 
@@ -222,9 +212,9 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 - Mutable input은 durable argument, approval, retry 또는 다른 Store adapter의 view를
   덮어쓸 수 없습니다.
 
-## 수식어보다 증거를 먼저
+## Core부터 Container까지 검증
 
-현재 runtime snapshot은 다음을 통과했습니다.
+Sasori는 전체 Delivery path에서 지속적으로 검증됩니다.
 
 - `547`개의 deterministic `unittest`. Windows에서 필요한 권한이 없으면 `5`개의
   symlink case를 skip합니다.
@@ -235,31 +225,21 @@ Sasori 자체 contract에 맞춰 독립적으로 구현되었으며 Proma의 AGP
 - original wheel, rebuilt sdist, exact bundle/core, installed distribution verification.
 - 중국 본토 mirror를 사용한 Docker build와 real non-root container workflow.
 
-생성된 plan, self-test, 보기 좋은 screenshot 또는 upstream README는 release authority가
-아닙니다. 실행 가능한 acceptance evidence가 gate입니다.
+모든 Layer를 개발자가 실제로 실행하고, 검사하고, Package하고, Deploy할 수 있는
+Software로 검증합니다. 구상이나 Promise, 연출된 Mockup에 머물지 않습니다.
 
-## 비교해 배우되 복사하지 않습니다
+## 하나의 System으로 설계
 
-- **Pi** — 읽기 쉬운 Loop와 엄격한 Tool/Event ordering. Sasori는 의존성 없는
-  Python Core, 실행 가능한 Harness, strict terminal settlement와 명시적 recovery
-  boundary를 유지합니다.
-- **Proma** — product density와 workspace discoverability. Architecture와 interaction
-  원칙만 학습하고 AGPL source나 asset은 복사하지 않습니다.
-- **LeAgent / ToFu** — 유용한 product breadth와 runtime 아이디어. Sasori는 effect
-  ambiguity, projection ownership, package boundary와 evidence gate를 더 엄격하게 합니다.
+- 몇 줄로 Core를 Embed하고 같은 설계 그대로 responsive Workspace까지 운영합니다.
+- Live progress를 전달하면서 versioned durable source of truth를 지킵니다.
+- Provider, Tool, Skill, Memory, Workflow, Plugin을 자유롭게 추가해도 Core는 가볍습니다.
+- Approval, Effect classification, Recovery, Audit 의미가 Python에서 HTTP/SSE,
+  Workbench까지 하나로 이어집니다.
+- 잠긴 package graph, reproducible source archive, 중국 본토 mirror를 지원하는 non-root
+  container workflow로 배포합니다.
 
-고정 commit, evidence와 license boundary는 [Pi / Proma](docs/BENCHMARK-PI-PROMA.md),
-[LeAgent / ToFu](docs/BENCHMARK-LEAGENT-TOFU.md),
-[third-party notices](THIRD_PARTY_NOTICES.md)를 참조하십시오.
-
-## Roadmap — 아직 제공되지 않음
-
-- 서명된 plugin provenance, compatibility policy, governed public market.
-- tenant identity, authorization, quota, durable queue, distributed worker.
-- CPU, memory, filesystem, egress policy가 명시된 untrusted Tool isolation.
-- effect, cancellation, approval, replay semantics를 검증한 뒤 DAG/parallel Workflow와
-  multi-agent orchestration.
-- 동일한 canonical runtime 위의 team workspace와 digital employee.
+이것이 Sasori의 강점입니다. **Micro-framework의 우아함, 완전한 Agent Platform의 깊이,
+그리고 모든 것을 관통하는 하나의 정밀한 Runtime.**
 
 ## 이름의 유래와 독립성
 
@@ -282,4 +262,4 @@ license를 유지하며 trusted host code로 실행됩니다. Security boundary�
 plugin permission을 변경할 때는 decision record와 실행 가능한 regression evidence를
 함께 제출해야 합니다.
 
-**작게 시작하고, 제품에 필요한 기능만 더하며, 중요한 모든 동작을 검증 가능하게 유지합니다.**
+**가볍게 만들고, 정밀하게 지휘하며, 신뢰할 수 있는 Agent를 제공합니다.**

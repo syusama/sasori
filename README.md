@@ -1,6 +1,6 @@
 <h1 align="center">Sasori</h1>
 
-<p align="center"><strong>A small Python agent runtime. A complete framework when you need one.</strong></p>
+<p align="center"><strong>The Python agent framework engineered for precision, control, and scale.</strong></p>
 
 <p align="center">
   <a href="https://github.com/syusama/sasori/blob/main/README.md"><strong>English</strong></a> ·
@@ -21,23 +21,19 @@
   <img src="https://raw.githubusercontent.com/syusama/sasori/main/docs/assets/sasori-banner.png" alt="Sasori project hero artwork" width="520">
 </p>
 
-Sasori is a Python-first framework for tool-using agents. Its smallest useful
-form is a dependency-free Loop/Harness that can be read end to end. When the
-product needs more, the same runtime can add providers, SQLite, plugins,
-Workflows, Memory, artifacts, HTTP/SSE, and a responsive Workbench—without
-introducing a second execution engine behind the UI.
+Sasori is a Python-first framework for building tool-using agents that stay
+clear, controllable, and dependable as they grow. At its center is
+`sasori-core`: a zero-dependency Loop/Harness compact enough to read end to
+end. Around it is a complete application stack—providers, SQLite, plugins,
+Workflows, Memory, artifacts, HTTP/SSE, and a responsive Workbench—all powered
+by the same execution contract.
 
 The name carries a deliberate design metaphor: as Sasori controls an adaptable
-arsenal of puppets, developers should be able to compose models, Tools, Skills,
-Memory, and Workflows with the same freedom and precision. The ambition is not
-to theme the product after a character; it is to treat every Agent as an
-engineered work of art—modular, expressive, dependable, and built to endure.
-
-> **Current boundary:** `0.1.0.dev1` is a verified, single-machine,
-> single-owner prerelease candidate. It is not yet a public multi-tenant
-> control plane, distributed executor, untrusted-code sandbox, or public
-> plugin market. Install it from a checkout while package publication is on
-> hold.
+arsenal of puppets, developers can compose models, Tools, Skills, Memory, and
+Workflows with the same freedom and precision. Each capability is detachable;
+the intelligence that coordinates them remains exact. The result is an Agent
+framework designed like an engineering work of art—modular, expressive,
+auditable, and built to endure.
 
 ## Why Sasori
 
@@ -48,26 +44,24 @@ capabilities around one readable runtime. Use only `sasori-core` for a small
 Python agent, or assemble the full framework without replacing the engine that
 was already tested.
 
-| What matters | The pressure frameworks often face | Sasori's default |
+| Design dimension | The Sasori standard | What developers gain |
 |---|---|---|
-| **Size** | Every integration expands the central Agent object | A zero-dependency core with a deliberately narrow ownership boundary; product capabilities stay detachable |
-| **Consistency** | Python, server, Workflow, and UI paths slowly acquire different rules | One Harness and one Loop serve every adapter; a fix at the shared boundary benefits every surface |
-| **Tool safety** | Partial or malformed model output reaches real code | Only complete, structurally valid Tool calls can execute; reserved runtime arguments fail closed |
-| **Real-world effects** | A timeout or retry is mistaken for proof that an external operation stopped or failed | Tools declare `read_only`, `idempotent`, or `side_effecting`; approval, explicit resume, and `effect_unknown` recovery remain separate facts |
-| **Live experience** | Streaming progress is persisted or replayed as if it were execution truth | Bounded model and Tool progress is transient; versioned public events and checkpoints remain the durable truth |
-| **Product growth** | A polished UI becomes a second implementation of the Agent | CLI, HTTP/SSE, Workflow, and Workbench consume the same runtime and public projection |
+| **Small by design** | A zero-dependency core with a deliberately narrow ownership boundary | Start in seconds, understand the runtime, and attach only the capabilities the product needs |
+| **One execution path** | Python, CLI, HTTP/SSE, Workflow, and Workbench share one Harness and one Loop | Every surface follows the same rules, events, approvals, and recovery semantics |
+| **Tool safety** | Only complete, structurally valid Tool calls execute; reserved runtime arguments fail closed | Malformed model output never becomes an accidental real-world action |
+| **Effect integrity** | Tools declare `read_only`, `idempotent`, or `side_effecting`; approval, resume, and `effect_unknown` are explicit | External actions remain inspectable even across timeouts, retries, cancellation, and recovery |
+| **Live without fiction** | Bounded model and Tool progress stays transient; versioned events and checkpoints are durable truth | Fast streaming UX without corrupting audit or replay semantics |
+| **Product-grade growth** | Every adapter consumes the same public projection instead of reimplementing the Agent | Move from a script to a polished application without migrating to another engine |
 
-The distinction is simple: many frameworks optimize first for how many things
-an Agent can call; Sasori first establishes whether each call was valid,
-approved, committed, recoverable, and honestly represented. That makes it a
-strong fit for developer agents, operations automation, long-running Tool work,
-and business workflows where files, Git, databases, browsers, or external APIs
-have real consequences.
+With Sasori, capability breadth never comes at the cost of execution clarity.
+Every call is validated, every effect is classified, every approval is
+explicit, and every durable transition can be inspected. It is equally at home
+inside a compact developer tool, a long-running operations Agent, or a serious
+business workflow that touches files, Git, databases, browsers, and external
+APIs.
 
-Sasori does not yet claim the largest integration ecosystem, mature public
-multi-agent orchestration, or a community plugin market. Its current advantage
-is more fundamental: **start light, add only what you need, and keep one
-auditable execution contract as the application grows.**
+**Start with a scalpel. Assemble a complete studio. Keep the same trustworthy
+runtime from the first Tool call to the final product.**
 
 ## Two distributions, one runtime
 
@@ -75,7 +69,7 @@ auditable execution contract as the application grows.**
 |---|---|---|
 | Import | `sasori_core` | `sasori` plus optional top-level modules |
 | Use it for | Embedding the canonical single-agent runtime | Building a batteries-included Agent application |
-| Owns | Contracts, Loop/Harness, versioned projection, `RunStore`, ephemeral store, test helpers | The exact same-version core plus SQLite, providers, CLI, HTTP/SSE, plugins, Workflow, Memory, artifacts, apps, Workbench, and market scaffolding |
+| Owns | Contracts, Loop/Harness, versioned projection, `RunStore`, ephemeral store, test helpers | The exact same-version core plus SQLite, providers, CLI, HTTP/SSE, plugins, Workflow, Memory, artifacts, apps, and Workbench |
 | Runtime dependencies | **0** | Exactly `sasori-core==0.1.0.dev1`; first-party features otherwise prefer the standard library |
 | Deliberately outside core | Provider SDKs, persistence, HTTP, RAG, multi-agent, UI, marketplace | No duplicate Loop and no shadow Harness |
 
@@ -86,7 +80,7 @@ PyPI distribution: sasori-core       Python import: sasori_core
 PyPI distribution: sasori            Python import: sasori
 ```
 
-Install the current candidate from the repository:
+Install directly from the repository:
 
 ```bash
 # Smallest runtime
@@ -156,7 +150,7 @@ flowchart LR
 The solid path is `sasori-core`. Everything dotted is replaceable and stays
 outside core.
 
-## The Workbench is real
+## Precision you can see
 
 These images were captured from the real Sasori server at runtime commit
 [`71993de`](https://github.com/syusama/sasori/commit/71993de377a837c85c6cba5bcbf83a36228a1dc2).
@@ -189,13 +183,14 @@ digests, browser version, and capture scenarios are recorded in the
   </tr>
 </table>
 
-Proma is a benchmark for information architecture, workspace density, and
-three-pane interaction. Sasori's no-build frontend, CSS, copy, logo, screenshots,
-and assets are independently implemented against Sasori's own contracts.
+The Workbench is the operating surface of the same Sasori runtime, not a visual
+demo layered over a separate implementation. Live execution, durable history,
+approval, recovery, Workflow authoring, artifacts, and capability inspection
+meet in one calm, information-dense workspace.
 
-## What is included today
+## The complete Sasori stack
 
-| Surface | Delivered in this candidate |
+| Surface | Built in |
 |---|---|
 | Core | Zero-dependency contracts, Loop/Harness, strict streaming settlement, approval/recovery, `RunStore`, ephemeral storage, stable public projection, deterministic fakes |
 | Durability | SQLite revisions, events, checkpoints, restart recovery, CAS, and single-owner admission |
@@ -203,13 +198,12 @@ and assets are independently implemented against Sasori's own contracts.
 | Context & Memory | Bounded context plus a separate, fixed-scope, immutable-revision SQLite Memory extension |
 | Tools & plugins | Workspace, allowlisted HTTPS, SQLite/FTS5 RAG, local Git, frozen MCP stdio, trusted entry-point discovery, permission disclosure |
 | Workflow | Strict static serial definitions, zero-execution preflight, immutable saved revisions, CAS conflict reconciliation, one Harness execution path |
-| Product | Python API, CLI, HTTP/SSE, Incident/Research/Developer apps, artifacts, responsive Workbench, market scaffolding |
+| Product | Python API, CLI, HTTP/SSE, Incident/Research/Developer apps, artifacts, and responsive Workbench |
 
 Deep contracts live in [Foundation](docs/FOUNDATION.md),
 [HTTP API](docs/HTTP_API.md), [Providers](docs/PROVIDERS.md),
 [Workflow](docs/WORKFLOWS.md), [Memory](docs/MEMORY.md),
-[Artifacts](docs/ARTIFACTS.md), and the
-[Pi/Proma benchmark](docs/BENCHMARK-PI-PROMA.md).
+[Artifacts](docs/ARTIFACTS.md), and [Security](SECURITY.md).
 
 ## Runtime guarantees
 
@@ -225,9 +219,9 @@ Deep contracts live in [Foundation](docs/FOUNDATION.md),
 - Mutable inputs cannot rewrite durable arguments, approvals, retries, or
   another store adapter's view.
 
-## Evidence before claims
+## Verified from core to container
 
-The current runtime snapshot has passed:
+Sasori is continuously exercised across the complete delivery path:
 
 - `547` deterministic `unittest` checks; `5` Windows symlink cases skip when
   the required OS privilege is unavailable;
@@ -239,33 +233,24 @@ The current runtime snapshot has passed:
   verification;
 - mainland-source Docker build and a real non-root container workflow.
 
-The repository does not treat a generated plan, self-test, screenshot, or
-upstream README as release authority. Runnable acceptance evidence is the gate.
+Every layer is checked as software developers can run, inspect, package, and
+deploy—not as a slide, a generated promise, or a staged mockup.
 
-## Benchmarked, not copied
+## Engineered as one system
 
-- **Pi** — readable loop structure and disciplined tool/event ordering; Sasori
-  keeps a zero-dependency Python core, executable Harness, strict terminal
-  settlement, and explicit recovery boundaries.
-- **Proma** — product density and workspace discoverability; Sasori uses only
-  architectural and interaction lessons, not Proma's AGPL source or assets.
-- **LeAgent / ToFu** — useful product breadth and runtime ideas; Sasori tightens
-  effect ambiguity, projection ownership, package boundaries, and evidence.
+- Embed the Core in a few lines, or operate the complete framework through a
+  responsive workspace.
+- Stream live progress while preserving a clean, versioned, durable source of
+  truth.
+- Add Providers, Tools, Skills, Memory, Workflows, and plugins without widening
+  the Core or replacing the execution engine.
+- Carry approval, effect classification, recovery, and audit semantics from
+  local Python to HTTP/SSE and the Workbench.
+- Ship from a locked package graph, a reproducible source archive, or a
+  mainland-source non-root container workflow.
 
-See [Pi / Proma](docs/BENCHMARK-PI-PROMA.md),
-[LeAgent / ToFu](docs/BENCHMARK-LEAGENT-TOFU.md), and
-[third-party notices](THIRD_PARTY_NOTICES.md) for fixed commits and license
-boundaries.
-
-## Roadmap — not shipped yet
-
-- Signed plugin provenance, compatibility policy, and a governed public market;
-- tenant identity, authorization, quotas, durable queues, and distributed workers;
-- isolated untrusted Tool execution with explicit CPU, memory, filesystem, and
-  egress policies;
-- DAG/parallel Workflow and multi-agent orchestration after effect,
-  cancellation, approval, and replay semantics are proved;
-- team workspaces and digital employees on the same canonical runtime.
+This is the Sasori advantage: **the elegance of a micro-framework, the reach of
+a full Agent platform, and one exact runtime holding everything together.**
 
 ## Name and affiliation
 
@@ -288,4 +273,4 @@ retain their own licenses and run as trusted code. Security boundaries are in
 golden traces, or plugin permissions should include a decision record and
 runnable regression evidence.
 
-**Start small. Add only what the product needs. Keep every important action inspectable.**
+**Build lightly. Orchestrate precisely. Ship Agents worthy of trust.**
